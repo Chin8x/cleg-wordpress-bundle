@@ -25118,7 +25118,7 @@ body .cleg-admin-ui > .cleg-admin-shell > .cleg-admin-header{
     padding:24px!important;
     border:1px solid rgba(255,255,255,.18)!important;
     border-radius:22px!important;
-    background:linear-gradient(180deg,#fff,#f7fafc)!important;
+    background:linear-gradient(135deg,#06182d,#21344c)!important;
     color:#fff!important;
     box-shadow:0 28px 70px rgba(6,24,45,.24)!important;
     overflow:hidden!important;
