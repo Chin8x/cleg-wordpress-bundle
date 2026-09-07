@@ -25881,6 +25881,54 @@ body .cleg-admin-ui .cleg-field-gps-drawer .cleg17-gps-worker.is-active .cleg17-
     transform:none!important;
     scale:1!important;
 }
+/* Desktop header contract covers both dashboard and sibling-page markup. */
+@media(min-width:783px){
+    body .cleg-admin-ui .cleg-admin-header.cleg-command-center,
+    body .cleg-admin-ui > .cleg-admin-shell > .cleg-admin-header{
+        background:linear-gradient(135deg,#06182d,#21344c)!important;
+    }
+}
+/* CLEG 03B v5.3 - calendario de ausencias: la grilla pertenece a la capa activa. */
+body .cleg-admin-ui .cleg-absence-board{
+    display:grid!important;
+    gap:12px!important;
+}
+body .cleg-admin-ui .cleg-calendar-grid{
+    display:grid!important;
+    grid-template-columns:repeat(7,minmax(0,1fr))!important;
+    gap:8px!important;
+}
+body .cleg-admin-ui .cleg-calendar-grid>span{
+    min-width:0!important;
+    min-height:116px!important;
+    overflow:hidden!important;
+}
+body .cleg-admin-ui .cleg-calendar-week>span{
+    min-height:auto!important;
+    overflow:visible!important;
+}
+body .cleg-admin-ui .cleg-calendar-month>span.is-empty{
+    border:0!important;
+    background:transparent!important;
+}
+body .cleg-admin-ui .cleg-calendar-month>span small{
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+}
+@media(max-width:760px){
+    body .cleg-admin-ui .cleg-calendar-week{
+        display:none!important;
+    }
+    body .cleg-admin-ui .cleg-calendar-month{
+        display:block!important;
+    }
+    body .cleg-admin-ui .cleg-calendar-month>span{
+        display:block!important;
+        min-height:auto!important;
+        margin-bottom:8px!important;
+    }
+}
 </style>
         <?php
     }
