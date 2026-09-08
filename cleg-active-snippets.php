@@ -6989,7 +6989,7 @@ if (!function_exists('cleg_admin_desktop_menu_lock_styles')) {
         padding:24px!important;
         border:1px solid rgba(255,255,255,.18)!important;
         border-radius:22px!important;
-        background:linear-gradient(180deg,#fff,#f7fafc)!important;
+        /* Header background is owned by the active design-system module. */
         color:var(--cleg-app-ink)!important;
         box-shadow:0 18px 44px rgba(6,24,45,.08)!important;
         overflow:hidden!important;
