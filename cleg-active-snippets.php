@@ -6732,7 +6732,10 @@ if (!function_exists('cleg_admin_page_header')) {
         $class = trim('cleg-admin-header cleg-command-center ' . $state);
 
         $eyebrow = isset($attention['eyebrow']) ? (string) $attention['eyebrow'] : 'Vantrexor';
-        $html = '<header class="' . esc_attr($class) . '"><div class="cleg-command-copy"><div class="cleg-app-brand-block">' . cleg_vantrexor_logo_markup('mark') . '<p class="cleg-app-kicker">' . esc_html($eyebrow) . '</p></div><h1>' . esc_html($title) . '</h1>' . ($subtitle !== '' ? '<span>' . esc_html($subtitle) . '</span>' : '') . '</div>';
+        $brand_mark = function_exists('cleg_vantrexor_logo_markup')
+            ? cleg_vantrexor_logo_markup('mark')
+            : '<span class="cleg-vantrexor-mark" aria-label="Vantrexor"><span aria-hidden="true">V</span></span>';
+        $html = '<header class="' . esc_attr($class) . '"><div class="cleg-command-copy"><div class="cleg-app-brand-block">' . $brand_mark . '<p class="cleg-app-kicker">' . esc_html($eyebrow) . '</p></div><h1>' . esc_html($title) . '</h1>' . ($subtitle !== '' ? '<span>' . esc_html($subtitle) . '</span>' : '') . '</div>';
 
         if ($value !== '' || $label !== '' || $detail !== '') {
             $html .= '<div class="cleg-command-score"><span>' . esc_html($label) . '</span><strong>' . esc_html($value) . '</strong><small>' . esc_html($detail) . '</small></div>';
