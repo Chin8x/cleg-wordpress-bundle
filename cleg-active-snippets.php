@@ -50,6 +50,21 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (!function_exists('cleg_vantrexor_logo_markup')) {
+    function cleg_vantrexor_logo_markup($variant = 'name') {
+        $identity = function_exists('cleg_visual_identity') ? cleg_visual_identity() : array();
+        $name = (string) ($identity['product_name'] ?? 'Vantrexor');
+        $tenant = (string) ($identity['tenant_label'] ?? 'Vantrexor tenant');
+        $variant = $variant === 'mark' ? 'mark' : 'name';
+
+        if ($variant === 'mark') {
+            return '<span class="cleg-vantrexor-mark" aria-label="' . esc_attr($name) . '"><span aria-hidden="true">V</span></span>';
+        }
+
+        return '<div class="cleg-login-brand cleg-vantrexor-wordmark"><span class="cleg-login-badge">' . esc_html($name) . '</span><strong class="cleg-login-logo-text">' . esc_html($name) . '</strong><small class="cleg-login-tenant">' . esc_html($tenant) . '</small></div>';
+    }
+}
+
 if (!function_exists('cleg_secure_config_map')) {
     function cleg_secure_config_map() {
         return array(
