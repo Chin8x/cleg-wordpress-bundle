@@ -11352,7 +11352,7 @@ if (!function_exists('cleg_admin_review_form')) {
                 $actions .= '<button class="is-danger cleg-delete-btn" type="submit" name="cleg_admin_action" value="delete">Eliminar</button>';
             }
         } else {
-            $primary_label = $manual_requested ? 'Guardar salida' : 'Guardar cambios';
+            $primary_label = $manual_requested ? 'Guardar salida' : 'Aceptar modificacion';
             $actions = $can_correct ? '<button class="cleg-save-btn" type="submit" name="cleg_admin_action" value="' . esc_attr($manual_requested ? 'admin_close' : 'save_changes') . '">' . esc_html($primary_label) . '</button>' : '';
         }
 
@@ -17686,6 +17686,173 @@ if (!function_exists('cleg_payroll_rollback_previous_week_records')) {
     }
 }
 
+if (!function_exists('cleg_payroll_month_period')) {
+    function cleg_payroll_month_period($month = '') {
+        $timezone = cleg_payroll_timezone();
+        $month = preg_match('/^\d{4}-\d{2}$/', (string) $month) ? (string) $month : wp_date('Y-m', null, $timezone);
+        $start = new DateTimeImmutable($month . '-01 00:00:00', $timezone);
+        return array($start->format('Y-m-d'), $start->modify('last day of this month')->format('Y-m-d'), $start->format('Y-m'));
+    }
+}
+
+if (!function_exists('cleg_payroll_month_options')) {
+    function cleg_payroll_month_options($selected_month, $count = 12) {
+        $base = new DateTimeImmutable('first day of this month 00:00:00', cleg_payroll_timezone());
+        $options = array();
+        for ($i = 0; $i < $count; $i++) {
+            $month = $base->modify('-' . $i . ' months');
+            $value = $month->format('Y-m');
+            $options[$value] = $month->format('m/Y');
+        }
+        if (!isset($options[$selected_month])) {
+            $options[$selected_month] = $selected_month;
+        }
+        return $options;
+    }
+}
+
+if (!function_exists('cleg_payroll_month_week_ranges')) {
+    function cleg_payroll_month_week_ranges($month_start, $month_end) {
+        $timezone = cleg_payroll_timezone();
+        $cursor = new DateTimeImmutable($month_start . ' 00:00:00', $timezone);
+        while ((int) $cursor->format('w') !== 6) {
+            $cursor = $cursor->modify('+1 day');
+        }
+
+        $end = new DateTimeImmutable($month_end . ' 00:00:00', $timezone);
+        $ranges = array();
+        while ($cursor <= $end) {
+            $ranges[] = array($cursor->modify('-6 days')->format('Y-m-d'), $cursor->format('Y-m-d'));
+            $cursor = $cursor->modify('+1 week');
+        }
+        return $ranges;
+    }
+}
+
+if (!function_exists('cleg_payroll_month_summary_from_data')) {
+    function cleg_payroll_month_summary_from_data($data) {
+        $summary = array();
+        foreach ((array) $data as $row) {
+            $key = sanitize_text_field((string) ($row['id'] ?? $row['name'] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+            if (!isset($summary[$key])) {
+                $summary[$key] = array(
+                    'name' => sanitize_text_field((string) ($row['name'] ?? '')),
+                    'hours' => 0,
+                    'regular_hours' => 0,
+                    'extra_hours' => 0,
+                    'gross_pay' => 0,
+                    'net_pay' => 0,
+                    'periods' => 0,
+                );
+            }
+            $summary[$key]['hours'] += (float) ($row['hours'] ?? 0);
+            $summary[$key]['regular_hours'] += (float) ($row['regular_hours'] ?? 0);
+            $summary[$key]['extra_hours'] += (float) ($row['extra_hours'] ?? 0);
+            $summary[$key]['gross_pay'] += (float) ($row['gross_pay'] ?? $row['pay'] ?? 0);
+            $summary[$key]['net_pay'] += (float) ($row['net_pay'] ?? $row['pay'] ?? 0);
+            $summary[$key]['periods']++;
+        }
+        uasort($summary, function ($a, $b) {
+            return strcasecmp($a['name'] ?? '', $b['name'] ?? '');
+        });
+        return $summary;
+    }
+}
+
+if (!function_exists('cleg_payroll_month_summary_merge')) {
+    function cleg_payroll_month_summary_merge($target, $source) {
+        foreach ((array) $source as $key => $row) {
+            if (!isset($target[$key])) {
+                $target[$key] = $row;
+                continue;
+            }
+            foreach (array('hours', 'regular_hours', 'extra_hours', 'gross_pay', 'net_pay', 'periods') as $field) {
+                $target[$key][$field] += (float) ($row[$field] ?? 0);
+            }
+        }
+        uasort($target, function ($a, $b) {
+            return strcasecmp($a['name'] ?? '', $b['name'] ?? '');
+        });
+        return $target;
+    }
+}
+
+if (!function_exists('cleg_payroll_month_summary_table')) {
+    function cleg_payroll_month_summary_table($summary, $empty_message = 'Sin datos para este mes.') {
+        $html = '<div class="cleg-payroll-month-table"><table><thead><tr><th>Trabajador</th><th>Horas</th><th>Regular</th><th>Extra</th><th>Bruto</th><th>Total pagado</th><th>Periodos</th></tr></thead><tbody>';
+        foreach ((array) $summary as $row) {
+            $html .= '<tr><td><strong>' . esc_html($row['name'] ?? '') . '</strong></td>'
+                . '<td>' . esc_html(cleg_payroll_format_hours((float) ($row['hours'] ?? 0))) . '</td>'
+                . '<td>' . esc_html(cleg_payroll_format_hours((float) ($row['regular_hours'] ?? 0))) . '</td>'
+                . '<td>' . esc_html(cleg_payroll_format_hours((float) ($row['extra_hours'] ?? 0))) . '</td>'
+                . '<td>$' . esc_html(number_format((float) ($row['gross_pay'] ?? 0), 2)) . '</td>'
+                . '<td><strong>$' . esc_html(number_format((float) ($row['net_pay'] ?? 0), 2)) . '</strong></td>'
+                . '<td>' . esc_html((string) absint($row['periods'] ?? 0)) . '</td></tr>';
+        }
+        if (empty($summary)) {
+            $html .= '<tr><td colspan="7">' . esc_html($empty_message) . '</td></tr>';
+        }
+        return $html . '</tbody></table></div>';
+    }
+}
+
+if (!function_exists('cleg_payroll_month_report')) {
+    function cleg_payroll_month_report($selected_month) {
+        list($month_start, $month_end, $month_value) = cleg_payroll_month_period($selected_month);
+        $natural_data = cleg_payroll_data($month_start, $month_end);
+        if (is_wp_error($natural_data)) {
+            return '<div class="cleg-payroll-blocked"><strong>Error resumen mensual.</strong> ' . esc_html($natural_data->get_error_message()) . '</div>';
+        }
+
+        $paid_summary = array();
+        $paid_ranges = cleg_payroll_month_week_ranges($month_start, $month_end);
+        foreach ($paid_ranges as $range) {
+            $period_lines = cleg_payroll_period_lines($range[0], $range[1]);
+            if (is_wp_error($period_lines) || empty($period_lines)) {
+                continue;
+            }
+            $period_data = cleg_payroll_data($range[0], $range[1]);
+            if (!is_wp_error($period_data)) {
+                $paid_summary = cleg_payroll_month_summary_merge($paid_summary, cleg_payroll_month_summary_from_data($period_data));
+            }
+        }
+
+        $options = cleg_payroll_month_options($month_value);
+        ob_start();
+        ?>
+        <section class="cleg-payroll-month-report">
+            <form class="cleg-payroll-month-filter" method="get">
+                <input type="hidden" name="payroll_report" value="month">
+                <label>Mes
+                    <select name="payroll_month" onchange="this.form.submit()">
+                        <?php foreach ($options as $value => $label) : ?>
+                            <option value="<?php echo esc_attr($value); ?>" <?php selected($month_value, $value); ?>><?php echo esc_html($label); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <a href="<?php echo esc_url(home_url('/payroll-rrhh/')); ?>">Volver a semana</a>
+            </form>
+            <div class="cleg-payroll-month-grid">
+                <article>
+                    <h2>Mes natural</h2>
+                    <p>Horas trabajadas entre <?php echo esc_html($month_start); ?> y <?php echo esc_html($month_end); ?>.</p>
+                    <?php echo cleg_payroll_month_summary_table(cleg_payroll_month_summary_from_data($natural_data)); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                </article>
+                <article>
+                    <h2>Mes cobrado / contabilidad</h2>
+                    <p>Semanas cerradas de Payroll cuyo cierre cae dentro del mes.</p>
+                    <?php echo cleg_payroll_month_summary_table($paid_summary, 'Sin payroll cerrado dentro de este mes.'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                </article>
+            </div>
+        </section>
+        <?php
+        return ob_get_clean();
+    }
+}
+
 if (!function_exists('cleg_admin_payroll_shortcode')) {
     function cleg_admin_payroll_shortcode() {
         if (!cleg_payroll_allowed()) {
@@ -17741,6 +17908,8 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
         $is_work_week = cleg_payroll_is_work_week($end);
         $can_edit_payroll = $is_work_week && !$has_closed_payroll;
         $can_rollback_payroll = $is_work_week && $has_closed_payroll && !$has_pending_entries && cleg_payroll_can_manage();
+        $selected_month = isset($_GET['payroll_month']) ? sanitize_text_field(wp_unslash($_GET['payroll_month'])) : '';
+        $show_month_report = isset($_GET['payroll_report']) && sanitize_key(wp_unslash($_GET['payroll_report'])) === 'month';
 
         ob_start();
         ?>
@@ -17770,6 +17939,7 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                             <?php endforeach; ?>
                         </select>
                     </label>
+                    <a href="<?php echo esc_url(add_query_arg(array('payroll_report' => 'month', 'payroll_month' => $selected_month !== '' ? $selected_month : wp_date('Y-m', null, cleg_payroll_timezone())), home_url('/payroll-rrhh/'))); ?>">Resumen mensual</a>
                     <?php if ($has_pending_entries) : ?>
                         <span class="cleg-payroll-disabled">Export bloqueado</span>
                     <?php elseif (!$has_closed_payroll && $is_work_week) : ?>
@@ -18013,6 +18183,9 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                         <button class="cleg-payroll-save" type="submit">Guardar ajustes</button>
                     <?php endif; ?>
                 </form>
+                <?php if ($show_month_report) : ?>
+                    <?php echo cleg_payroll_month_report($selected_month); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                <?php endif; ?>
             </main>
             <?php echo cleg_payroll_styles(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
             <?php echo function_exists('cleg_admin_desktop_menu_lock_styles') ? cleg_admin_desktop_menu_lock_styles() : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
@@ -18338,6 +18511,17 @@ if (!function_exists('cleg_payroll_styles')) {
 .cleg-payroll-blocked strong{display:block;margin-bottom:6px}
 .cleg-payroll-blocked small{display:block;margin-top:6px;color:#7a3a00}
 .cleg-payroll-notice{margin-bottom:14px;color:#107344;font-weight:900}
+.cleg-payroll-month-report{width:min(1320px,calc(100% - 24px));max-width:min(1320px,calc(100% - 24px));margin:18px auto 0;display:grid;gap:14px}
+.cleg-payroll-month-filter{display:flex;flex-wrap:wrap;gap:10px;align-items:end;border:1px solid rgba(6,24,45,.12);border-radius:14px;background:#fff;padding:14px;box-shadow:0 14px 34px rgba(6,24,45,.06)}
+.cleg-payroll-month-filter label{display:grid;gap:5px;color:#516579;font-size:12px;font-weight:950;text-transform:uppercase}
+.cleg-payroll-month-filter a{display:inline-flex;align-items:center;min-height:42px;border-radius:999px;background:#edf1f6;color:#06182d!important;padding:10px 14px;font-weight:950;text-decoration:none!important}
+.cleg-payroll-month-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.cleg-payroll-month-grid article{border:1px solid rgba(6,24,45,.12);border-radius:14px;background:#fff;padding:16px;box-shadow:0 14px 34px rgba(6,24,45,.06);overflow:auto}
+.cleg-payroll-month-grid h2{margin:0 0 6px;font-size:22px;color:#06182d}
+.cleg-payroll-month-grid p{margin:0 0 12px;color:#516579;font-weight:750}
+.cleg-payroll-month-table table{width:100%;min-width:760px;border-collapse:separate;border-spacing:0}
+.cleg-payroll-month-table th,.cleg-payroll-month-table td{padding:10px;border-bottom:1px solid rgba(6,24,45,.1);text-align:left}
+.cleg-payroll-month-table th{color:#516579;font-size:12px;text-transform:uppercase}
 .cleg-payroll-rollback{display:block;margin-bottom:14px;background:#fff;border:1px solid rgba(155,28,28,.22);border-radius:8px;color:#7f1d1d;box-shadow:0 14px 34px rgba(127,29,29,.08);overflow:hidden}
 .cleg-payroll-rollback summary{display:flex!important;align-items:center;justify-content:space-between;gap:14px;min-height:62px;padding:14px 16px;cursor:pointer;list-style:none;background:#fff7f7}
 .cleg-payroll-rollback summary::-webkit-details-marker{display:none}
@@ -18417,6 +18601,7 @@ if (!function_exists('cleg_payroll_styles')) {
 	    .cleg-payroll-rollback-form{grid-template-columns:1fr}
         .cleg-payroll-rollback summary{align-items:flex-start;flex-direction:column}
 	    .cleg-payroll-metrics{display:grid}
+        .cleg-payroll-month-grid{grid-template-columns:1fr}
     .cleg-payroll{padding:16px}
     .cleg-payroll table{min-width:1040px}
     .cleg-payroll .hours-detail{position:fixed;left:16px;right:16px;top:96px;width:auto;max-height:70svh;overflow:auto}
@@ -18705,7 +18890,7 @@ if (!function_exists('cleg_auto_worker_footer_notice')) {
             . $sms
             . '</div>'
             . '<style>
-                .cleg-worker-created-toast{position:fixed;right:18px;bottom:18px;z-index:2147483002;display:grid;gap:7px;width:min(420px,calc(100vw - 36px));border:1px solid rgba(16,115,68,.25);border-radius:16px;background:#e8f8ef;color:#06182d;padding:16px;box-shadow:0 18px 48px rgba(6,24,45,.18);font-family:inherit}
+                .cleg-worker-created-toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2147483002;display:grid;gap:7px;width:min(420px,calc(100vw - 36px));border:1px solid rgba(16,115,68,.25);border-radius:16px;background:#e8f8ef;color:#06182d;padding:16px;text-align:center;box-shadow:0 18px 48px rgba(6,24,45,.18);font-family:inherit}
                 .cleg-worker-created-toast strong{font-size:18px}
                 .cleg-worker-created-toast code{white-space:normal;background:#fff;border-radius:10px;padding:9px;font-weight:900}
                 .cleg-worker-created-sms{display:inline-flex;justify-content:center;border-radius:999px;background:#107344;color:#fff!important;text-decoration:none!important;padding:10px 12px;font-weight:900}
@@ -26683,6 +26868,17 @@ if (!function_exists('cleg_rrhh_design_print_styles')) {
                 overflow: auto !important;
             }
 
+            body .cleg-admin-ui .cleg-admin-notice,
+            body .cleg-payroll .cleg-payroll-notice,
+            body .cleg-payroll .cleg-payroll-blocked,
+            body .cleg-procurement .cleg-proc-notice,
+            body .cleg-procurement .cleg-receipt-notice {
+                width: min(100%, var(--cleg-ds-width, 1560px)) !important;
+                margin: 0 auto 14px !important;
+                text-align: center !important;
+                justify-content: center !important;
+            }
+
             body .cleg17-gps-panel {
                 margin: 22px auto 36px !important;
             }
@@ -30011,9 +30207,9 @@ if (!function_exists('cleg_command_center_render')) {
             ),
             array(
                 'module' => 'field_ops',
-                'label' => 'Tiempo, asistencia y ubicacion',
+                'label' => 'Tiempo, asistencia y payroll',
                 'title' => 'Operacion en campo',
-                'text'  => 'Horas, asistencia, equipo activo, ubicacion, GPS y trabajo en campo.',
+                'text'  => 'Horas, asistencia, equipo activo, GPS y flujo hacia Payroll.',
                 'url'   => home_url('/admin-horas/'),
                 'cta'   => 'Entrar a Operacion en campo',
                 'state' => 'Modulo activo',
@@ -30037,16 +30233,6 @@ if (!function_exists('cleg_command_center_render')) {
                 'url'   => home_url('/admin-procurement/'),
                 'cta'   => 'Entrar a Compras',
                 'state' => 'Activo 75%',
-                'state_class' => 'is-active-state',
-            ),
-            array(
-                'module' => 'payroll',
-                'label' => 'Vantrexor Payroll',
-                'title' => 'Payroll',
-                'text'  => 'Calculo, revision, cierre, historial y comprobantes de pago.',
-                'url'   => home_url('/payroll-rrhh/'),
-                'cta'   => 'Entrar a Payroll',
-                'state' => 'Modulo activo',
                 'state_class' => 'is-active-state',
             ),
         );
@@ -30152,6 +30338,13 @@ if (!function_exists('cleg_command_center_styles')) {
             }
             body:has(.cleg-command-wrap) :where(.wp-site-blocks>header, .wp-site-blocks>footer, .wp-block-template-part) {
                 display: none !important;
+            }
+            body.cleg-rrhh-shell-page:has(.cleg-command-wrap) .wp-site-blocks > footer.wp-block-template-part,
+            body.cleg-rrhh-shell-page:has(.cleg-command-wrap) footer.wp-block-template-part {
+                display: none !important;
+                visibility: hidden !important;
+                height: 0 !important;
+                overflow: hidden !important;
             }
             body.page-id-262 .site-content,
             body.page-id-262 .content-area,
