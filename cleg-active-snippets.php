@@ -8508,6 +8508,12 @@ if (!function_exists('cleg_admin_request_pill')) {
 
 if (!function_exists('cleg_admin_request_date_label')) {
     function cleg_admin_request_date_label($value, $with_time = false) {
+        // A civil absence day is not a UTC instant: never shift it to another day.
+        if (!$with_time && preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', (string) $value, $parts)) {
+            return checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])
+                ? $parts[3] . '/' . $parts[2] . '/' . $parts[1]
+                : sanitize_text_field((string) $value);
+        }
         $timestamp = strtotime((string) $value);
         if (!$timestamp) {
             return sanitize_text_field((string) $value);
@@ -13649,7 +13655,8 @@ if (!function_exists('cleg_admin_absence_calendar')) {
         $html .= '</div><div class="cleg-absence-agenda"><div class="cleg-panel-head"><div><h3>Semana actual</h3></div></div>';
         foreach ($week_keys as $key) {
             $items = $dates[$key] ?? array();
-            $html .= '<section><strong>' . esc_html(wp_date('D m/d', strtotime($key))) . '</strong>';
+            // $key is a civil date generated in UTC, not an instant to localize.
+            $html .= '<section><strong>' . esc_html(wp_date('D m/d', strtotime($key . ' UTC'), new DateTimeZone('UTC'))) . '</strong>';
             if (empty($items)) {
                 $html .= '<span class="cleg-absence-empty">Sin solicitudes</span>';
             }
