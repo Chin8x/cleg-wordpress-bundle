@@ -349,7 +349,7 @@ if (!function_exists('cleg_saas_module_registry')) {
             'hr_core' => array('label' => 'Recursos Humanos', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_admin_rrhh', 'cleg_admin_empleados'), 'routes' => array('admin-rrhh', 'admin-empleados')),
             'onboarding' => array('label' => 'Incorporacion', 'disableable' => true, 'default_enabled' => true),
             'forms_requests' => array('label' => 'Solicitudes', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_contact', 'cleg_form_hub', 'cleg_admin_solicitudes'), 'routes' => array('formularios', 'admin-solicitudes')),
-            'payroll' => array('label' => 'Payroll', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_admin_payroll', 'cleg_employee_payroll'), 'routes' => array('payroll-rrhh', 'mis-nominas')),
+            'payroll' => array('label' => 'Payroll', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_admin_payroll', 'cleg_admin_payroll_reports', 'cleg_employee_payroll'), 'routes' => array('payroll-rrhh', 'payroll-reportes', 'mis-nominas')),
             'documents' => array('label' => 'Documentos RRHH', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_employee_documents', 'cleg_document_alerts'), 'routes' => array('mis-documentos')),
             'field_ops' => array('label' => 'Operacion en campo', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_admin_horas', 'cleg_admin_tiempo_real', 'cleg_admin_dispositivos', 'cleg_admin_gps_tracking', 'cleg_admin_live_map'), 'routes' => array('admin-horas', 'admin-tiempo-real', 'admin-dispositivos')),
             'projects_work_orders' => array('label' => 'Proyectos', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_admin_job_sites'), 'routes' => array('admin-job-sites')),
@@ -545,174 +545,6 @@ if (!function_exists('cleg_saas_guard_routes')) {
 add_action('template_redirect', 'cleg_saas_guard_routes', 2);
 /**
  * END modulos/00-core-saas/00a-cleg-core-saas-module-gating.php
- */
-
-/**
- * BEGIN modulos/00-core-saas/00b-cleg-visual-system-core.php
- * Module: design_system
- * Target: 01-Snippets-Activos/00b-cleg-visual-system-core.php
- * Source path: modulos/00-core-saas/00b-cleg-visual-system-core.php
- */
-/**
- * CLEG 00B - Vantrexor Visual System Core v1.0
- *
- * Capa temprana de identidad visual, tokens, catalogo de modulos e iconos.
- * Debe cargar antes de los modulos UI para que cada pantalla lea el mismo
- * contrato visual aunque el CSS completo cargue despues.
- */
-
-if (!defined('ABSPATH')) {
-    exit;
-}
-
-if (!function_exists('cleg_visual_identity')) {
-    function cleg_visual_identity(): array {
-        $identity = array(
-            'product_name' => 'Vantrexor',
-            'tenant_label' => 'Vantrexor tenant',
-            'brand_kicker' => 'Vantrexor',
-            'asset_source' => 'CLEG_Web_Master/10-Vantrexor/07-imagenes-modulos',
-            'logo_asset' => 'assets/vantrexor-logo.png',
-            'visual_map' => 'visual-naming-final.json',
-        );
-
-        return apply_filters('cleg_visual_identity', $identity);
-    }
-}
-
-if (!function_exists('cleg_visual_tokens')) {
-    function cleg_visual_tokens(): array {
-        $tokens = array(
-            'color' => array(
-                'bg' => '#eef3f8',
-                'panel' => '#ffffff',
-                'ink' => '#06182d',
-                'muted' => '#516579',
-                'line' => 'rgba(6, 24, 45, .13)',
-                'accent' => '#1a6cff',
-                'accent_2' => '#00a0ff',
-                'orange' => '#c75000',
-                'good' => '#107344',
-                'bad' => '#9a1f1f',
-            ),
-            'radius' => array(
-                'sm' => '8px',
-                'md' => '12px',
-                'lg' => '18px',
-                'pill' => '999px',
-            ),
-            'shadow' => array(
-                'panel' => '0 14px 34px rgba(6, 24, 45, .07)',
-                'raised' => '0 18px 44px rgba(6, 24, 45, .08)',
-            ),
-            'layout' => array(
-                'width' => 'min(1880px, calc(100vw - 40px))',
-                'width_mobile' => 'calc(100vw - 24px)',
-            ),
-        );
-
-        return apply_filters('cleg_visual_tokens', $tokens);
-    }
-}
-
-if (!function_exists('cleg_visual_module_catalog')) {
-    function cleg_visual_module_catalog(): array {
-        $catalog = array(
-            'access_identity' => array('label' => 'Acceso', 'icon' => 'login', 'visual' => '01-login-acceso.png'),
-            'tenant_admin' => array('label' => 'Administracion', 'icon' => 'tenant', 'visual' => '19-tenant-admin-center.png'),
-            'navigation_shell' => array('label' => 'Navegacion', 'icon' => 'navigation', 'visual' => 'menu-00-mapa-general-4-botones.png'),
-            'employee_center' => array('label' => 'Portal del empleado', 'icon' => 'employee', 'visual' => '04-employee-center.png'),
-            'hr_core' => array('label' => 'Recursos Humanos', 'icon' => 'people', 'visual' => '06-admin-rrhh.png'),
-            'onboarding' => array('label' => 'Incorporacion', 'icon' => 'onboarding', 'visual' => '16-admin-empleados-roles.png'),
-            'forms_requests' => array('label' => 'Solicitudes', 'icon' => 'forms', 'visual' => '05-formularios-solicitudes.png'),
-            'payroll' => array('label' => 'Payroll', 'icon' => 'payroll', 'visual' => '07-payroll.png'),
-            'documents' => array('label' => 'Documentos', 'icon' => 'documents', 'visual' => '08-documents.png'),
-            'field_ops' => array('label' => 'Operacion en campo', 'icon' => 'gps', 'visual' => '09-field-ops-gps.png'),
-            'projects_work_orders' => array('label' => 'Proyectos', 'icon' => 'projects', 'visual' => '10-projects-work-orders.png'),
-            'procurement_quotes' => array('label' => 'Compras', 'icon' => 'procurement', 'visual' => '11-procurement.png'),
-            'command_center' => array('label' => 'Centro de control', 'icon' => 'command', 'visual' => '12-command-center.png'),
-            'integrations_layer' => array('label' => 'Integraciones', 'icon' => 'integrations', 'visual' => '22-worker-android-rest-api.png'),
-            'design_system' => array('label' => 'Apariencia', 'icon' => 'design', 'visual' => '00-contact-sheet-modulos.png'),
-            'mobile_utilities' => array('label' => 'App movil', 'icon' => 'mobile', 'visual' => '21-pwa-install-helper.png'),
-            'sync_qa' => array('label' => 'Estado tecnico', 'icon' => 'qa', 'visual' => '29-sync-qa-status.png'),
-        );
-
-        return apply_filters('cleg_visual_module_catalog', $catalog);
-    }
-}
-
-if (!function_exists('cleg_visual_module_meta')) {
-    function cleg_visual_module_meta(string $module_key): array {
-        $module_key = sanitize_key($module_key);
-        $catalog = cleg_visual_module_catalog();
-
-        return isset($catalog[$module_key]) && is_array($catalog[$module_key]) ? $catalog[$module_key] : array(
-            'label' => $module_key,
-            'icon' => 'module',
-            'visual' => '',
-        );
-    }
-}
-
-if (!function_exists('cleg_visual_icon_paths')) {
-    function cleg_visual_icon_paths(): array {
-        return array(
-            'login' => '<path d="M10 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-8"/><path d="M14 16l4-4-4-4"/><path d="M18 12H4"/>',
-            'tenant' => '<path d="M4 21V7l8-4 8 4v14"/><path d="M9 21v-6h6v6"/><path d="M8 9h.01M12 9h.01M16 9h.01"/>',
-            'navigation' => '<path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/>',
-            'employee' => '<path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z"/><path d="M4 21a8 8 0 0 1 16 0"/>',
-            'people' => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
-            'onboarding' => '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6l1 1 2-2"/><path d="M3 12l1 1 2-2"/><path d="M3 18l1 1 2-2"/>',
-            'forms' => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/>',
-            'payroll' => '<path d="M3 6h18v12H3Z"/><path d="M7 10h.01"/><path d="M17 14h.01"/><circle cx="12" cy="12" r="3"/>',
-            'documents' => '<path d="M6 2h9l5 5v15H6Z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/>',
-            'gps' => '<path d="M12 21s7-5.33 7-12A7 7 0 0 0 5 9c0 6.67 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/>',
-            'projects' => '<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/><path d="M8 10h8"/>',
-            'procurement' => '<path d="M6 6h15l-2 8H8Z"/><path d="M6 6 5 3H2"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/>',
-            'command' => '<path d="M4 4h16v16H4Z"/><path d="M8 9h8"/><path d="M8 13h5"/><path d="M8 17h8"/>',
-            'integrations' => '<path d="M8 12h8"/><path d="M7 7a4 4 0 1 0 0 8"/><path d="M17 7a4 4 0 1 1 0 8"/>',
-            'design' => '<path d="M12 3 3 8l9 5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/>',
-            'mobile' => '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
-            'qa' => '<path d="M20 6 9 17l-5-5"/><path d="M4 4h16v16H4Z"/>',
-            'module' => '<path d="M4 4h7v7H4Z"/><path d="M13 4h7v7h-7Z"/><path d="M4 13h7v7H4Z"/><path d="M13 13h7v7h-7Z"/>',
-        );
-    }
-}
-
-if (!function_exists('cleg_visual_icon_svg')) {
-    function cleg_visual_icon_svg(string $icon_key, string $class = 'cleg-visual-icon'): string {
-        $icon_key = sanitize_key($icon_key);
-        $paths = cleg_visual_icon_paths();
-        $path = isset($paths[$icon_key]) ? $paths[$icon_key] : $paths['module'];
-        $class = sanitize_html_class($class);
-
-        return '<svg class="' . esc_attr($class) . '" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' . $path . '</svg>';
-    }
-}
-
-if (!function_exists('cleg_visual_module_icon')) {
-    function cleg_visual_module_icon(string $module_key, string $class = 'cleg-visual-icon'): string {
-        $meta = cleg_visual_module_meta($module_key);
-        return cleg_visual_icon_svg((string) ($meta['icon'] ?? 'module'), $class);
-    }
-}
-
-if (!function_exists('cleg_vantrexor_logo_markup')) {
-    function cleg_vantrexor_logo_markup($variant = 'name') {
-        $identity = cleg_visual_identity();
-        $name = (string) ($identity['product_name'] ?? 'Vantrexor');
-        $tenant = (string) ($identity['tenant_label'] ?? 'Vantrexor tenant');
-        $variant = $variant === 'mark' ? 'mark' : 'name';
-
-        if ($variant === 'mark') {
-            return '<span class="cleg-vantrexor-mark" aria-label="' . esc_attr($name) . '"><span aria-hidden="true">V</span></span>';
-        }
-
-        return '<div class="cleg-login-brand cleg-vantrexor-wordmark"><span class="cleg-login-badge">' . esc_html($name) . '</span><strong class="cleg-login-logo-text">' . esc_html($name) . '</strong><small class="cleg-login-tenant">' . esc_html($tenant) . '</small></div>';
-    }
-}
-/**
- * END modulos/00-core-saas/00b-cleg-visual-system-core.php
  */
 
 /**
@@ -1320,6 +1152,7 @@ if (!function_exists('cleg00_routes')) {
                 '/admin-job-sites/',
                 '/admin-solicitudes/',
                 '/payroll-rrhh/',
+                '/payroll-reportes/',
                 '/empleados/',
             ),
             'procurement' => array(
@@ -6675,6 +6508,7 @@ if (!function_exists('cleg_admin_module_for_active')) {
             'live' => 'field',
             'devices' => 'field',
             'payroll' => 'field',
+            'payroll-reports' => 'field',
             'jobs' => 'projects',
             'receipts' => 'procurement',
             'tenant-admin' => 'tenant',
@@ -6710,6 +6544,7 @@ if (!function_exists('cleg_admin_module_nav_items')) {
                 'live' => array('Tiempo real', home_url('/admin-tiempo-real/')),
                 'devices' => array('Dispositivos', home_url('/admin-dispositivos/')),
                 'payroll' => array('Payroll', home_url('/payroll-rrhh/')),
+                'payroll-reports' => array('Reportes payroll', home_url('/payroll-reportes/')),
             );
         }
 
@@ -6757,6 +6592,7 @@ if (!function_exists('cleg_admin_nav_item_module')) {
             'devices' => 'field_ops',
             'jobs' => 'projects_work_orders',
             'payroll' => 'payroll',
+            'payroll-reports' => 'payroll',
             'procurement' => 'procurement_quotes',
             'receipts' => 'procurement_quotes',
             'tenant-admin' => 'tenant_admin',
@@ -10087,6 +9923,46 @@ body .cleg-admin-ui .cleg-review-filters .cleg-clear-filter:focus-visible{
     background:#102a44!important;
     color:#fff!important;
     -webkit-text-fill-color:#fff!important;
+}
+body .cleg-admin-ui > .cleg-admin-shell > .cleg-mobile-summary{
+    width:min(1188px,calc(100% - 24px))!important;
+    max-width:min(1188px,calc(100% - 24px))!important;
+    margin:0 auto 18px!important;
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:12px!important;
+    box-sizing:border-box!important;
+}
+body .cleg-admin-ui > .cleg-admin-shell > .cleg-mobile-summary div{
+    min-height:82px!important;
+    display:grid!important;
+    align-content:center!important;
+    justify-items:center!important;
+    gap:5px!important;
+    border:1px solid rgba(6,24,45,.12)!important;
+    border-radius:18px!important;
+    background:#fff!important;
+    box-shadow:0 14px 34px rgba(6,24,45,.07)!important;
+    padding:14px!important;
+    text-align:center!important;
+}
+body .cleg-admin-ui > .cleg-admin-shell > .cleg-mobile-summary strong{
+    display:block!important;
+    color:#06182d!important;
+    font-size:30px!important;
+    line-height:1!important;
+    font-weight:1000!important;
+}
+body .cleg-admin-ui > .cleg-admin-shell > .cleg-mobile-summary span{
+    display:block!important;
+    color:#516579!important;
+    font-size:12px!important;
+    font-weight:900!important;
+    letter-spacing:.04em!important;
+    text-transform:uppercase!important;
+}
+@media(max-width:760px){
+    body .cleg-admin-ui > .cleg-admin-shell > .cleg-mobile-summary{grid-template-columns:1fr!important}
 }
 body .cleg-admin-ui .cleg-review-panel > .cleg-manual-entry{
     width:100%!important;
@@ -17853,6 +17729,415 @@ if (!function_exists('cleg_payroll_month_report')) {
     }
 }
 
+if (!function_exists('cleg_payroll_report_year_options')) {
+    function cleg_payroll_report_year_options($selected_year, $count = 5) {
+        $current = (int) wp_date('Y', null, cleg_payroll_timezone());
+        $selected_year = preg_match('/^\d{4}$/', (string) $selected_year) ? (int) $selected_year : $current;
+        $years = array();
+        for ($i = 0; $i < $count; $i++) {
+            $years[] = (string) ($current - $i);
+        }
+        if (!in_array((string) $selected_year, $years, true)) {
+            $years[] = (string) $selected_year;
+        }
+        return $years;
+    }
+}
+
+if (!function_exists('cleg_payroll_report_range')) {
+    function cleg_payroll_report_range($mode, $month, $year) {
+        $mode = $mode === 'year' ? 'year' : 'month';
+        $timezone = cleg_payroll_timezone();
+        if ($mode === 'year') {
+            $year = preg_match('/^\d{4}$/', (string) $year) ? (string) $year : wp_date('Y', null, $timezone);
+            return array($year . '-01-01', $year . '-12-31', $year, 'Año ' . $year);
+        }
+        list($start, $end, $value) = cleg_payroll_month_period($month);
+        return array($start, $end, $value, 'Mes ' . date_i18n('m/Y', strtotime($start)));
+    }
+}
+
+if (!function_exists('cleg_payroll_report_line_name')) {
+    function cleg_payroll_report_line_name($line, $detail = array()) {
+        $name = '';
+        if (isset($detail['employee']['name'])) {
+            $name = sanitize_text_field((string) $detail['employee']['name']);
+        }
+        if ($name === '') {
+            $raw = cleg_payroll_raw_field($line, 'Employee', '');
+            if (is_array($raw)) {
+                $name = sanitize_text_field((string) reset($raw));
+            } elseif (is_scalar($raw)) {
+                $name = sanitize_text_field((string) $raw);
+            }
+        }
+        return $name !== '' ? $name : 'Trabajador sin nombre';
+    }
+}
+
+if (!function_exists('cleg_payroll_report_line_value')) {
+    function cleg_payroll_report_line_value($line, $field, $detail_path = array(), $default = 0) {
+        $value = cleg_payroll_raw_field($line, $field, null);
+        if ($value !== null && $value !== '') {
+            return cleg_payroll_number($value, $default);
+        }
+
+        $detail = json_decode((string) cleg_payroll_raw_field($line, 'Calculation Detail JSON', ''), true);
+        $cursor = is_array($detail) ? $detail : array();
+        foreach ($detail_path as $part) {
+            if (!is_array($cursor) || !array_key_exists($part, $cursor)) {
+                return (float) $default;
+            }
+            $cursor = $cursor[$part];
+        }
+        return cleg_payroll_number($cursor, $default);
+    }
+}
+
+if (!function_exists('cleg_payroll_report_lines')) {
+    function cleg_payroll_report_lines($start, $end) {
+        $formula = "AND(OR({Period End}='{$start}',IS_AFTER({Period End},'{$start}')),OR({Period End}='{$end}',IS_BEFORE({Period End},'{$end}')))";
+        $lines = cleg_payroll_records(CLEG_AIRTABLE_PAYROLL_LINES_TABLE, array(
+            'filterByFormula' => $formula,
+            'sort[0][field]' => 'Period End',
+            'sort[0][direction]' => 'asc',
+        ));
+
+        if (is_wp_error($lines)) {
+            return $lines;
+        }
+
+        $normalized = array();
+        foreach ($lines as $line) {
+            $detail = json_decode((string) cleg_payroll_raw_field($line, 'Calculation Detail JSON', ''), true);
+            $detail = is_array($detail) ? $detail : array();
+            $employee_links = cleg_payroll_raw_field($line, 'Employee', array());
+            $employee_id = is_array($employee_links) && !empty($employee_links[0]) ? sanitize_text_field((string) $employee_links[0]) : sanitize_text_field((string) ($detail['employee']['id'] ?? ''));
+            $worker_type = cleg_payroll_default_tax_type(cleg_payroll_field($line, 'Worker Tax Type', $detail['employee']['tax_type'] ?? 'Employee - Full Payroll'));
+            $gross = cleg_payroll_report_line_value($line, 'Gross Pay', array('pay', 'gross_pay'));
+            $net = cleg_payroll_report_line_value($line, 'Net Pay', array('pay', 'net_pay'));
+            $normalized[] = array(
+                'employee_id' => $employee_id !== '' ? $employee_id : md5(cleg_payroll_report_line_name($line, $detail)),
+                'name' => cleg_payroll_report_line_name($line, $detail),
+                'worker_type' => $worker_type,
+                'form_type' => cleg_payroll_field($line, 'Payroll Form Type', $worker_type === 'Employee - Full Payroll' ? 'W-2PR / 499R-2' : '480.6SP'),
+                'period_start' => cleg_payroll_field($line, 'Period Start'),
+                'period_end' => cleg_payroll_field($line, 'Period End'),
+                'hours' => cleg_payroll_report_line_value($line, 'Regular Hours', array('hours', 'regular')) + cleg_payroll_report_line_value($line, 'Overtime Hours', array('hours', 'overtime')),
+                'regular_hours' => cleg_payroll_report_line_value($line, 'Regular Hours', array('hours', 'regular')),
+                'extra_hours' => cleg_payroll_report_line_value($line, 'Overtime Hours', array('hours', 'overtime')),
+                'regular_pay' => cleg_payroll_report_line_value($line, 'Regular Pay', array('pay', 'regular_pay')),
+                'extra_pay' => cleg_payroll_report_line_value($line, 'Overtime Pay', array('pay', 'overtime_pay')),
+                'gross_pay' => $gross,
+                'taxable_wages' => cleg_payroll_report_line_value($line, 'Taxable Wages', array(), $gross),
+                'ss_employee' => cleg_payroll_report_line_value($line, 'Social Security Employee', array('deductions', 'social_security_employee')),
+                'medicare_employee' => cleg_payroll_report_line_value($line, 'Medicare Employee', array('deductions', 'medicare_employee')),
+                'sinot_employee' => cleg_payroll_report_line_value($line, 'SINOT Employee', array('deductions', 'sinot_employee')),
+                'pr_income_tax' => cleg_payroll_report_line_value($line, 'PR Income Tax Withheld', array('deductions', 'pr_income_tax_withheld')),
+                'contractor_withholding' => cleg_payroll_report_line_value($line, 'Contractor Withholding'),
+                'fixed_deductions' => cleg_payroll_report_line_value($line, 'Fixed Deductions', array('deductions', 'fixed_deductions')),
+                'manual_deduction' => cleg_payroll_report_line_value($line, 'Manual Deduction', array('deductions', 'manual_deduction')),
+                'total_deductions' => cleg_payroll_report_line_value($line, 'Total Deductions', array(), max(0, $gross - $net)),
+                'net_pay' => $net,
+                'employer_ss' => cleg_payroll_report_line_value($line, 'Employer Social Security'),
+                'employer_medicare' => cleg_payroll_report_line_value($line, 'Employer Medicare'),
+                'employer_cost' => cleg_payroll_report_line_value($line, 'Total Employer Cost', array(), $gross + cleg_payroll_report_line_value($line, 'Employer Social Security') + cleg_payroll_report_line_value($line, 'Employer Medicare')),
+                'vacation_accrued' => cleg_payroll_report_line_value($line, 'Vacation Accrued Hours', array('pto', 'vacation_accrued')),
+                'sick_accrued' => cleg_payroll_report_line_value($line, 'Sick Accrued Hours', array('pto', 'sick_accrued')),
+                'status' => cleg_payroll_field($line, 'Calculation Status', 'Ready to Pay'),
+            );
+        }
+
+        return $normalized;
+    }
+}
+
+if (!function_exists('cleg_payroll_report_filtered_lines')) {
+    function cleg_payroll_report_filtered_lines($lines, $type) {
+        $type = sanitize_key((string) $type);
+        if ($type === 'employees') {
+            return array_values(array_filter($lines, function ($line) {
+                return ($line['worker_type'] ?? '') === 'Employee - Full Payroll';
+            }));
+        }
+        if ($type === 'contractors') {
+            return array_values(array_filter($lines, function ($line) {
+                return ($line['worker_type'] ?? '') !== 'Employee - Full Payroll';
+            }));
+        }
+        return $lines;
+    }
+}
+
+if (!function_exists('cleg_payroll_report_summary')) {
+    function cleg_payroll_report_summary($lines) {
+        $summary = array();
+        foreach ((array) $lines as $line) {
+            $key = $line['employee_id'] ?: md5($line['name']);
+            if (!isset($summary[$key])) {
+                $summary[$key] = array(
+                    'name' => $line['name'],
+                    'worker_type' => $line['worker_type'],
+                    'form_type' => $line['form_type'],
+                    'periods' => array(),
+                    'lines' => array(),
+                );
+                foreach (array('hours', 'regular_hours', 'extra_hours', 'regular_pay', 'extra_pay', 'gross_pay', 'taxable_wages', 'ss_employee', 'medicare_employee', 'sinot_employee', 'pr_income_tax', 'contractor_withholding', 'fixed_deductions', 'manual_deduction', 'total_deductions', 'net_pay', 'employer_ss', 'employer_medicare', 'employer_cost', 'vacation_accrued', 'sick_accrued') as $field) {
+                    $summary[$key][$field] = 0;
+                }
+            }
+            $period_key = ($line['period_start'] ?? '') . ' - ' . ($line['period_end'] ?? '');
+            if (trim($period_key) !== '-') {
+                $summary[$key]['periods'][$period_key] = true;
+            }
+            $summary[$key]['lines'][] = $line;
+            foreach (array('hours', 'regular_hours', 'extra_hours', 'regular_pay', 'extra_pay', 'gross_pay', 'taxable_wages', 'ss_employee', 'medicare_employee', 'sinot_employee', 'pr_income_tax', 'contractor_withholding', 'fixed_deductions', 'manual_deduction', 'total_deductions', 'net_pay', 'employer_ss', 'employer_medicare', 'employer_cost', 'vacation_accrued', 'sick_accrued') as $field) {
+                $summary[$key][$field] += (float) ($line[$field] ?? 0);
+            }
+        }
+        uasort($summary, function ($a, $b) {
+            return strcasecmp($a['name'] ?? '', $b['name'] ?? '');
+        });
+        return $summary;
+    }
+}
+
+if (!function_exists('cleg_payroll_report_totals')) {
+    function cleg_payroll_report_totals($summary) {
+        $totals = array('workers' => count($summary), 'periods' => 0);
+        foreach (array('hours', 'gross_pay', 'net_pay', 'total_deductions', 'ss_employee', 'medicare_employee', 'sinot_employee', 'pr_income_tax', 'contractor_withholding', 'employer_ss', 'employer_medicare', 'employer_cost') as $field) {
+            $totals[$field] = 0;
+        }
+        $periods = array();
+        foreach ((array) $summary as $row) {
+            foreach (($row['periods'] ?? array()) as $period => $_) {
+                $periods[$period] = true;
+            }
+            foreach (array_keys($totals) as $field) {
+                if ($field !== 'workers' && $field !== 'periods') {
+                    $totals[$field] += (float) ($row[$field] ?? 0);
+                }
+            }
+        }
+        $totals['periods'] = count($periods);
+        return $totals;
+    }
+}
+
+if (!function_exists('cleg_payroll_report_csv_rows')) {
+    function cleg_payroll_report_csv_rows($summary, $report) {
+        $rows = array();
+        if ($report === 'details') {
+            $rows[] = array('Trabajador', 'Tipo', 'Periodo inicio', 'Periodo fin', 'Horas', 'Regular', 'Extra', 'Bruto', 'SS empleado', 'Medicare empleado', 'SINOT', 'Income Tax PR', 'Retencion contratista', 'Deducciones', 'Neto', 'SS patronal', 'Medicare patronal', 'Costo patronal');
+            foreach ($summary as $worker) {
+                foreach (($worker['lines'] ?? array()) as $line) {
+                    $rows[] = array($line['name'], $line['worker_type'], $line['period_start'], $line['period_end'], round($line['hours'], 2), round($line['regular_hours'], 2), round($line['extra_hours'], 2), round($line['gross_pay'], 2), round($line['ss_employee'], 2), round($line['medicare_employee'], 2), round($line['sinot_employee'], 2), round($line['pr_income_tax'], 2), round($line['contractor_withholding'], 2), round($line['total_deductions'], 2), round($line['net_pay'], 2), round($line['employer_ss'], 2), round($line['employer_medicare'], 2), round($line['employer_cost'], 2));
+                }
+            }
+            return $rows;
+        }
+
+        $rows[] = array('Trabajador', 'Tipo', 'Forma', 'Periodos', 'Horas', 'Regular', 'Extra', 'Bruto', 'SS empleado', 'Medicare empleado', 'SINOT', 'Income Tax PR', 'Retencion contratista', 'Deducciones', 'Neto pagado', 'SS patronal', 'Medicare patronal', 'Costo patronal', 'Vacaciones acum.', 'Enfermedad acum.');
+        foreach ($summary as $worker) {
+            if ($report === '480' && ($worker['worker_type'] ?? '') === 'Employee - Full Payroll') {
+                continue;
+            }
+            if ($report === 'employees' && ($worker['worker_type'] ?? '') !== 'Employee - Full Payroll') {
+                continue;
+            }
+            $rows[] = array($worker['name'], $worker['worker_type'], $worker['form_type'], count($worker['periods'] ?? array()), round($worker['hours'], 2), round($worker['regular_hours'], 2), round($worker['extra_hours'], 2), round($worker['gross_pay'], 2), round($worker['ss_employee'], 2), round($worker['medicare_employee'], 2), round($worker['sinot_employee'], 2), round($worker['pr_income_tax'], 2), round($worker['contractor_withholding'], 2), round($worker['total_deductions'], 2), round($worker['net_pay'], 2), round($worker['employer_ss'], 2), round($worker['employer_medicare'], 2), round($worker['employer_cost'], 2), round($worker['vacation_accrued'], 2), round($worker['sick_accrued'], 2));
+        }
+        return $rows;
+    }
+}
+
+if (!function_exists('cleg_payroll_reports_export')) {
+    function cleg_payroll_reports_export() {
+        if (!cleg_payroll_can_view()) {
+            wp_die('No autorizado.');
+        }
+        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'cleg_payroll_reports_export')) {
+            wp_die('Solicitud no valida.');
+        }
+
+        $mode = isset($_GET['report_mode']) ? sanitize_key(wp_unslash($_GET['report_mode'])) : 'month';
+        $month = isset($_GET['report_month']) ? sanitize_text_field(wp_unslash($_GET['report_month'])) : '';
+        $year = isset($_GET['report_year']) ? sanitize_text_field(wp_unslash($_GET['report_year'])) : '';
+        $type = isset($_GET['worker_type']) ? sanitize_key(wp_unslash($_GET['worker_type'])) : 'all';
+        $report = isset($_GET['report_file']) ? sanitize_key(wp_unslash($_GET['report_file'])) : 'summary';
+        list($start, $end, $period_value) = cleg_payroll_report_range($mode, $month, $year);
+        $lines = cleg_payroll_report_lines($start, $end);
+        if (is_wp_error($lines)) {
+            wp_die(esc_html($lines->get_error_message()));
+        }
+        $summary = cleg_payroll_report_summary(cleg_payroll_report_filtered_lines($lines, $type));
+        $rows = cleg_payroll_report_csv_rows($summary, $report);
+        $filename = 'cleg-payroll-' . $report . '-' . $period_value . '.csv';
+
+        nocache_headers();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . sanitize_file_name($filename) . '"');
+        echo "\xEF\xBB\xBF";
+        $out = fopen('php://output', 'w');
+        foreach ($rows as $row) {
+            fputcsv($out, $row);
+        }
+        fclose($out);
+        exit;
+    }
+}
+add_action('admin_post_cleg_payroll_reports_export', 'cleg_payroll_reports_export');
+
+if (!function_exists('cleg_payroll_report_table')) {
+    function cleg_payroll_report_table($summary) {
+        if (empty($summary)) {
+            return '<div class="cleg-payroll-report-empty"><h2>Sin cierres en este periodo</h2><p>Cuando Payroll se cierre, esta pantalla mostrara los totales reales para contabilidad.</p></div>';
+        }
+        $html = '<div class="cleg-payroll-report-table"><table><thead><tr><th>Trabajador</th><th>Tipo</th><th>Horas</th><th>Bruto</th><th>Deducciones</th><th>Neto</th><th>Aportes patronales</th><th>Detalle</th></tr></thead><tbody>';
+        foreach ($summary as $worker) {
+            $employer = (float) ($worker['employer_ss'] ?? 0) + (float) ($worker['employer_medicare'] ?? 0);
+            $html .= '<tr><td><strong>' . esc_html($worker['name']) . '</strong><small>' . esc_html($worker['form_type']) . '</small></td>'
+                . '<td>' . esc_html(cleg_payroll_employee_display_type($worker['worker_type'])) . '</td>'
+                . '<td>' . esc_html(cleg_payroll_format_hours($worker['hours'])) . '<small>Reg ' . esc_html(cleg_payroll_format_hours($worker['regular_hours'])) . ' / Extra ' . esc_html(cleg_payroll_format_hours($worker['extra_hours'])) . '</small></td>'
+                . '<td>' . esc_html(cleg_payroll_money($worker['gross_pay'])) . '</td>'
+                . '<td>' . esc_html(cleg_payroll_money($worker['total_deductions'])) . '<small>SS ' . esc_html(cleg_payroll_money($worker['ss_employee'])) . ' · Med ' . esc_html(cleg_payroll_money($worker['medicare_employee'])) . ' · SINOT ' . esc_html(cleg_payroll_money($worker['sinot_employee'])) . ' · PR ' . esc_html(cleg_payroll_money($worker['pr_income_tax'])) . ' · 480 ' . esc_html(cleg_payroll_money($worker['contractor_withholding'])) . '</small></td>'
+                . '<td><strong>' . esc_html(cleg_payroll_money($worker['net_pay'])) . '</strong></td>'
+                . '<td>' . esc_html(cleg_payroll_money($employer)) . '<small>SS patronal ' . esc_html(cleg_payroll_money($worker['employer_ss'])) . ' · Medicare patronal ' . esc_html(cleg_payroll_money($worker['employer_medicare'])) . '</small></td>'
+                . '<td><details><summary>Ver desglose</summary><div class="cleg-payroll-report-breakdown">'
+                . '<p><b>Periodos:</b> ' . esc_html((string) count($worker['periods'] ?? array())) . '</p>'
+                . '<p><b>Regular pay:</b> ' . esc_html(cleg_payroll_money($worker['regular_pay'])) . ' · <b>Overtime pay:</b> ' . esc_html(cleg_payroll_money($worker['extra_pay'])) . '</p>'
+                . '<p><b>Vacaciones acum.:</b> ' . esc_html(cleg_payroll_format_hours($worker['vacation_accrued'])) . ' · <b>Enfermedad acum.:</b> ' . esc_html(cleg_payroll_format_hours($worker['sick_accrued'])) . '</p>'
+                . '</div></details></td></tr>';
+        }
+        return $html . '</tbody></table></div>';
+    }
+}
+
+if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
+    function cleg_admin_payroll_reports_shortcode() {
+        if (!cleg_payroll_can_view()) {
+            return '<section class="cleg-payroll cleg-admin-ui"><div class="cleg-payroll-empty"><h2>No autorizado</h2><p>No tienes permiso para ver reportes de payroll.</p></div></section>';
+        }
+
+        $mode = isset($_GET['report_mode']) ? sanitize_key(wp_unslash($_GET['report_mode'])) : 'month';
+        $month = isset($_GET['report_month']) ? sanitize_text_field(wp_unslash($_GET['report_month'])) : wp_date('Y-m', null, cleg_payroll_timezone());
+        $year = isset($_GET['report_year']) ? sanitize_text_field(wp_unslash($_GET['report_year'])) : wp_date('Y', null, cleg_payroll_timezone());
+        $type = isset($_GET['worker_type']) ? sanitize_key(wp_unslash($_GET['worker_type'])) : 'all';
+        list($start, $end, $period_value, $period_label) = cleg_payroll_report_range($mode, $month, $year);
+        $lines = cleg_payroll_report_lines($start, $end);
+        if (is_wp_error($lines)) {
+            return '<section class="cleg-payroll cleg-admin-ui"><div class="cleg-payroll-empty"><h2>Error reportes</h2><p>' . esc_html($lines->get_error_message()) . '</p></div></section>';
+        }
+
+        $filtered = cleg_payroll_report_filtered_lines($lines, $type);
+        $summary = cleg_payroll_report_summary($filtered);
+        $totals = cleg_payroll_report_totals($summary);
+        $month_options = cleg_payroll_month_options($month);
+        $year_options = cleg_payroll_report_year_options($year);
+        $export_base = array('action' => 'cleg_payroll_reports_export', 'report_mode' => $mode, 'report_month' => $month, 'report_year' => $year, 'worker_type' => $type);
+
+        ob_start();
+        ?>
+        <section class="cleg-payroll cleg-admin-ui">
+            <main class="cleg-payroll-main cleg-payroll-shell cleg-admin-shell">
+                <?php echo function_exists('cleg_admin_page_header') ? cleg_admin_page_header('Reportes payroll', 'Descargas mensuales y anuales desde cierres reales de Payroll.', array('eyebrow' => 'C&L Contabilidad')) : '<header class="cleg-admin-header"><div class="cleg-command-copy"><p>C&L Contabilidad</p><h1>Reportes payroll</h1></div></header>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                <?php echo function_exists('cleg_admin_nav') ? cleg_admin_nav('payroll-reports') : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                <form class="cleg-payroll-report-filters" method="get">
+                    <label>Periodo
+                        <select name="report_mode" onchange="this.form.submit()">
+                            <option value="month" <?php selected($mode, 'month'); ?>>Mes</option>
+                            <option value="year" <?php selected($mode, 'year'); ?>>Año</option>
+                        </select>
+                    </label>
+                    <label class="<?php echo esc_attr($mode === 'year' ? 'is-hidden' : ''); ?>">Mes
+                        <select name="report_month" onchange="this.form.submit()">
+                            <?php foreach ($month_options as $value => $label) : ?>
+                                <option value="<?php echo esc_attr($value); ?>" <?php selected($month, $value); ?>><?php echo esc_html($label); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label class="<?php echo esc_attr($mode === 'month' ? 'is-hidden' : ''); ?>">Año
+                        <select name="report_year" onchange="this.form.submit()">
+                            <?php foreach ($year_options as $value) : ?>
+                                <option value="<?php echo esc_attr($value); ?>" <?php selected($year, $value); ?>><?php echo esc_html($value); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label>Tipo
+                        <select name="worker_type" onchange="this.form.submit()">
+                            <option value="all" <?php selected($type, 'all'); ?>>Todos</option>
+                            <option value="employees" <?php selected($type, 'employees'); ?>>Empleados / aportes</option>
+                            <option value="contractors" <?php selected($type, 'contractors'); ?>>Contratistas / 480</option>
+                        </select>
+                    </label>
+                    <a href="<?php echo esc_url(home_url('/payroll-rrhh/')); ?>">Volver a Payroll semanal</a>
+                </form>
+                <section class="cleg-payroll-report-hero">
+                    <div><span><?php echo esc_html($period_label); ?></span><h2>Resumen para contabilidad</h2><p>Basado en lineas cerradas de Payroll. Si un mes esta vacio, no hay cierre registrado en ese rango.</p></div>
+                    <div class="cleg-payroll-report-actions">
+                        <?php foreach (array('summary' => 'Descargar resumen', 'details' => 'Descargar desglose', '480' => 'Descargar 480', 'employees' => 'Descargar aportes empleados') as $file => $label) : ?>
+                            <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('report_file' => $file)), admin_url('admin-post.php')), 'cleg_payroll_reports_export')); ?>"><?php echo esc_html($label); ?></a>
+                        <?php endforeach; ?>
+                    </div>
+                </section>
+                <section class="cleg-payroll-report-kpis">
+                    <article><span>Trabajadores</span><strong><?php echo esc_html((string) $totals['workers']); ?></strong><small><?php echo esc_html((string) $totals['periods']); ?> periodo(s)</small></article>
+                    <article><span>Horas</span><strong><?php echo esc_html(cleg_payroll_format_hours($totals['hours'])); ?></strong><small>cerradas</small></article>
+                    <article><span>Bruto</span><strong><?php echo esc_html(cleg_payroll_money($totals['gross_pay'])); ?></strong><small>antes de deducciones</small></article>
+                    <article><span>Neto pagado</span><strong><?php echo esc_html(cleg_payroll_money($totals['net_pay'])); ?></strong><small>despues de deducciones</small></article>
+                    <article><span>Retenciones</span><strong><?php echo esc_html(cleg_payroll_money($totals['total_deductions'])); ?></strong><small>SS, Medicare, SINOT, PR, 480</small></article>
+                    <article><span>Aporte patronal</span><strong><?php echo esc_html(cleg_payroll_money($totals['employer_ss'] + $totals['employer_medicare'])); ?></strong><small>SS + Medicare</small></article>
+                </section>
+                <?php echo cleg_payroll_report_table($summary); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+            </main>
+            <?php echo cleg_payroll_report_styles(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+            <?php echo cleg_payroll_styles(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+            <?php echo function_exists('cleg_admin_desktop_menu_lock_styles') ? cleg_admin_desktop_menu_lock_styles() : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+        </section>
+        <?php
+        return ob_get_clean();
+    }
+}
+
+if (!function_exists('cleg_payroll_report_styles')) {
+    function cleg_payroll_report_styles() {
+        return <<<'HTML'
+<style>
+body .cleg-payroll .cleg-payroll-report-filters{width:min(1320px,calc(100% - 24px));margin:0 auto 16px;display:grid;grid-template-columns:repeat(4,minmax(160px,1fr)) auto;gap:12px;align-items:end;border:1px solid rgba(6,24,45,.12);border-radius:18px;background:#fff;padding:16px;box-shadow:0 14px 34px rgba(6,24,45,.06);box-sizing:border-box}
+body .cleg-payroll .cleg-payroll-report-filters label{display:grid;gap:6px;color:#516579;font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.04em}
+body .cleg-payroll .cleg-payroll-report-filters label.is-hidden{display:none}
+body .cleg-payroll .cleg-payroll-report-filters a,body .cleg-payroll .cleg-payroll-report-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border-radius:999px;background:#06182d;color:#fff!important;-webkit-text-fill-color:#fff!important;padding:10px 14px;font-weight:950;text-decoration:none!important;text-align:center}
+body .cleg-payroll .cleg-payroll-report-hero{width:min(1320px,calc(100% - 24px));margin:0 auto 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;border:1px solid rgba(6,24,45,.12);border-radius:24px;background:linear-gradient(135deg,#06182d,#123454);color:#fff;padding:22px;box-shadow:0 18px 44px rgba(6,24,45,.16);box-sizing:border-box}
+body .cleg-payroll .cleg-payroll-report-hero span{display:block;color:#f5a35c;font-size:12px;font-weight:1000;text-transform:uppercase;letter-spacing:.08em}
+body .cleg-payroll .cleg-payroll-report-hero h2{margin:4px 0 6px;color:#fff;font-size:30px;line-height:1.05}
+body .cleg-payroll .cleg-payroll-report-hero p{margin:0;color:#dce8f4;font-weight:750}
+body .cleg-payroll .cleg-payroll-report-actions{display:grid;grid-template-columns:repeat(2,minmax(170px,1fr));gap:10px}
+body .cleg-payroll .cleg-payroll-report-actions a{background:#fff;color:#06182d!important;-webkit-text-fill-color:#06182d!important}
+body .cleg-payroll .cleg-payroll-report-kpis{width:min(1320px,calc(100% - 24px));margin:0 auto 16px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+body .cleg-payroll .cleg-payroll-report-kpis article{min-height:110px;display:grid;align-content:center;gap:5px;border:1px solid rgba(6,24,45,.12);border-radius:18px;background:#fff;padding:16px;text-align:center;box-shadow:0 14px 34px rgba(6,24,45,.06)}
+body .cleg-payroll .cleg-payroll-report-kpis span{color:#516579;font-size:11px;font-weight:1000;text-transform:uppercase;letter-spacing:.06em}
+body .cleg-payroll .cleg-payroll-report-kpis strong{color:#06182d;font-size:23px;line-height:1;font-weight:1000}
+body .cleg-payroll .cleg-payroll-report-kpis small{color:#64748b;font-weight:800}
+body .cleg-payroll .cleg-payroll-report-table,body .cleg-payroll .cleg-payroll-report-empty{width:min(1320px,calc(100% - 24px));margin:0 auto 28px;border:1px solid rgba(6,24,45,.12);border-radius:20px;background:#fff;box-shadow:0 14px 34px rgba(6,24,45,.06);overflow:hidden}
+body .cleg-payroll .cleg-payroll-report-table{overflow-x:auto}
+body .cleg-payroll .cleg-payroll-report-table table{width:100%;min-width:1180px;border-collapse:separate;border-spacing:0}
+body .cleg-payroll .cleg-payroll-report-table th,body .cleg-payroll .cleg-payroll-report-table td{padding:14px;border-bottom:1px solid rgba(6,24,45,.09);vertical-align:top;text-align:left}
+body .cleg-payroll .cleg-payroll-report-table th{background:#f7f9fc;color:#516579;font-size:11px;font-weight:1000;text-transform:uppercase;letter-spacing:.05em}
+body .cleg-payroll .cleg-payroll-report-table td strong,body .cleg-payroll .cleg-payroll-report-table td small{display:block}
+body .cleg-payroll .cleg-payroll-report-table td small{margin-top:4px;color:#64748b;font-size:12px;font-weight:750;line-height:1.35}
+body .cleg-payroll .cleg-payroll-report-table details summary{cursor:pointer;color:#06182d;font-weight:950;text-decoration:underline;text-underline-offset:3px}
+body .cleg-payroll .cleg-payroll-report-breakdown{min-width:260px;margin-top:8px;border-radius:14px;background:#f7f9fc;padding:12px;color:#06182d}
+body .cleg-payroll .cleg-payroll-report-breakdown p{margin:0 0 7px;font-size:13px;line-height:1.35}
+body .cleg-payroll .cleg-payroll-report-empty{padding:26px;text-align:center;box-sizing:border-box}
+body .cleg-payroll .cleg-payroll-report-empty h2{margin:0 0 8px;color:#06182d}
+body .cleg-payroll .cleg-payroll-report-empty p{margin:0;color:#516579;font-weight:750}
+@media(max-width:1200px){body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:repeat(3,1fr)}body .cleg-payroll .cleg-payroll-report-hero{grid-template-columns:1fr}}
+@media(max-width:760px){body .cleg-payroll .cleg-payroll-report-filters{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-actions{grid-template-columns:1fr}}
+</style>
+HTML;
+    }
+}
+
 if (!function_exists('cleg_admin_payroll_shortcode')) {
     function cleg_admin_payroll_shortcode() {
         if (!cleg_payroll_allowed()) {
@@ -17908,8 +18193,6 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
         $is_work_week = cleg_payroll_is_work_week($end);
         $can_edit_payroll = $is_work_week && !$has_closed_payroll;
         $can_rollback_payroll = $is_work_week && $has_closed_payroll && !$has_pending_entries && cleg_payroll_can_manage();
-        $selected_month = isset($_GET['payroll_month']) ? sanitize_text_field(wp_unslash($_GET['payroll_month'])) : '';
-        $show_month_report = isset($_GET['payroll_report']) && sanitize_key(wp_unslash($_GET['payroll_report'])) === 'month';
 
         ob_start();
         ?>
@@ -17939,7 +18222,7 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                             <?php endforeach; ?>
                         </select>
                     </label>
-                    <a href="<?php echo esc_url(add_query_arg(array('payroll_report' => 'month', 'payroll_month' => $selected_month !== '' ? $selected_month : wp_date('Y-m', null, cleg_payroll_timezone())), home_url('/payroll-rrhh/'))); ?>">Resumen mensual</a>
+                    <a href="<?php echo esc_url(home_url('/payroll-reportes/')); ?>">Reportes contables</a>
                     <?php if ($has_pending_entries) : ?>
                         <span class="cleg-payroll-disabled">Export bloqueado</span>
                     <?php elseif (!$has_closed_payroll && $is_work_week) : ?>
@@ -18183,9 +18466,6 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                         <button class="cleg-payroll-save" type="submit">Guardar ajustes</button>
                     <?php endif; ?>
                 </form>
-                <?php if ($show_month_report) : ?>
-                    <?php echo cleg_payroll_month_report($selected_month); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-                <?php endif; ?>
             </main>
             <?php echo cleg_payroll_styles(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
             <?php echo function_exists('cleg_admin_desktop_menu_lock_styles') ? cleg_admin_desktop_menu_lock_styles() : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
@@ -18616,6 +18896,7 @@ add_action('admin_post_cleg_payroll_close', 'cleg_payroll_close');
 add_action('admin_post_cleg_payroll_rollback_previous_week', 'cleg_payroll_rollback_previous_week');
 add_action('admin_post_cleg_payroll_export', 'cleg_payroll_export');
 add_shortcode('cleg_admin_payroll', 'cleg_admin_payroll_shortcode');
+add_shortcode('cleg_admin_payroll_reports', 'cleg_admin_payroll_reports_shortcode');
 /**
 /**
  * END modulos/08-payroll/09-cleg-06-payroll-rrhh.php
@@ -41786,6 +42067,7 @@ if (!function_exists('cleg_starter_required_pages')) {
             'admin_horas' => array('slug' => 'admin-horas', 'label' => 'Revision de Horas', 'module' => 'field_ops', 'shortcode' => '[cleg_admin_horas]'),
             'admin_tiempo_real' => array('slug' => 'admin-tiempo-real', 'label' => 'Control en Tiempo Real', 'module' => 'field_ops', 'shortcode' => '[cleg_admin_tiempo_real]'),
             'admin_dispositivos' => array('slug' => 'admin-dispositivos', 'label' => 'Dispositivos', 'module' => 'field_ops', 'shortcode' => '[cleg_admin_dispositivos]'),
+            'payroll_reportes' => array('slug' => 'payroll-reportes', 'label' => 'Reportes Payroll', 'module' => 'payroll', 'shortcode' => '[cleg_admin_payroll_reports]'),
             'admin_recibos' => array('slug' => 'admin-recibos', 'label' => 'Recibos', 'module' => 'procurement_quotes', 'shortcode' => '[cleg_admin_recibos]'),
             'admin_empleados' => array('slug' => 'admin-empleados', 'label' => 'Empleados RRHH', 'module' => 'hr_core', 'shortcode' => '[cleg_admin_empleados]'),
             'admin_job_sites' => array('slug' => 'admin-job-sites', 'label' => 'Proyectos', 'module' => 'projects_work_orders', 'shortcode' => '[cleg_admin_job_sites]'),
