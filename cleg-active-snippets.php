@@ -11246,7 +11246,7 @@ if (!function_exists('cleg_admin_review_form')) {
                 $actions .= '<button class="is-danger cleg-delete-btn" type="submit" name="cleg_admin_action" value="delete">Eliminar</button>';
             }
         } else {
-            $primary_label = $manual_requested ? 'Guardar salida' : 'Aceptar modificacion';
+            $primary_label = $manual_requested ? 'Guardar salida (sin aprobar)' : 'Guardar cambios (sin aprobar)';
             $actions = $can_correct ? '<button class="cleg-save-btn" type="submit" name="cleg_admin_action" value="' . esc_attr($manual_requested ? 'admin_close' : 'save_changes') . '">' . esc_html($primary_label) . '</button>' : '';
         }
 
@@ -11259,7 +11259,7 @@ if (!function_exists('cleg_admin_review_form')) {
                 $actions .= '<button class="is-danger cleg-delete-btn" type="submit" name="cleg_admin_action" value="delete">Eliminar</button>';
             }
         } elseif (!$is_open) {
-            $actions .= $can_approve ? '<button class="is-approve cleg-accept-btn" type="submit" name="cleg_admin_action" value="approve" ' . disabled($missing_job || $is_open, true, false) . '>Aprobar</button>' : '';
+            $actions .= $can_approve ? '<button class="is-approve cleg-accept-btn" type="submit" name="cleg_admin_action" value="approve" ' . disabled($missing_job || $is_open, true, false) . '>Aprobar jornada</button>' : '';
             if ($can_delete) {
                 $actions .= '<div class="cleg-delete-popover"><strong>Motivo</strong><label><input type="radio" name="delete_reason" value="Error" checked> Error</label><label><input type="radio" name="delete_reason" value="Prueba de campo"> Prueba de campo</label><label><input type="radio" name="delete_reason" value="Otro"> Otro</label></div>';
                 $actions .= '<button class="is-danger cleg-delete-btn" type="submit" name="cleg_admin_action" value="delete">Eliminar</button>';
@@ -18014,14 +18014,14 @@ if (!function_exists('cleg_payroll_report_table')) {
         $html = '<div class="cleg-payroll-report-table"><table><thead><tr><th>Trabajador</th><th>Tipo</th><th>Horas</th><th>Bruto</th><th>Deducciones</th><th>Neto</th><th>Aportes patronales</th><th>Detalle</th></tr></thead><tbody>';
         foreach ($summary as $worker) {
             $employer = (float) ($worker['employer_ss'] ?? 0) + (float) ($worker['employer_medicare'] ?? 0);
-            $html .= '<tr><td><strong>' . esc_html($worker['name']) . '</strong><small>' . esc_html($worker['form_type']) . '</small></td>'
-                . '<td>' . esc_html(cleg_payroll_employee_display_type($worker['worker_type'])) . '</td>'
-                . '<td>' . esc_html(cleg_payroll_format_hours($worker['hours'])) . '<small>Reg ' . esc_html(cleg_payroll_format_hours($worker['regular_hours'])) . ' / Extra ' . esc_html(cleg_payroll_format_hours($worker['extra_hours'])) . '</small></td>'
-                . '<td>' . esc_html(cleg_payroll_money($worker['gross_pay'])) . '</td>'
-                . '<td>' . esc_html(cleg_payroll_money($worker['total_deductions'])) . '<small>SS ' . esc_html(cleg_payroll_money($worker['ss_employee'])) . ' · Med ' . esc_html(cleg_payroll_money($worker['medicare_employee'])) . ' · SINOT ' . esc_html(cleg_payroll_money($worker['sinot_employee'])) . ' · PR ' . esc_html(cleg_payroll_money($worker['pr_income_tax'])) . ' · 480 ' . esc_html(cleg_payroll_money($worker['contractor_withholding'])) . '</small></td>'
-                . '<td><strong>' . esc_html(cleg_payroll_money($worker['net_pay'])) . '</strong></td>'
-                . '<td>' . esc_html(cleg_payroll_money($employer)) . '<small>SS patronal ' . esc_html(cleg_payroll_money($worker['employer_ss'])) . ' · Medicare patronal ' . esc_html(cleg_payroll_money($worker['employer_medicare'])) . '</small></td>'
-                . '<td><details><summary>Ver desglose</summary><div class="cleg-payroll-report-breakdown">'
+            $html .= '<tr><td class="cleg-report-worker"><strong>' . esc_html($worker['name']) . '</strong><small>' . esc_html($worker['form_type']) . '</small></td>'
+                . '<td class="cleg-report-type">' . esc_html(cleg_payroll_employee_display_type($worker['worker_type'])) . '</td>'
+                . '<td class="cleg-report-hours"><strong>' . esc_html(cleg_payroll_format_hours($worker['hours'])) . '</strong><small>Reg ' . esc_html(cleg_payroll_format_hours($worker['regular_hours'])) . ' / Extra ' . esc_html(cleg_payroll_format_hours($worker['extra_hours'])) . '</small></td>'
+                . '<td class="cleg-report-money">' . esc_html(cleg_payroll_money($worker['gross_pay'])) . '</td>'
+                . '<td class="cleg-report-deductions"><strong>' . esc_html(cleg_payroll_money($worker['total_deductions'])) . '</strong><small>SS ' . esc_html(cleg_payroll_money($worker['ss_employee'])) . ' · Med ' . esc_html(cleg_payroll_money($worker['medicare_employee'])) . ' · SINOT ' . esc_html(cleg_payroll_money($worker['sinot_employee'])) . ' · PR ' . esc_html(cleg_payroll_money($worker['pr_income_tax'])) . ' · 480 ' . esc_html(cleg_payroll_money($worker['contractor_withholding'])) . '</small></td>'
+                . '<td class="cleg-report-net"><strong>' . esc_html(cleg_payroll_money($worker['net_pay'])) . '</strong></td>'
+                . '<td class="cleg-report-employer"><strong>' . esc_html(cleg_payroll_money($employer)) . '</strong><small>SS patronal ' . esc_html(cleg_payroll_money($worker['employer_ss'])) . ' · Medicare patronal ' . esc_html(cleg_payroll_money($worker['employer_medicare'])) . '</small></td>'
+                . '<td class="cleg-report-detail"><details><summary>Desglose</summary><div class="cleg-payroll-report-breakdown">'
                 . '<p><b>Periodos:</b> ' . esc_html((string) count($worker['periods'] ?? array())) . '</p>'
                 . '<p><b>Regular pay:</b> ' . esc_html(cleg_payroll_money($worker['regular_pay'])) . ' · <b>Overtime pay:</b> ' . esc_html(cleg_payroll_money($worker['extra_pay'])) . '</p>'
                 . '<p><b>Vacaciones acum.:</b> ' . esc_html(cleg_payroll_format_hours($worker['vacation_accrued'])) . ' · <b>Enfermedad acum.:</b> ' . esc_html(cleg_payroll_format_hours($worker['sick_accrued'])) . '</p>'
@@ -18138,12 +18138,18 @@ body .cleg-payroll .cleg-payroll-report-kpis strong{color:#06182d;font-size:23px
 body .cleg-payroll .cleg-payroll-report-kpis small{color:#64748b;font-weight:800}
 body .cleg-payroll .cleg-payroll-report-table,body .cleg-payroll .cleg-payroll-report-empty{width:min(1320px,calc(100% - 24px));margin:0 auto 28px;border:1px solid rgba(6,24,45,.12);border-radius:20px;background:#fff;box-shadow:0 14px 34px rgba(6,24,45,.06);overflow:hidden}
 body .cleg-payroll .cleg-payroll-report-table{overflow-x:auto}
-body .cleg-payroll .cleg-payroll-report-table table{width:100%;min-width:1180px;border-collapse:separate;border-spacing:0}
-body .cleg-payroll .cleg-payroll-report-table th,body .cleg-payroll .cleg-payroll-report-table td{padding:14px;border-bottom:1px solid rgba(6,24,45,.09);vertical-align:top;text-align:left}
-body .cleg-payroll .cleg-payroll-report-table th{background:#f7f9fc;color:#516579;font-size:11px;font-weight:1000;text-transform:uppercase;letter-spacing:.05em}
+body .cleg-payroll .cleg-payroll-report-table table{width:100%;min-width:1180px;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
+body .cleg-payroll .cleg-payroll-report-table th,body .cleg-payroll .cleg-payroll-report-table td{padding:13px 14px;border-bottom:1px solid rgba(6,24,45,.08);vertical-align:middle;text-align:left}
+body .cleg-payroll .cleg-payroll-report-table tbody tr:nth-child(even){background:#fbfdff}
+body .cleg-payroll .cleg-payroll-report-table tbody tr:hover{background:#f6f9fc}
+body .cleg-payroll .cleg-payroll-report-table th{position:sticky;top:0;z-index:1;background:#f7f9fc;color:#516579;font-size:11px;font-weight:1000;text-transform:uppercase;letter-spacing:.05em}
+body .cleg-payroll .cleg-payroll-report-table td{color:#132238;font-size:14px;line-height:1.25}
 body .cleg-payroll .cleg-payroll-report-table td strong,body .cleg-payroll .cleg-payroll-report-table td small{display:block}
-body .cleg-payroll .cleg-payroll-report-table td small{margin-top:4px;color:#64748b;font-size:12px;font-weight:750;line-height:1.35}
-body .cleg-payroll .cleg-payroll-report-table details summary{cursor:pointer;color:#06182d;font-weight:950;text-decoration:underline;text-underline-offset:3px}
+body .cleg-payroll .cleg-payroll-report-table td small{margin-top:4px;color:#64748b;font-size:11px;font-weight:750;line-height:1.35}
+body .cleg-payroll .cleg-report-type{max-width:170px;color:#26384d;font-weight:800}
+body .cleg-payroll .cleg-report-money,body .cleg-payroll .cleg-report-net,body .cleg-payroll .cleg-report-deductions,body .cleg-payroll .cleg-report-employer{white-space:nowrap}
+body .cleg-payroll .cleg-payroll-report-table details summary{display:inline-flex;align-items:center;justify-content:center;min-height:34px;border:1px solid rgba(6,24,45,.14);border-radius:999px;background:#fff;color:#06182d;padding:7px 12px;cursor:pointer;font-size:12px;font-weight:950;text-decoration:none;box-shadow:0 8px 20px rgba(6,24,45,.07)}
+body .cleg-payroll .cleg-payroll-report-table details summary:hover{border-color:rgba(199,80,0,.38);background:#fff7f0}
 body .cleg-payroll .cleg-payroll-report-breakdown{min-width:260px;margin-top:8px;border-radius:14px;background:#f7f9fc;padding:12px;color:#06182d}
 body .cleg-payroll .cleg-payroll-report-breakdown p{margin:0 0 7px;font-size:13px;line-height:1.35}
 body .cleg-payroll .cleg-payroll-report-empty{padding:26px;text-align:center;box-sizing:border-box}
