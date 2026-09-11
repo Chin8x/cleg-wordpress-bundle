@@ -8535,7 +8535,9 @@ if (!function_exists('cleg_admin_hr_request_group_action_form')) {
 if (!function_exists('cleg_admin_requests_table')) {
     function cleg_admin_requests_table($requests, $limit = 20, $title = 'Solicitudes recientes', $subtitle = 'Ausencias, permisos y novedades enviadas desde el portal trabajador.', $show_all_link = true) {
         $action = $show_all_link ? '<a class="cleg-row-action" href="' . esc_url(home_url('/admin-solicitudes/')) . '">Ver todas</a>' : '';
-        $html = '<div class="cleg-panel"><div class="cleg-panel-head"><div><h2>' . esc_html($title) . '</h2><p>' . esc_html($subtitle) . '</p></div>' . $action . '</div><div class="cleg-table-wrap"><table class="cleg-requests-summary-table"><thead><tr><th>Trabajador</th><th>Solicitud</th><th>Dias solicitados</th><th>Razon</th><th>Status</th><th>Accion</th></tr></thead><tbody>';
+        $html = '<div class="cleg-panel"><div class="cleg-panel-head"><div><h2>' . esc_html($title) . '</h2><p>' . esc_html($subtitle) . '</p></div>' . $action . '</div>';
+        $mobile = '<div class="cleg-mobile-only cleg-mobile-card-stack" aria-label="' . esc_attr($title) . '">';
+        $table = '<div class="cleg-table-wrap cleg-desktop-table"><table class="cleg-requests-summary-table"><thead><tr><th>Trabajador</th><th>Solicitud</th><th>Dias solicitados</th><th>Razon</th><th>Status</th><th>Accion</th></tr></thead><tbody>';
         $request_groups = cleg_admin_group_hr_requests_for_display($requests);
 
         foreach (array_slice($request_groups, 0, $limit) as $group) {
@@ -8547,16 +8549,18 @@ if (!function_exists('cleg_admin_requests_table')) {
             $records = (array) ($group['records'] ?? array());
             $action_html = cleg_admin_hr_request_group_action_form($records);
 
-            $html .= '<tr><td><strong>' . esc_html($group['employee']) . '</strong><small>' . esc_html($group['username']) . '</small></td>'
+            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>' . esc_html($group['type']) . '</span><strong>' . esc_html($group['employee']) . '</strong></div>' . cleg_admin_request_pill($group['status']) . '</div><div class="cleg-mobile-facts"><div><small>Fechas</small><b>' . esc_html($range) . '</b></div><div><small>Días</small><b>' . esc_html($days_label) . '</b></div></div><p>' . esc_html($group['reason']) . '</p>' . $action_html . '</article>';
+            $table .= '<tr><td><strong>' . esc_html($group['employee']) . '</strong><small>' . esc_html($group['username']) . '</small></td>'
                 . '<td><strong>' . esc_html($group['type']) . '</strong><small>Pedido: ' . esc_html(cleg_admin_request_date_label($group['submitted'], true)) . '</small></td>'
                 . '<td><strong>' . esc_html($range) . '</strong><small>' . esc_html($days_label) . '</small></td>'
                 . '<td><span class="cleg-request-reason">' . esc_html($group['reason']) . '</span>' . $audit . '</td>'
                 . '<td>' . cleg_admin_request_pill($group['status']) . '</td><td>' . $action_html . '</td></tr>';
         }
         if (empty($request_groups)) {
-            $html .= '<tr><td colspan="6">No hay solicitudes registradas.</td></tr>';
+            $table .= '<tr><td colspan="6">No hay solicitudes registradas.</td></tr>';
+            $mobile .= '<article class="cleg-mobile-card"><strong>No hay solicitudes registradas.</strong></article>';
         }
-        return $html . '</tbody></table></div></div>';
+        return $html . $mobile . '</div>' . $table . '</tbody></table></div></div>';
     }
 }
 
