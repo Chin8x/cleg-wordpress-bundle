@@ -11822,19 +11822,23 @@ if (!function_exists('cleg_admin_dispositivos_shortcode')) {
             return count($b['users']) <=> count($a['users']);
         });
 
-        $html .= '<div class="cleg-panel"><h2>Móviles detectados</h2><div class="cleg-table-wrap"><table><thead><tr><th>Riesgo</th><th>Device ID</th><th>Usuarios</th><th>Usos</th><th>Último Job Site</th></tr></thead><tbody>';
+        $html .= '<div class="cleg-panel"><h2>Móviles detectados</h2>';
+        $mobile = '<div class="cleg-mobile-only cleg-mobile-card-stack" aria-label="Móviles detectados">';
+        $table = '<div class="cleg-table-wrap cleg-desktop-table"><table><thead><tr><th>Riesgo</th><th>Device ID</th><th>Usuarios</th><th>Usos</th><th>Último Job Site</th></tr></thead><tbody>';
 
         foreach ($devices as $device => $info) {
             $users = array_keys($info['users']);
             $risk = count($users) > 1 ? 'Compartido' : 'Normal';
-            $html .= '<tr><td><span class="cleg-pill ' . esc_attr(count($users) > 1 ? 'is-warn' : 'is-ok') . '">' . esc_html($risk) . '</span></td><td><code>' . esc_html(substr($device, 0, 22)) . '</code></td><td>' . esc_html(implode(', ', $users)) . '</td><td>' . esc_html($info['count']) . '</td><td>' . esc_html(cleg_admin_field($info['last'], 'Job Site Name')) . '</td></tr>';
+            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>Usuarios</span><strong>' . esc_html(implode(', ', $users)) . '</strong></div><span class="cleg-pill ' . esc_attr(count($users) > 1 ? 'is-warn' : 'is-ok') . '">' . esc_html($risk) . '</span></div><div class="cleg-mobile-facts"><div><small>Device ID</small><b><code>' . esc_html(substr($device, -8)) . '</code></b></div><div><small>Usos</small><b>' . esc_html($info['count']) . '</b></div></div><p>' . esc_html(cleg_admin_field($info['last'], 'Job Site Name', 'Sin proyecto')) . '</p></article>';
+            $table .= '<tr><td><span class="cleg-pill ' . esc_attr(count($users) > 1 ? 'is-warn' : 'is-ok') . '">' . esc_html($risk) . '</span></td><td><code>' . esc_html(substr($device, 0, 22)) . '</code></td><td>' . esc_html(implode(', ', $users)) . '</td><td>' . esc_html($info['count']) . '</td><td>' . esc_html(cleg_admin_field($info['last'], 'Job Site Name')) . '</td></tr>';
         }
 
         if (empty($devices)) {
-            $html .= '<tr><td colspan="5">Todavia no hay Device ID registrados.</td></tr>';
+            $table .= '<tr><td colspan="5">Todavia no hay Device ID registrados.</td></tr>';
+            $mobile .= '<article class="cleg-mobile-card"><strong>Todavía no hay móviles registrados.</strong></article>';
         }
 
-        $html .= '</tbody></table></div></div>';
+        $html .= $mobile . '</div>' . $table . '</tbody></table></div></div>';
 
         return $html . cleg_admin_page_close();
     }
@@ -11887,20 +11891,23 @@ if (!function_exists('cleg_admin_live_open_shift_review_url')) {
 
 if (!function_exists('cleg_admin_live_table')) {
     function cleg_admin_live_table($records) {
+        $mobile = '<div class="cleg-mobile-only cleg-mobile-card-stack" aria-label="Personas trabajando ahora">';
         $html = '<div class="cleg-panel cleg-live-table-panel"><h2>Trabajando ahora</h2><div class="cleg-table-wrap cleg-desktop-table"><table><thead><tr><th>Empleado</th><th>Usuario</th><th>Job Site</th><th>Entrada</th><th>GPS</th><th>Alertas</th><th>Accion</th></tr></thead><tbody>';
 
         foreach ($records as $record) {
             $map = cleg_admin_field($record, 'Clock In Map Link');
             $device_alert = cleg_admin_device_alert($record);
             $review_url = cleg_admin_live_open_shift_review_url($record);
+            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>' . esc_html(cleg_admin_field($record, 'Portal Username')) . '</span><strong>' . esc_html(cleg_admin_field($record, 'Employee Name')) . '</strong></div><span class="cleg-pill is-warn">En jornada</span></div><div class="cleg-mobile-job">' . esc_html(cleg_admin_field($record, 'Job Site Name', 'Sin proyecto')) . '</div><div class="cleg-mobile-facts"><div><small>Entrada</small><b>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock In Time'))) . '</b></div><div><small>GPS</small><b>' . ($map !== '' ? 'Disponible' : 'Sin GPS') . '</b></div></div>' . ($device_alert !== '' ? '<details class="cleg-mobile-details"><summary>Ver alerta</summary>' . $device_alert . '</details>' : '') . '<a class="cleg-row-action" href="' . esc_url($review_url) . '">Revisar y cerrar</a></article>';
             $html .= '<tr><td>' . esc_html(cleg_admin_field($record, 'Employee Name')) . '</td><td>' . esc_html(cleg_admin_field($record, 'Portal Username')) . '</td><td>' . esc_html(cleg_admin_field($record, 'Job Site Name')) . '</td><td>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock In Time'))) . '</td><td>' . ($map !== '' ? '<a class="cleg-live-map-jump" href="#cleg-campo-mapa">Ver en mapa</a>' : 'Sin GPS') . '</td><td>' . ($device_alert !== '' ? $device_alert : '--') . '</td><td><a class="cleg-row-action" href="' . esc_url($review_url) . '">Revisar / cerrar</a></td></tr>';
         }
 
         if (empty($records)) {
             $html .= '<tr><td colspan="7">No hay jornadas abiertas.</td></tr>';
+            $mobile .= '<article class="cleg-mobile-card"><strong>No hay jornadas abiertas.</strong><p>Cuando alguien marque entrada aparecerá aquí.</p></article>';
         }
 
-        return $html . '</tbody></table></div></div>';
+        return $mobile . '</div>' . $html . '</tbody></table></div></div>';
     }
 }
 
