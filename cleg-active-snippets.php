@@ -18341,7 +18341,7 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
                     <a href="<?php echo esc_url(home_url('/payroll-rrhh/')); ?>">Volver a Payroll semanal</a>
                 </form>
                 <section class="cleg-payroll-report-hero">
-                    <div><span><?php echo esc_html($period_label); ?></span><h2>Resumen para contabilidad</h2><p>El PDF respeta los filtros seleccionados: periodo, tipo de trabajador y trabajador individual.</p></div>
+                    <div><span><?php echo esc_html($period_label); ?></span><h2 style="color:#fff!important;-webkit-text-fill-color:#fff!important">Resumen para contabilidad</h2><p>El PDF respeta los filtros seleccionados: periodo, tipo de trabajador y trabajador individual.</p></div>
                     <div class="cleg-payroll-report-actions">
                         <a class="is-primary cleg-payroll-single-download" download href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('action' => 'cleg_payroll_reports_pdf', 'report_file' => 'details_pdf')), admin_url('admin-post.php')), 'cleg_payroll_reports_pdf')); ?>">Descargar PDF</a>
                     </div>
