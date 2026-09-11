@@ -6691,7 +6691,29 @@ if (!function_exists('cleg_admin_nav')) {
         );
         $active_label = isset($items[$active]) ? $items[$active][0] : ($module_labels[$module] ?? 'Modulo');
         $mobile_items = $items;
-        $mobile = '<details class="cleg-admin-mobile-menu"><summary><span>' . esc_html($active_label) . '</span><b>Menu</b></summary><div>';
+
+        $task_items = array(
+            'horas' => array('Horas', home_url('/admin-horas/'), 'field_ops'),
+            'requests' => array('Solicitudes', home_url('/admin-solicitudes/'), 'forms_requests'),
+            'procurement' => array('Compras', home_url('/admin-procurement/'), 'procurement_quotes'),
+        );
+        $task_nav = '<nav class="cleg-admin-task-nav cleg-mobile-only" aria-label="Navegacion por tareas">';
+        foreach ($task_items as $key => $task) {
+            if (!cleg_admin_nav_module_enabled($task[2])) {
+                continue;
+            }
+            $task_nav .= '<a class="' . esc_attr($active === $key ? 'is-active' : '') . '" href="' . esc_url($task[1]) . '">' . esc_html($task[0]) . '</a>';
+        }
+        $task_nav .= '<details class="cleg-admin-task-more"><summary>Mas</summary><div>';
+        foreach ($mobile_items as $key => $item) {
+            $task_nav .= '<a class="' . esc_attr($key === $active ? 'is-active' : '') . '" href="' . esc_url($item[1]) . '">' . esc_html($item[0]) . '</a>';
+        }
+        foreach ($utility_items as $item) {
+            $task_nav .= '<a class="' . esc_attr($item[2]) . '" href="' . esc_url($item[1]) . '">' . esc_html($item[0]) . '</a>';
+        }
+        $task_nav .= '</div></details></nav>';
+
+        $mobile = $task_nav . '<details class="cleg-admin-mobile-menu"><summary><span>' . esc_html($active_label) . '</span><b>Menu</b></summary><div>';
 
         foreach ($mobile_items as $key => $item) {
             $mobile .= '<a class="' . esc_attr($key === $active ? 'is-active' : '') . '" href="' . esc_url($item[1]) . '">' . esc_html($item[0]) . '</a>';
