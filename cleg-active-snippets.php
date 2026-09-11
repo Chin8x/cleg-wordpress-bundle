@@ -5199,12 +5199,14 @@ if (!function_exists('cleg_app_script')) {
                             submit.textContent = 'Enviando...';
                         }
                         if (requestMessage) requestMessage.textContent = 'Enviando...';
+                        let requestedDays = [];
+                        let sentDays = 0;
+                        const requestCodes = [];
                         try {
-                            const days = dateList(absenceStart ? absenceStart.value : '', absenceEnd ? absenceEnd.value : '');
+                            requestedDays = dateList(absenceStart ? absenceStart.value : '', absenceEnd ? absenceEnd.value : '');
+                            const days = requestedDays;
                             const originalDetail = detailInput ? detailInput.value.trim() : '';
 
-                            let sentDays = 0;
-                            const requestCodes = [];
                             for (let index = 0; index < days.length; index++) {
                                 if (requestMessage) {
                                     requestMessage.textContent = days.length > 1 ? 'Enviando ' + (index + 1) + ' de ' + days.length + '...' : 'Enviando...';
@@ -5236,7 +5238,13 @@ if (!function_exists('cleg_app_script')) {
                                 requestMessage.textContent = (days.length > 1 ? 'Ausencia enviada por ' + days.length + ' dias.' : 'Ausencia enviada.') + codeText;
                             }
                         } catch (error) {
-                            if (requestMessage) requestMessage.textContent = error.message || 'No se pudo enviar. Intenta de nuevo.';
+                            if (sentDays > 0 && requestedDays[sentDays]) {
+                                if (absenceStart) absenceStart.value = requestedDays[sentDays];
+                                if (absenceEnd) absenceEnd.value = requestedDays[requestedDays.length - 1] || requestedDays[sentDays];
+                                if (requestMessage) requestMessage.textContent = (error.message || 'No se pudo completar el rango.') + ' El formulario quedó desde ' + requestedDays[sentDays] + ' para evitar duplicar los días enviados.';
+                            } else if (requestMessage) {
+                                requestMessage.textContent = error.message || 'No se pudo enviar. Intenta de nuevo.';
+                            }
                         } finally {
                             if (submit) {
                                 submit.disabled = false;
