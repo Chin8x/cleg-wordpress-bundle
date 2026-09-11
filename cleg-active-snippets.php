@@ -6702,9 +6702,12 @@ if (!function_exists('cleg_admin_nav')) {
             if (!cleg_admin_nav_module_enabled($task[2])) {
                 continue;
             }
-            $task_nav .= '<a class="' . esc_attr($active === $key ? 'is-active' : '') . '" href="' . esc_url($task[1]) . '">' . esc_html($task[0]) . '</a>';
+            $task_active = ($key === 'horas' && $module === 'field')
+                || ($key === 'requests' && $module === 'rrhh')
+                || ($key === 'procurement' && $module === 'procurement');
+            $task_nav .= '<a class="' . esc_attr($task_active ? 'is-active' : '') . '" href="' . esc_url($task[1]) . '">' . esc_html($task[0]) . '</a>';
         }
-        $task_nav .= '<details class="cleg-admin-task-more"><summary>Mas</summary><div>';
+        $task_nav .= '<details class="cleg-admin-task-more"><summary>Más</summary><div>';
         foreach ($mobile_items as $key => $item) {
             $task_nav .= '<a class="' . esc_attr($key === $active ? 'is-active' : '') . '" href="' . esc_url($item[1]) . '">' . esc_html($item[0]) . '</a>';
         }
