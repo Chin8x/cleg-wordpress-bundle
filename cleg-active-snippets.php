@@ -8563,7 +8563,7 @@ if (!function_exists('cleg_admin_requests_table')) {
             $records = (array) ($group['records'] ?? array());
             $action_html = cleg_admin_hr_request_group_action_form($records);
 
-            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>' . esc_html($group['type']) . '</span><strong>' . esc_html($group['employee']) . '</strong></div>' . cleg_admin_request_pill($group['status']) . '</div><div class="cleg-mobile-facts"><div><small>Fechas</small><b>' . esc_html($range) . '</b></div><div><small>Días</small><b>' . esc_html($days_label) . '</b></div></div><p>' . esc_html($group['reason']) . '</p>' . $action_html . '</article>';
+            $mobile .= '<article class="cleg-mobile-card cleg-metric"><div class="cleg-mobile-card-top cleg-context-head"><div><span>' . esc_html($group['type']) . '</span><strong>' . esc_html($group['employee']) . '</strong></div>' . cleg_admin_request_pill($group['status']) . '</div><div class="cleg-mobile-facts"><div class="cleg-metric"><small>Fechas</small><b>' . esc_html($range) . '</b></div><div class="cleg-metric"><small>Días</small><b>' . esc_html($days_label) . '</b></div></div><p class="cleg-mobile-muted">' . esc_html($group['reason']) . '</p>' . $action_html . '</article>';
             $table .= '<tr><td><strong>' . esc_html($group['employee']) . '</strong><small>' . esc_html($group['username']) . '</small></td>'
                 . '<td><strong>' . esc_html($group['type']) . '</strong><small>Pedido: ' . esc_html(cleg_admin_request_date_label($group['submitted'], true)) . '</small></td>'
                 . '<td><strong>' . esc_html($range) . '</strong><small>' . esc_html($days_label) . '</small></td>'
@@ -8572,7 +8572,7 @@ if (!function_exists('cleg_admin_requests_table')) {
         }
         if (empty($request_groups)) {
             $table .= '<tr><td colspan="6">No hay solicitudes registradas.</td></tr>';
-            $mobile .= '<article class="cleg-mobile-card"><strong>No hay solicitudes registradas.</strong></article>';
+            $mobile .= '<article class="cleg-mobile-card cleg-metric"><strong>No hay solicitudes registradas.</strong></article>';
         }
         return $mobile . '</div>' . $html . $table . '</tbody></table></div></div>';
     }
@@ -13655,14 +13655,14 @@ if (!function_exists('cleg_admin_hr_request_action_form')) {
         }
 
         $is_pending = ($status === '' || $status === 'Pending' || $status === 'Pending Review' || $status === 'Open');
-        $decision = !$is_pending ? '<small>Decision tomada</small>' : '<form class="cleg-request-actions" method="post">'
+        $decision = !$is_pending ? '<small>Decision tomada</small>' : '<form class="cleg-request-actions cleg-mobile-actions" method="post">'
             . wp_nonce_field('cleg_admin_hr_request_action', 'cleg_admin_hr_request_nonce', true, false)
             . '<input type="hidden" name="cleg_admin_hr_request_id" value="' . esc_attr($id) . '">'
-            . '<button class="is-approve" type="submit" name="cleg_admin_hr_request_action" value="approve">Aprobar</button>'
+            . '<button class="is-approve cleg-row-action" type="submit" name="cleg_admin_hr_request_action" value="approve">Aprobar</button>'
             . '</form>';
 
         return '<div class="cleg-request-action-stack">' . $decision
-            . '<details class="cleg-request-delete"><summary>Eliminar por error</summary><form class="cleg-inline-action" method="post">'
+            . '<details class="cleg-request-delete"><summary class="cleg-row-action">Eliminar por error</summary><form class="cleg-inline-action" method="post">'
             . wp_nonce_field('cleg_admin_hr_request_action', 'cleg_admin_hr_request_nonce', true, false)
             . '<input type="hidden" name="cleg_admin_hr_request_id" value="' . esc_attr($id) . '">'
             . '<label>Motivo<input type="text" name="cleg_hr_delete_reason" required placeholder="Ej: creado por error"></label>'
