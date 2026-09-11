@@ -4361,8 +4361,9 @@ if (!function_exists('cleg_app_worker_request_submit')) {
             wp_send_json_error(array('message' => 'Escribe una nota corta.'), 400);
         }
 
+        $request_code = 'REQ-' . gmdate('Ymd-His') . '-' . (int) $user->ID;
         $fields = array(
-            'Request Code' => 'REQ-' . gmdate('Ymd-His') . '-' . (int) $user->ID,
+            'Request Code' => $request_code,
             'Employee Name' => sanitize_text_field($user->display_name ?: $user->user_login),
             'Employee Email' => sanitize_email($user->user_email),
             'Portal Username' => sanitize_user($user->user_login),
@@ -4384,7 +4385,10 @@ if (!function_exists('cleg_app_worker_request_submit')) {
             wp_send_json_error(array('message' => 'No se pudo enviar. Intenta de nuevo.'), 500);
         }
 
-        wp_send_json_success(array('message' => $type === 'Ausencia' ? 'Ausencia enviada.' : 'Mensaje enviado.'));
+        wp_send_json_success(array(
+            'message' => ($type === 'Ausencia' ? 'Ausencia enviada. ' : 'Mensaje enviado. ') . 'Codigo: ' . $request_code,
+            'code' => $request_code,
+        ));
     }
 }
 
@@ -5170,7 +5174,8 @@ if (!function_exists('cleg_app_script')) {
                             if (dates.length >= 31) {
                                 throw new Error('El rango maximo es de 31 dias.');
                             }
-                            dates.push(cursor.toISOString().slice(0, 10));
+                            const localDate = [cursor.getFullYear(), String(cursor.getMonth() + 1).padStart(2, '0'), String(cursor.getDate()).padStart(2, '0')].join('-');
+                            dates.push(localDate);
                             cursor.setDate(cursor.getDate() + 1);
                         }
 
@@ -5199,6 +5204,7 @@ if (!function_exists('cleg_app_script')) {
                             const originalDetail = detailInput ? detailInput.value.trim() : '';
 
                             let sentDays = 0;
+                            const requestCodes = [];
                             for (let index = 0; index < days.length; index++) {
                                 if (requestMessage) {
                                     requestMessage.textContent = days.length > 1 ? 'Enviando ' + (index + 1) + ' de ' + days.length + '...' : 'Enviando...';
@@ -5221,10 +5227,14 @@ if (!function_exists('cleg_app_script')) {
                                     throw new Error('Se enviaron ' + sentDays + ' de ' + days.length + ' dias. ' + (payload && payload.data && payload.data.message ? payload.data.message : 'No se pudo completar el rango. Revisa los dias enviados antes de reintentar.'));
                                 }
                                 sentDays++;
+                                if (payload.data && payload.data.code) requestCodes.push(payload.data.code);
                             }
 
                             requestForm.reset();
-                            if (requestMessage) requestMessage.textContent = days.length > 1 ? 'Ausencia enviada por ' + days.length + ' dias.' : 'Ausencia enviada.';
+                            if (requestMessage) {
+                                const codeText = requestCodes.length ? ' Codigos: ' + requestCodes.join(', ') + '.' : '';
+                                requestMessage.textContent = (days.length > 1 ? 'Ausencia enviada por ' + days.length + ' dias.' : 'Ausencia enviada.') + codeText;
+                            }
                         } catch (error) {
                             if (requestMessage) requestMessage.textContent = error.message || 'No se pudo enviar. Intenta de nuevo.';
                         } finally {
