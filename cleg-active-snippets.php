@@ -18078,12 +18078,11 @@ if (!function_exists('cleg_payroll_reports_export')) {
         $worker_id = isset($_GET['worker_id']) ? sanitize_text_field(wp_unslash($_GET['worker_id'])) : 'all';
         $report = isset($_GET['report_file']) ? sanitize_key(wp_unslash($_GET['report_file'])) : 'summary';
         list($start, $end, $period_value) = cleg_payroll_report_range($mode, $month, $year);
-        $lines = cleg_payroll_report_lines($start, $end, $period_lines);
-        if (empty($lines)) {
-            $data = cleg_payroll_data($start, $end);
-            if (!is_wp_error($data)) {
-                $lines = cleg_payroll_report_lines_from_data($data, $start, $end);
-            }
+        $data = cleg_payroll_data($start, $end);
+        if (!is_wp_error($data) && !empty($data)) {
+            $lines = cleg_payroll_report_lines_from_data($data, $start, $end);
+        } else {
+            $lines = cleg_payroll_report_lines($start, $end, $period_lines);
         }
         if (is_wp_error($lines)) {
             wp_die(esc_html($lines->get_error_message()));
