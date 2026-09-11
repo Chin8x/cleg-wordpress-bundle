@@ -17852,16 +17852,20 @@ if (!function_exists('cleg_payroll_report_lines')) {
                 'medicare_employee' => cleg_payroll_report_line_value($line, 'Medicare Employee', array('deductions', 'medicare_employee')),
                 'sinot_employee' => cleg_payroll_report_line_value($line, 'SINOT Employee', array('deductions', 'sinot_employee')),
                 'pr_income_tax' => cleg_payroll_report_line_value($line, 'PR Income Tax Withheld', array('deductions', 'pr_income_tax_withheld')),
-                'contractor_withholding' => cleg_payroll_report_line_value($line, 'Contractor Withholding'),
+                'contractor_withholding' => cleg_payroll_report_line_value($line, 'Contractor Withholding', array('deductions', 'contractor_withholding')),
                 'fixed_deductions' => cleg_payroll_report_line_value($line, 'Fixed Deductions', array('deductions', 'fixed_deductions')),
                 'manual_deduction' => cleg_payroll_report_line_value($line, 'Manual Deduction', array('deductions', 'manual_deduction')),
                 'total_deductions' => cleg_payroll_report_line_value($line, 'Total Deductions', array(), max(0, $gross - $net)),
                 'net_pay' => $net,
-                'employer_ss' => cleg_payroll_report_line_value($line, 'Employer Social Security'),
-                'employer_medicare' => cleg_payroll_report_line_value($line, 'Employer Medicare'),
-                'employer_cost' => cleg_payroll_report_line_value($line, 'Total Employer Cost', array(), $gross + cleg_payroll_report_line_value($line, 'Employer Social Security') + cleg_payroll_report_line_value($line, 'Employer Medicare')),
+                'employer_ss' => cleg_payroll_report_line_value($line, 'Employer Social Security', array('employer', 'social_security')),
+                'employer_medicare' => cleg_payroll_report_line_value($line, 'Employer Medicare', array('employer', 'medicare')),
+                'employer_cost' => cleg_payroll_report_line_value($line, 'Total Employer Cost', array('employer', 'total_cost'), $gross + cleg_payroll_report_line_value($line, 'Employer Social Security', array('employer', 'social_security')) + cleg_payroll_report_line_value($line, 'Employer Medicare', array('employer', 'medicare'))),
                 'vacation_accrued' => cleg_payroll_report_line_value($line, 'Vacation Accrued Hours', array('pto', 'vacation_accrued')),
                 'sick_accrued' => cleg_payroll_report_line_value($line, 'Sick Accrued Hours', array('pto', 'sick_accrued')),
+                'vacation_used' => cleg_payroll_report_line_value($line, 'Vacation Used Hours', array('leave', 'vacation_used_hours')),
+                'sick_used' => cleg_payroll_report_line_value($line, 'Sick Used Hours', array('leave', 'sick_used_hours')),
+                'vacation_balance' => cleg_payroll_report_line_value($line, 'Vacation Balance Hours', array('pto', 'vacation_balance_after')),
+                'sick_balance' => cleg_payroll_report_line_value($line, 'Sick Balance Hours', array('pto', 'sick_balance_after')),
                 'status' => cleg_payroll_field($line, 'Calculation Status', 'Ready to Pay'),
             );
         }
@@ -17900,18 +17904,23 @@ if (!function_exists('cleg_payroll_report_summary')) {
                     'periods' => array(),
                     'lines' => array(),
                 );
-                foreach (array('hours', 'regular_hours', 'extra_hours', 'regular_pay', 'extra_pay', 'gross_pay', 'taxable_wages', 'ss_employee', 'medicare_employee', 'sinot_employee', 'pr_income_tax', 'contractor_withholding', 'fixed_deductions', 'manual_deduction', 'total_deductions', 'net_pay', 'employer_ss', 'employer_medicare', 'employer_cost', 'vacation_accrued', 'sick_accrued') as $field) {
+                foreach (array('hours', 'regular_hours', 'extra_hours', 'regular_pay', 'extra_pay', 'gross_pay', 'taxable_wages', 'ss_employee', 'medicare_employee', 'sinot_employee', 'pr_income_tax', 'contractor_withholding', 'fixed_deductions', 'manual_deduction', 'total_deductions', 'net_pay', 'employer_ss', 'employer_medicare', 'employer_cost', 'vacation_accrued', 'sick_accrued', 'vacation_used', 'sick_used') as $field) {
                     $summary[$key][$field] = 0;
                 }
+                $summary[$key]['vacation_balance'] = 0;
+                $summary[$key]['sick_balance'] = 0;
             }
             $period_key = ($line['period_start'] ?? '') . ' - ' . ($line['period_end'] ?? '');
             if (trim($period_key) !== '-') {
                 $summary[$key]['periods'][$period_key] = true;
             }
             $summary[$key]['lines'][] = $line;
-            foreach (array('hours', 'regular_hours', 'extra_hours', 'regular_pay', 'extra_pay', 'gross_pay', 'taxable_wages', 'ss_employee', 'medicare_employee', 'sinot_employee', 'pr_income_tax', 'contractor_withholding', 'fixed_deductions', 'manual_deduction', 'total_deductions', 'net_pay', 'employer_ss', 'employer_medicare', 'employer_cost', 'vacation_accrued', 'sick_accrued') as $field) {
+            foreach (array('hours', 'regular_hours', 'extra_hours', 'regular_pay', 'extra_pay', 'gross_pay', 'taxable_wages', 'ss_employee', 'medicare_employee', 'sinot_employee', 'pr_income_tax', 'contractor_withholding', 'fixed_deductions', 'manual_deduction', 'total_deductions', 'net_pay', 'employer_ss', 'employer_medicare', 'employer_cost', 'vacation_accrued', 'sick_accrued', 'vacation_used', 'sick_used') as $field) {
                 $summary[$key][$field] += (float) ($line[$field] ?? 0);
             }
+            // El saldo es un estado, no un acumulado: conservar el último cierre del trabajador.
+            $summary[$key]['vacation_balance'] = (float) ($line['vacation_balance'] ?? $summary[$key]['vacation_balance']);
+            $summary[$key]['sick_balance'] = (float) ($line['sick_balance'] ?? $summary[$key]['sick_balance']);
         }
         uasort($summary, function ($a, $b) {
             return strcasecmp($a['name'] ?? '', $b['name'] ?? '');
@@ -18053,6 +18062,41 @@ if (!function_exists('cleg_payroll_report_pdf_summary')) {
         $content .= cleg_payroll_report_pdf_text(42, 728, 10, 'Payroll - Documento cerrado / solo consulta', 'F1', '1 1 1');
         $content .= cleg_payroll_report_pdf_text(42, 668, 15, $period_label, 'F2');
         $content .= cleg_payroll_report_pdf_text(42, 650, 10, $report === 'details' ? 'Desglose de payroll y aportes' : 'Resumen contable de payroll', 'F1', '0.31 0.38 0.46');
+
+        if ($report === 'details') {
+            $content .= cleg_payroll_report_pdf_text(42, 622, 8, 'DETALLE POR TRABAJADOR — importes separados para revisión contable', 'F2', '0.04 0.09 0.17');
+            $y = 600;
+            $total_gross = 0;
+            $total_deductions = 0;
+            $total_net = 0;
+            foreach (array_slice($summary, 0, 8) as $worker) {
+                $gross = (float) ($worker['gross_pay'] ?? 0);
+                $deductions = (float) ($worker['total_deductions'] ?? 0);
+                $net = (float) ($worker['net_pay'] ?? 0);
+                $total_gross += $gross;
+                $total_deductions += $deductions;
+                $total_net += $net;
+                $content .= "0.95 0.96 0.98 rg\n42 " . ($y - 8) . " 528 58 re\nf\n";
+                $content .= cleg_payroll_report_pdf_text(50, $y + 38, 9, cleg_payroll_report_pdf_truncate($worker['name'] ?? '', 30), 'F2');
+                $content .= cleg_payroll_report_pdf_text(300, $y + 38, 8, ($worker['worker_type'] ?? '') === 'Employee - Full Payroll' ? 'Empleado' : 'Contratista');
+                $content .= cleg_payroll_report_pdf_text(50, $y + 23, 7, 'Horas: ' . cleg_payroll_format_hours($worker['hours'] ?? 0) . ' | Regular: ' . cleg_payroll_format_hours($worker['regular_hours'] ?? 0) . ' | Extra: ' . cleg_payroll_format_hours($worker['extra_hours'] ?? 0));
+                $content .= cleg_payroll_report_pdf_text(50, $y + 9, 7, 'Bruto: ' . cleg_payroll_money($gross) . ' | Neto: ' . cleg_payroll_money($net) . ' | Deducciones totales: ' . cleg_payroll_money($deductions));
+                $content .= cleg_payroll_report_pdf_text(50, $y - 5, 7, 'SS empleado: ' . cleg_payroll_money($worker['ss_employee'] ?? 0) . ' | Medicare: ' . cleg_payroll_money($worker['medicare_employee'] ?? 0) . ' | SINOT: ' . cleg_payroll_money($worker['sinot_employee'] ?? 0));
+                $content .= cleg_payroll_report_pdf_text(50, $y - 19, 7, 'Income Tax PR: ' . cleg_payroll_money($worker['pr_income_tax'] ?? 0) . ' | Retención 480: ' . cleg_payroll_money($worker['contractor_withholding'] ?? 0) . ' | Otras: ' . cleg_payroll_money((float) ($worker['fixed_deductions'] ?? 0) + (float) ($worker['manual_deduction'] ?? 0))); 
+                $content .= cleg_payroll_report_pdf_text(50, $y - 33, 7, 'Aporte patronal SS: ' . cleg_payroll_money($worker['employer_ss'] ?? 0) . ' | Medicare patronal: ' . cleg_payroll_money($worker['employer_medicare'] ?? 0));
+                $content .= cleg_payroll_report_pdf_text(50, $y - 47, 7, 'Vacaciones: acumuladas ' . cleg_payroll_format_hours($worker['vacation_accrued'] ?? 0) . ' | usadas ' . cleg_payroll_format_hours($worker['vacation_used'] ?? 0) . ' | saldo ' . cleg_payroll_format_hours($worker['vacation_balance'] ?? 0) . ' | Enfermedad saldo ' . cleg_payroll_format_hours($worker['sick_balance'] ?? 0), 'F1', '0.31 0.38 0.46');
+                $y -= 72;
+            }
+            $content .= "0.95 0.96 0.98 rg\n42 " . ($y + 8) . " 528 24 re\nf\n";
+            $content .= cleg_payroll_report_pdf_text(50, $y + 16, 8, 'TOTALES', 'F2');
+            $content .= cleg_payroll_report_pdf_text(300, $y + 16, 8, 'Bruto ' . cleg_payroll_money($total_gross), 'F2');
+            $content .= cleg_payroll_report_pdf_text(410, $y + 16, 8, 'Deducciones ' . cleg_payroll_money($total_deductions), 'F2');
+            $content .= cleg_payroll_report_pdf_text(510, $y + 16, 8, 'Neto ' . cleg_payroll_money($total_net), 'F2');
+            $content .= cleg_payroll_report_pdf_text(42, 66, 8, 'Generado por C&L Payroll. Este documento no es editable y refleja líneas cerradas.', 'F1', '0.31 0.38 0.46');
+            $content .= cleg_payroll_report_pdf_text(42, 51, 8, 'Las vacaciones se muestran por trabajador como acumuladas, usadas y saldo al cierre.', 'F1', '0.31 0.38 0.46');
+            return cleg_payroll_report_pdf_document($content, $logo);
+        }
+
         $y = 620;
         $content .= "0.95 0.96 0.98 rg\n42 {$y} 528 24 re\n";
         $headers = array('Trabajador', 'Tipo', 'Horas', 'Bruto', 'Deducciones', 'Neto');
