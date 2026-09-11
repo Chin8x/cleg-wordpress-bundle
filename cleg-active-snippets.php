@@ -8574,7 +8574,7 @@ if (!function_exists('cleg_admin_requests_table')) {
             $table .= '<tr><td colspan="6">No hay solicitudes registradas.</td></tr>';
             $mobile .= '<article class="cleg-mobile-card"><strong>No hay solicitudes registradas.</strong></article>';
         }
-        return $html . $mobile . '</div>' . $table . '</tbody></table></div></div>';
+        return $mobile . '</div>' . $html . $table . '</tbody></table></div></div>';
     }
 }
 
