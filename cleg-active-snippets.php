@@ -18509,6 +18509,7 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
         $closed_pdf_url = wp_nonce_url(add_query_arg(array(
             'action' => 'cleg_payroll_closed_pdf',
             'payroll_week' => $end,
+            'cleg_pdf_cache' => gmdate('YmdHis'),
         ), admin_url('admin-post.php')), 'cleg_payroll_closed_pdf');
         $close_url = wp_nonce_url(add_query_arg(array(
             'action' => 'cleg_payroll_close',
