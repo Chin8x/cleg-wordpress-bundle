@@ -18091,7 +18091,7 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
                     <a href="<?php echo esc_url(home_url('/payroll-rrhh/')); ?>">Volver a Payroll semanal</a>
                 </form>
                 <section class="cleg-payroll-report-hero">
-                    <div><span><?php echo esc_html($period_label); ?></span><h2>Resumen para contabilidad</h2><p>Basado en lineas cerradas de Payroll. Si un mes esta vacio, no hay cierre registrado en ese rango.</p></div>
+                    <div><span><?php echo esc_html($period_label); ?></span><h2>Resumen para contabilidad</h2><p>Basado en líneas cerradas de Payroll. Si un mes está vacío, no hay cierre registrado en ese rango.</p></div>
                     <div class="cleg-payroll-report-actions">
                         <?php foreach (array('summary' => 'Descargar resumen', 'details' => 'Descargar desglose', '480' => 'Descargar 480', 'employees' => 'Descargar aportes empleados') as $file => $label) : ?>
                             <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('report_file' => $file)), admin_url('admin-post.php')), 'cleg_payroll_reports_export')); ?>"><?php echo esc_html($label); ?></a>
@@ -18102,7 +18102,7 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
                     <article><span>Trabajadores</span><strong><?php echo esc_html((string) $totals['workers']); ?></strong><small><?php echo esc_html((string) $totals['periods']); ?> periodo(s)</small></article>
                     <article><span>Horas</span><strong><?php echo esc_html(cleg_payroll_format_hours($totals['hours'])); ?></strong><small>cerradas</small></article>
                     <article><span>Bruto</span><strong><?php echo esc_html(cleg_payroll_money($totals['gross_pay'])); ?></strong><small>antes de deducciones</small></article>
-                    <article><span>Neto pagado</span><strong><?php echo esc_html(cleg_payroll_money($totals['net_pay'])); ?></strong><small>despues de deducciones</small></article>
+                    <article><span>Neto pagado</span><strong><?php echo esc_html(cleg_payroll_money($totals['net_pay'])); ?></strong><small>después de deducciones</small></article>
                     <article><span>Retenciones</span><strong><?php echo esc_html(cleg_payroll_money($totals['total_deductions'])); ?></strong><small>SS, Medicare, SINOT, PR, 480</small></article>
                     <article><span>Aporte patronal</span><strong><?php echo esc_html(cleg_payroll_money($totals['employer_ss'] + $totals['employer_medicare'])); ?></strong><small>SS + Medicare</small></article>
                 </section>
@@ -42160,6 +42160,20 @@ if (!function_exists('cleg_starter_body_classes')) {
             $classes[] = 'cleg-module-access-login';
         }
 
+        if (!is_admin() && !wp_doing_ajax() && is_page(array(
+            'panel',
+            'admin-horas',
+            'admin-tiempo-real',
+            'admin-dispositivos',
+            'payroll-rrhh',
+            'payroll-reportes',
+            'admin-rrhh',
+            'empleados',
+            'mis-nominas',
+        ))) {
+            $classes[] = 'cleg-page-internal';
+        }
+
         if (get_stylesheet() === 'astra') {
             $classes[] = 'cleg-theme-compat-astra';
         }
@@ -42354,6 +42368,9 @@ if (!function_exists('cleg_starter_print_internal_shell_css')) {
             body .cleg-payroll .button,
             body .cleg-worker-app button,
             body .cleg-worker-app .button{border-radius:999px!important;background:linear-gradient(135deg,var(--cleg-accent) 0%,var(--cleg-accent-2) 100%)!important;color:#fff!important;-webkit-text-fill-color:#fff!important;border:0!important;box-shadow:0 14px 28px rgba(26,108,255,.18)!important}
+            body.cleg-page-internal footer,
+            body.cleg-page-internal .site-footer,
+            body.cleg-page-internal .wp-block-template-part:has(footer){display:none!important}
             body .cleg-page-return{display:none!important}
             @media(max-width:782px){
                 :root{--cleg-shell-width:calc(100vw - 24px)}
