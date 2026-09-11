@@ -18083,7 +18083,7 @@ if (!function_exists('cleg_payroll_report_pdf_summary')) {
         $content .= cleg_payroll_report_pdf_text(452, $y + 7, 8, cleg_payroll_money($total_deductions), 'F2');
         $content .= cleg_payroll_report_pdf_text(530, $y + 7, 8, cleg_payroll_money($total_net), 'F2');
         $content .= cleg_payroll_report_pdf_text(42, 66, 8, 'Generado por C&L Payroll. Este documento no es editable y refleja líneas cerradas.', 'F1', '0.31 0.38 0.46');
-        $content .= cleg_payroll_report_pdf_text(42, 51, 8, 'Conserve el CSV/Excel como respaldo técnico y valide obligaciones contributivas con su asesor.', 'F1', '0.31 0.38 0.46');
+        $content .= cleg_payroll_report_pdf_text(42, 51, 8, 'Documento generado desde líneas cerradas de Payroll para revisión y archivo contable.', 'F1', '0.31 0.38 0.46');
         return cleg_payroll_report_pdf_document($content, $logo);
     }
 }
@@ -18132,6 +18132,38 @@ if (!function_exists('cleg_payroll_reports_pdf_export')) {
     }
 }
 add_action('admin_post_cleg_payroll_reports_pdf', 'cleg_payroll_reports_pdf_export');
+
+if (!function_exists('cleg_payroll_closed_pdf_export')) {
+    function cleg_payroll_closed_pdf_export() {
+        if (!cleg_payroll_can_view()) {
+            wp_die('No autorizado.');
+        }
+        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'cleg_payroll_closed_pdf')) {
+            wp_die('Solicitud no valida.');
+        }
+        list($start, $end) = cleg_payroll_period();
+        $pending = cleg_payroll_pending_entries($start, $end);
+        $closed = cleg_payroll_closed_entries($start, $end);
+        $period_lines = cleg_payroll_period_lines($start, $end);
+        if (!empty($pending) || (empty($closed) && empty($period_lines))) {
+            wp_die('El payroll debe estar cerrado y sin horas pendientes antes de exportar el PDF.');
+        }
+        $lines = cleg_payroll_report_lines($start, $end);
+        if (is_wp_error($lines)) {
+            wp_die(esc_html($lines->get_error_message()));
+        }
+        $period_label = 'Semana cerrada ' . wp_date('m/d/Y', strtotime($start)) . ' - ' . wp_date('m/d/Y', strtotime($end));
+        $pdf = cleg_payroll_report_pdf_summary($period_label, cleg_payroll_report_summary($lines), 'summary');
+        $filename = 'cleg-payroll-cerrado-' . sanitize_file_name($end) . '.pdf';
+        nocache_headers();
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . sanitize_file_name($filename) . '"');
+        header('Content-Length: ' . strlen($pdf));
+        echo $pdf; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+        exit;
+    }
+}
+add_action('admin_post_cleg_payroll_closed_pdf', 'cleg_payroll_closed_pdf_export');
 
 if (!function_exists('cleg_payroll_report_table')) {
     function cleg_payroll_report_table($summary) {
@@ -18224,10 +18256,7 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
                     <div><span><?php echo esc_html($period_label); ?></span><h2>Resumen para contabilidad</h2><p>Basado en líneas cerradas de Payroll. Si un mes está vacío, no hay cierre registrado en ese rango.</p></div>
                     <div class="cleg-payroll-report-actions">
                         <?php foreach (array('summary_pdf' => 'PDF resumen cerrado', 'details_pdf' => 'PDF desglose', '480_pdf' => 'PDF 480', 'employees_pdf' => 'PDF aportes empleados') as $file => $label) : ?>
-                            <a class="is-primary" href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('action' => 'cleg_payroll_reports_pdf', 'report_file' => $file)), admin_url('admin-post.php')), 'cleg_payroll_reports_pdf')); ?>"><?php echo esc_html($label); ?></a>
-                        <?php endforeach; ?>
-                        <?php foreach (array('summary' => 'Descargar resumen', 'details' => 'Descargar desglose', '480' => 'Descargar 480', 'employees' => 'Descargar aportes empleados') as $file => $label) : ?>
-                            <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('report_file' => $file)), admin_url('admin-post.php')), 'cleg_payroll_reports_export')); ?>"><?php echo esc_html($label); ?></a>
+                            <a class="is-primary" download href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('action' => 'cleg_payroll_reports_pdf', 'report_file' => $file)), admin_url('admin-post.php')), 'cleg_payroll_reports_pdf')); ?>"><?php echo esc_html($label); ?></a>
                         <?php endforeach; ?>
                     </div>
                 </section>
@@ -18334,10 +18363,10 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
             $total_extra_hours += (float) ($row['extra_hours'] ?? 0);
         }
 
-        $export_url = wp_nonce_url(add_query_arg(array(
-            'action' => 'cleg_payroll_export',
+        $closed_pdf_url = wp_nonce_url(add_query_arg(array(
+            'action' => 'cleg_payroll_closed_pdf',
             'payroll_week' => $end,
-        ), admin_url('admin-post.php')), 'cleg_payroll_export');
+        ), admin_url('admin-post.php')), 'cleg_payroll_closed_pdf');
         $close_url = wp_nonce_url(add_query_arg(array(
             'action' => 'cleg_payroll_close',
             'payroll_week' => $end,
@@ -18379,13 +18408,12 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                             <?php endforeach; ?>
                         </select>
                     </label>
-                    <a href="<?php echo esc_url(home_url('/payroll-reportes/')); ?>">Reportes contables</a>
                     <?php if ($has_pending_entries) : ?>
                         <span class="cleg-payroll-disabled">Export bloqueado</span>
                     <?php elseif (!$has_closed_payroll && $is_work_week) : ?>
                         <a href="<?php echo esc_url($close_url); ?>">Cerrar payroll</a>
                     <?php else : ?>
-                        <a href="<?php echo esc_url($export_url); ?>"><?php echo esc_html($has_closed_payroll ? 'Exportar Excel cerrado' : 'Exportar Excel'); ?></a>
+                        <a download href="<?php echo esc_url($closed_pdf_url); ?>">Exportar PDF cerrado</a>
                     <?php endif; ?>
                 </form>
 
@@ -18409,7 +18437,7 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                 <?php endif; ?>
 
                 <?php if (isset($_GET['payroll_closed'])) : ?>
-                    <div class="cleg-payroll-notice">Payroll cerrado. Ya puedes exportar el Excel.</div>
+                    <div class="cleg-payroll-notice">Payroll cerrado. Ya puedes exportar el PDF cerrado.</div>
                 <?php endif; ?>
 
                 <?php if (isset($_GET['payroll_rollback'])) : ?>
