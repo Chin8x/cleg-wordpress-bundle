@@ -39859,37 +39859,10 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                     <div class="cleg-proc-attach-grid" aria-label="Adjuntos">
                                         <div class="cleg-proc-attach-slot">
                                             <label class="cleg-proc-attach-action">
-                                                <input type="file" name="reference_images[]" accept="image/*" capture="environment">
-                                                <span class="cleg-proc-attach-icon is-camera" aria-hidden="true"></span>
-                                                <strong>Camara</strong>
-                                                <small>Tomar foto</small>
-                                            </label>
-                                            <div class="cleg-proc-attach-preview" aria-live="polite"></div>
-                                        </div>
-                                        <div class="cleg-proc-attach-slot">
-                                            <label class="cleg-proc-attach-action">
-                                                <input type="file" name="reference_images[]" accept="video/*" capture="environment">
-                                                <span class="cleg-proc-attach-icon is-video" aria-hidden="true"></span>
-                                                <strong>Video</strong>
-                                                <small>Grabar</small>
-                                            </label>
-                                            <div class="cleg-proc-attach-preview" aria-live="polite"></div>
-                                        </div>
-                                        <div class="cleg-proc-attach-slot">
-                                            <label class="cleg-proc-attach-action">
-                                                <input type="file" name="reference_images[]" accept="image/*,video/*" multiple>
-                                                <span class="cleg-proc-attach-icon is-gallery" aria-hidden="true"></span>
-                                                <strong>Galeria</strong>
-                                                <small>Fotos/videos</small>
-                                            </label>
-                                            <div class="cleg-proc-attach-preview" aria-live="polite"></div>
-                                        </div>
-                                        <div class="cleg-proc-attach-slot">
-                                            <label class="cleg-proc-attach-action">
-                                                <input type="file" name="reference_images[]" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar,.7z,.ppt,.pptx,.dwg,.dxf,application/pdf,text/plain,text/csv,application/zip,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" multiple>
+                                                <input type="file" name="reference_images[]" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar,.7z,.ppt,.pptx,.dwg,.dxf" multiple>
                                                 <span class="cleg-proc-attach-icon is-file" aria-hidden="true"></span>
-                                                <strong>Archivos</strong>
-                                                <small>PDF, docs, otros</small>
+                                                <strong>Adjuntar evidencia</strong>
+                                                <small>Fotos, videos, audio o documentos</small>
                                             </label>
                                             <div class="cleg-proc-attach-preview" aria-live="polite"></div>
                                         </div>
