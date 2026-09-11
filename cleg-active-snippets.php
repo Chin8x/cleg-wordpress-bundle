@@ -363,7 +363,7 @@ if (!function_exists('cleg_saas_module_registry')) {
             'employee_center' => array('label' => 'Portal del empleado', 'disableable' => false, 'default_enabled' => true, 'shortcodes' => array('cleg_panel_rrhh', 'cleg_change_pin', 'cleg_employee_center'), 'routes' => array('panel', 'empleados')),
             'hr_core' => array('label' => 'Recursos Humanos', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_admin_rrhh', 'cleg_admin_empleados'), 'routes' => array('admin-rrhh', 'admin-empleados')),
             'onboarding' => array('label' => 'Incorporacion', 'disableable' => true, 'default_enabled' => true),
-            'forms_requests' => array('label' => 'Solicitudes', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_contact', 'cleg_form_hub', 'cleg_admin_solicitudes'), 'routes' => array('formularios', 'admin-solicitudes')),
+            'forms_requests' => array('label' => 'Solicitudes', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_contact', 'cleg_form_hub', 'cleg_admin_solicitudes'), 'routes' => array('admin-solicitudes')),
             'payroll' => array('label' => 'Payroll', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_admin_payroll', 'cleg_admin_payroll_reports', 'cleg_employee_payroll'), 'routes' => array('payroll-rrhh', 'payroll-reportes', 'mis-nominas')),
             'documents' => array('label' => 'Documentos RRHH', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_employee_documents', 'cleg_document_alerts'), 'routes' => array('mis-documentos')),
             'field_ops' => array('label' => 'Operacion en campo', 'disableable' => true, 'default_enabled' => true, 'shortcodes' => array('cleg_admin_horas', 'cleg_admin_tiempo_real', 'cleg_admin_dispositivos', 'cleg_admin_gps_tracking', 'cleg_admin_live_map'), 'routes' => array('admin-horas', 'admin-tiempo-real', 'admin-dispositivos')),
@@ -9844,7 +9844,7 @@ if (!function_exists('cleg_admin_review_filters_form')) {
         $html .= '</select></label>';
 
         if (!empty($employee_options)) {
-            $html .= '<label>Empleado<select name="cleg_employee" data-autofilter="1"><option value="">Todos en esta pestaÃ±a</option>';
+            $html .= '<label>Empleado<select name="cleg_employee" data-autofilter="1"><option value="">Todos en esta pestaña</option>';
 
             foreach ($employee_options as $value => $label) {
                 $html .= '<option value="' . esc_attr($value) . '" ' . selected($employee, $value, false) . '>' . esc_html($label) . '</option>';
@@ -9854,7 +9854,7 @@ if (!function_exists('cleg_admin_review_filters_form')) {
         }
 
         if (!empty($job_options)) {
-            $html .= '<label>Job Site<select name="cleg_job_site" data-autofilter="1"><option value="">Todos en esta pestaÃ±a</option>';
+            $html .= '<label>Job Site<select name="cleg_job_site" data-autofilter="1"><option value="">Todos en esta pestaña</option>';
 
             foreach ($job_options as $name) {
                 $html .= '<option value="' . esc_attr($name) . '" ' . selected($job_site, $name, false) . '>' . esc_html($name) . '</option>';
@@ -12899,7 +12899,7 @@ if (!function_exists('cleg_admin_project_compact_list')) {
             $project_name = cleg_admin_field($site, 'Job Site Name');
             $project_url = cleg_admin_context_url('/admin-job-sites/', array('cleg_project' => $project_name));
             $stats = $project_stats[$project_name] ?? array('employees' => array(), 'week_hours' => 0, 'open' => 0);
-            $html .= '<a class="cleg-project-compact-card" href="' . esc_url($project_url) . '"><div><strong>' . esc_html($project_name ?: 'Sin nombre') . '</strong><span>' . esc_html(cleg_admin_field($site, 'Address', 'Sin direccion')) . '</span></div><div class="cleg-project-compact-meta"><b>' . esc_html(count($stats['employees'] ?? array())) . '</b><small>empleados</small></div><div class="cleg-project-compact-meta"><b>' . esc_html(cleg_admin_hours_label((float) ($stats['week_hours'] ?? 0))) . '</b><small>semana</small></div><i>â€º</i></a>';
+            $html .= '<a class="cleg-project-compact-card" href="' . esc_url($project_url) . '"><div><strong>' . esc_html($project_name ?: 'Sin nombre') . '</strong><span>' . esc_html(cleg_admin_field($site, 'Address', 'Sin direccion')) . '</span></div><div class="cleg-project-compact-meta"><b>' . esc_html(count($stats['employees'] ?? array())) . '</b><small>empleados</small></div><div class="cleg-project-compact-meta"><b>' . esc_html(cleg_admin_hours_label((float) ($stats['week_hours'] ?? 0))) . '</b><small>semana</small></div><i>›</i></a>';
         }
 
         if (empty($sites)) {
@@ -13556,7 +13556,7 @@ if (!function_exists('cleg_admin_absence_calendar')) {
             }
             foreach ($items as $item) {
                 $status_class = ($item['status'] ?? '') === 'Approved' ? 'is-ok' : (($item['status'] ?? '') === 'Rejected' ? 'is-bad' : 'is-warn');
-                $html .= '<article><div><b>' . esc_html($item['employee']) . '</b><small>' . esc_html($item['type']) . ' Â· ' . esc_html($item['details'] ?: 'Sin razon escrita') . '</small></div><span class="cleg-pill ' . esc_attr($status_class) . '">' . esc_html($item['status']) . '</span></article>';
+                $html .= '<article><div><b>' . esc_html($item['employee']) . '</b><small>' . esc_html($item['type']) . ' · ' . esc_html($item['details'] ?: 'Sin razón escrita') . '</small></div><span class="cleg-pill ' . esc_attr($status_class) . '">' . esc_html($item['status']) . '</span></article>';
             }
             $html .= '</section>';
         }
@@ -13838,7 +13838,7 @@ if (!function_exists('cleg_tenant_admin_module_catalog')) {
             'employee_center' => array('label' => 'Portal del empleado', 'description' => 'Espacio del trabajador para panel, documentos, nomina y gestiones propias.', 'owner' => 'Base de la empresa', 'visible' => true),
             'hr_core' => array('label' => 'Recursos Humanos', 'description' => 'Trabajadores, expedientes, documentos, cumplimiento y gestion del personal.', 'owner' => 'Modulo de empresa', 'visible' => true),
             'onboarding' => array('label' => 'Incorporacion', 'description' => 'Alta de empleados, datos iniciales y preparacion de nuevos ingresos.', 'owner' => 'Modulo de empresa', 'visible' => true),
-            'forms_requests' => array('label' => 'Solicitudes', 'description' => 'Formularios internos, ausencias, peticiones y solicitudes del personal.', 'owner' => 'Modulo de empresa', 'visible' => true),
+            'forms_requests' => array('label' => 'Solicitudes', 'description' => 'Módulo antiguo pendiente de sustitución. No usar para el flujo principal.', 'owner' => 'Legacy', 'visible' => false),
             'payroll' => array('label' => 'Payroll', 'description' => 'Calculo, revision, cierre, historial y comprobantes de pago.', 'owner' => 'Modulo de empresa', 'visible' => true),
             'documents' => array('label' => 'Documentos', 'description' => 'Archivo laboral, documentos del empleado, vencimientos y alertas.', 'owner' => 'Modulo de empresa', 'visible' => true),
             'field_ops' => array('label' => 'Operacion en campo', 'description' => 'Horas, asistencia, equipo activo, ubicacion, GPS y trabajo en campo.', 'owner' => 'Modulo de empresa', 'visible' => true),
@@ -13881,7 +13881,7 @@ if (!function_exists('cleg_tenant_admin_module_catalog')) {
             'access_identity' => array('label' => 'Acceso', 'description' => $display['access_identity']['description'], 'route' => '/acceso/', 'owner' => 'Base de la empresa', 'disableable' => false, 'visible' => true, 'shortcodes' => array('cleg_login')),
             'tenant_admin' => array('label' => 'Administracion', 'description' => $display['tenant_admin']['description'], 'route' => '/administracion/', 'owner' => 'Base de la empresa', 'disableable' => false, 'visible' => true, 'shortcodes' => array('cleg_tenant_admin_center')),
             'hr_core' => array('label' => 'Recursos Humanos', 'description' => $display['hr_core']['description'], 'route' => '/admin-rrhh/', 'owner' => 'Modulo de empresa', 'disableable' => true, 'visible' => true, 'shortcodes' => array('cleg_admin_rrhh', 'cleg_admin_empleados')),
-            'forms_requests' => array('label' => 'Solicitudes', 'description' => $display['forms_requests']['description'], 'route' => '/formularios/', 'owner' => 'Modulo de empresa', 'disableable' => true, 'visible' => true, 'shortcodes' => array('cleg_form_hub')),
+            'forms_requests' => array('label' => 'Solicitudes', 'description' => $display['forms_requests']['description'], 'route' => '/admin-solicitudes/', 'owner' => 'Legacy', 'disableable' => true, 'visible' => false, 'shortcodes' => array('cleg_admin_solicitudes')),
             'payroll' => array('label' => 'Payroll', 'description' => $display['payroll']['description'], 'route' => '/payroll-rrhh/', 'owner' => 'Modulo de empresa', 'disableable' => true, 'visible' => true, 'shortcodes' => array('cleg_admin_payroll')),
             'field_ops' => array('label' => 'Operacion en campo', 'description' => $display['field_ops']['description'], 'route' => '/admin-tiempo-real/', 'owner' => 'Modulo de empresa', 'disableable' => true, 'visible' => true, 'shortcodes' => array('cleg_admin_tiempo_real')),
             'procurement_quotes' => array('label' => 'Compras', 'description' => $display['procurement_quotes']['description'], 'route' => '/admin-procurement/', 'owner' => 'Modulo de empresa', 'disableable' => true, 'visible' => true, 'shortcodes' => array('cleg_admin_procurement', 'cleg_admin_recibos')),
@@ -42086,7 +42086,6 @@ if (!function_exists('cleg_starter_required_pages')) {
             'home' => array('slug' => '', 'label' => 'Inicio', 'module' => 'public'),
             'acceso' => array('slug' => 'acceso', 'label' => 'Acceso', 'module' => 'access_identity', 'shortcode' => '[cleg_login]'),
             'panel' => array('slug' => 'panel', 'label' => 'Panel', 'module' => 'employee_center', 'shortcode' => '[cleg_panel_rrhh]'),
-            'formularios' => array('slug' => 'formularios', 'label' => 'Formularios', 'module' => 'forms_requests', 'shortcode' => '[cleg_form_hub]'),
             'admin_rrhh' => array('slug' => 'admin-rrhh', 'label' => 'Recursos Humanos', 'module' => 'hr_core', 'shortcode' => '[cleg_admin_rrhh]'),
             'admin_horas' => array('slug' => 'admin-horas', 'label' => 'Revision de Horas', 'module' => 'field_ops', 'shortcode' => '[cleg_admin_horas]'),
             'admin_tiempo_real' => array('slug' => 'admin-tiempo-real', 'label' => 'Control en Tiempo Real', 'module' => 'field_ops', 'shortcode' => '[cleg_admin_tiempo_real]'),
@@ -43107,7 +43106,7 @@ if (!function_exists('cleg_starter_roles_manager_shortcode')) {
                                                 <input type="checkbox" name="cleg_caps[]" value="<?php echo esc_attr($capability); ?>" data-cleg-cap="<?php echo esc_attr($capability); ?>">
                                                 <span>
                                                     <strong><?php echo esc_html($permission['label']); ?></strong>
-                                                    <small><?php echo esc_html($permission['action']); ?> Â· <?php echo esc_html(isset($permission['level']) ? $permission['level'] : 'Operativo'); ?> Â· <?php echo esc_html($capability); ?></small>
+                                                    <small><?php echo esc_html($permission['action']); ?> · <?php echo esc_html(isset($permission['level']) ? $permission['level'] : 'Operativo'); ?> · <?php echo esc_html($capability); ?></small>
                                                     <?php if (!empty($permission['sensitive'])) : ?><span class="cleg-starter-pill sensitive">Sensible</span><?php endif; ?>
                                                     <?php if (isset($permission['level']) && $permission['level'] === 'Aprobacion') : ?><span class="cleg-starter-pill approval">Aprobacion</span><?php endif; ?>
                                                 </span>
@@ -43196,7 +43195,7 @@ if (!function_exists('cleg_starter_roles_manager_shortcode')) {
                                                                 <input type="checkbox" name="cleg_caps[]" value="<?php echo esc_attr($capability); ?>" data-cleg-cap="<?php echo esc_attr($capability); ?>" <?php checked($role && $role->has_cap($capability)); ?>>
                                                                 <span>
                                                                     <strong><?php echo esc_html($permission['label']); ?></strong>
-                                                                    <small><?php echo esc_html($permission['action']); ?> Â· <?php echo esc_html(isset($permission['level']) ? $permission['level'] : 'Operativo'); ?> Â· <?php echo esc_html($capability); ?></small>
+                                                                    <small><?php echo esc_html($permission['action']); ?> · <?php echo esc_html(isset($permission['level']) ? $permission['level'] : 'Operativo'); ?> · <?php echo esc_html($capability); ?></small>
                                                                     <?php if (!empty($permission['sensitive'])) : ?><span class="cleg-starter-pill sensitive">Sensible</span><?php endif; ?>
                                                                     <?php if (isset($permission['level']) && $permission['level'] === 'Aprobacion') : ?><span class="cleg-starter-pill approval">Aprobacion</span><?php endif; ?>
                                                                 </span>
