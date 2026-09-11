@@ -18240,7 +18240,10 @@ if (!function_exists('cleg_payroll_reports_pdf_export')) {
         $report = isset($_GET['report_file']) ? sanitize_key(wp_unslash($_GET['report_file'])) : 'summary_pdf';
         $base_report = preg_replace('/_pdf$/', '', $report);
         list($start, $end, $period_value, $period_label) = cleg_payroll_report_range($mode, $month, $year);
-        $lines = cleg_payroll_report_lines($start, $end, !empty($period_lines) ? $period_lines : null);
+        $data = cleg_payroll_data($start, $end);
+        $lines = (!is_wp_error($data) && !empty($data))
+            ? cleg_payroll_report_lines_from_data($data, $start, $end)
+            : cleg_payroll_report_lines($start, $end);
         if (is_wp_error($lines)) {
             wp_die(esc_html($lines->get_error_message()));
         }
@@ -18278,7 +18281,10 @@ if (!function_exists('cleg_payroll_closed_pdf_export')) {
         if (!empty($pending) || (empty($closed) && empty($period_lines))) {
             wp_die('El payroll debe estar cerrado y sin horas pendientes antes de exportar el PDF.');
         }
-        $lines = cleg_payroll_report_lines($start, $end);
+        $data = cleg_payroll_data($start, $end);
+        $lines = (!is_wp_error($data) && !empty($data))
+            ? cleg_payroll_report_lines_from_data($data, $start, $end)
+            : cleg_payroll_report_lines($start, $end, $period_lines);
         if (is_wp_error($lines)) {
             wp_die(esc_html($lines->get_error_message()));
         }
