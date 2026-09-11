@@ -17895,6 +17895,51 @@ if (!function_exists('cleg_payroll_report_filtered_lines')) {
     }
 }
 
+if (!function_exists('cleg_payroll_report_lines_from_data')) {
+    function cleg_payroll_report_lines_from_data($data, $start, $end) {
+        $lines = array();
+        foreach ((array) $data as $row) {
+            $gross = (float) ($row['gross_pay'] ?? $row['pay'] ?? 0);
+            $net = (float) ($row['net_pay'] ?? 0);
+            $lines[] = array(
+                'employee_id' => sanitize_text_field((string) ($row['id'] ?? '')),
+                'name' => (string) ($row['name'] ?? ''),
+                'worker_type' => cleg_payroll_default_tax_type($row['tax_type'] ?? ''),
+                'form_type' => (string) ($row['form_type'] ?? ''),
+                'period_start' => $start,
+                'period_end' => $end,
+                'hours' => (float) ($row['hours'] ?? 0),
+                'regular_hours' => (float) ($row['regular_hours'] ?? 0),
+                'extra_hours' => (float) ($row['extra_hours'] ?? 0),
+                'regular_pay' => (float) ($row['regular_pay'] ?? 0),
+                'extra_pay' => (float) ($row['extra_pay'] ?? 0),
+                'gross_pay' => $gross,
+                'taxable_wages' => (float) ($row['taxable_wages'] ?? $gross),
+                'ss_employee' => (float) ($row['social_security_employee'] ?? 0),
+                'medicare_employee' => (float) ($row['medicare_employee'] ?? 0),
+                'sinot_employee' => (float) ($row['sinot_employee'] ?? 0),
+                'pr_income_tax' => (float) ($row['pr_income_tax_withheld'] ?? 0),
+                'contractor_withholding' => (float) ($row['contractor_withholding'] ?? 0),
+                'fixed_deductions' => (float) ($row['fixed_deductions'] ?? 0),
+                'manual_deduction' => (float) ($row['manual_deduction'] ?? 0),
+                'total_deductions' => (float) ($row['total_deductions'] ?? max(0, $gross - $net)),
+                'net_pay' => $net,
+                'employer_ss' => (float) ($row['employer_social_security'] ?? 0),
+                'employer_medicare' => (float) ($row['employer_medicare'] ?? 0),
+                'employer_cost' => (float) ($row['total_employer_cost'] ?? 0),
+                'vacation_accrued' => (float) ($row['pto_vacation_accrued'] ?? 0),
+                'sick_accrued' => (float) ($row['pto_sick_accrued'] ?? 0),
+                'vacation_used' => (float) ($row['pto_vacation_used'] ?? 0),
+                'sick_used' => (float) ($row['pto_sick_used'] ?? 0),
+                'vacation_balance' => (float) ($row['pto_vacation_balance_after'] ?? 0),
+                'sick_balance' => (float) ($row['pto_sick_balance_after'] ?? 0),
+                'status' => (string) ($row['calculation_status'] ?? 'Ready to Pay'),
+            );
+        }
+        return $lines;
+    }
+}
+
 if (!function_exists('cleg_payroll_report_worker_filter')) {
     function cleg_payroll_report_worker_filter($lines, $worker_id) {
         $worker_id = sanitize_text_field((string) $worker_id);
@@ -18034,6 +18079,12 @@ if (!function_exists('cleg_payroll_reports_export')) {
         $report = isset($_GET['report_file']) ? sanitize_key(wp_unslash($_GET['report_file'])) : 'summary';
         list($start, $end, $period_value) = cleg_payroll_report_range($mode, $month, $year);
         $lines = cleg_payroll_report_lines($start, $end, $period_lines);
+        if (empty($lines)) {
+            $data = cleg_payroll_data($start, $end);
+            if (!is_wp_error($data)) {
+                $lines = cleg_payroll_report_lines_from_data($data, $start, $end);
+            }
+        }
         if (is_wp_error($lines)) {
             wp_die(esc_html($lines->get_error_message()));
         }
