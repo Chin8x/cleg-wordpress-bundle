@@ -1,2 +1,2 @@
-cleg-active-snippets.php sha256:8ae3baf7ae8e0da11e266d5c0b01d8928d59651436ce032a0f778c416c2fa614
-Para-WordPress/cleg-active-snippets.php sha256:8ae3baf7ae8e0da11e266d5c0b01d8928d59651436ce032a0f778c416c2fa614
+cleg-active-snippets.php sha256:9d5c627f11e13d71eaec86463c2f5ec39e0a2f12b0c30669d85b15927415deab
+Para-WordPress/cleg-active-snippets.php sha256:9d5c627f11e13d71eaec86463c2f5ec39e0a2f12b0c30669d85b15927415deab
