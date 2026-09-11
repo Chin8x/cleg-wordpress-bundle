@@ -10937,7 +10937,7 @@ if (!function_exists('cleg_admin_mobile_review_cards')) {
                 . '<div class="cleg-mobile-job">' . cleg_admin_job_site_lines_html($group['job_site_segments'] ?? array()) . '</div>'
                 . '<div class="cleg-mobile-facts"><div><small>Dia</small><b>' . esc_html($group['date_label']) . '</b></div><div><small>Jornada</small><b>' . esc_html($group['segments_label']) . '</b></div><div><small>Horas</small><b>' . esc_html(cleg_admin_format_hours($group['hours'])) . '</b></div></div>'
                 . '<div class="cleg-mobile-badges">' . $badge_html . '</div>'
-                . '<details class="cleg-day-segments"' . (cleg_admin_group_has_open_shift($records_in_group) ? ' open' : '') . '><summary>Revisar / cambiar horas</summary>' . cleg_admin_group_segments_html($records_in_group, $job_sites, 'mobile') . '</details>'
+                . '<details class="cleg-day-segments cleg-mobile-review-details"' . (cleg_admin_group_has_open_shift($records_in_group) ? ' open' : '') . '><summary>Revisar jornada <span>Editar y aprobar</span></summary>' . cleg_admin_group_segments_html($records_in_group, $job_sites, 'mobile') . '</details>'
                 . '</article>';
         }
 
@@ -39688,6 +39688,13 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                     <input type="hidden" name="requester" value="<?php echo esc_attr($user->display_name); ?>">
                                     <input type="hidden" name="intake_category" value="Industrial component">
                                     <input type="hidden" name="urgency_reason" value="Cotizacion requerida pronto">
+                                    <nav class="cleg-proc-form-steps" aria-label="Pasos de la solicitud">
+                                        <button type="button" class="is-active" data-proc-step-link="1">1. Necesidad</button>
+                                        <button type="button" data-proc-step-link="2">2. Entrega</button>
+                                        <button type="button" data-proc-step-link="3">3. Detalles</button>
+                                    </nav>
+                                    <p class="cleg-proc-step-status" data-proc-step-status aria-live="polite">Paso 1 de 3: describe lo que necesitas.</p>
+                                    <div class="cleg-proc-form-step is-active" data-proc-form-step="1">
                                     <label>Proyecto
                                         <select name="project" required>
                                             <option>Argos Dorado Plant</option>
@@ -39721,6 +39728,9 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                             </select>
                                         </label>
                                     </div>
+                                    <button type="button" class="cleg-proc-step-next cleg-proc-btn" data-proc-step-next="2">Continuar</button>
+                                    </div>
+                                    <div class="cleg-proc-form-step" data-proc-form-step="2" hidden>
                                     <div class="cleg-proc-two">
                                         <label>Cotizacion lista para
                                             <input type="date" name="quote_due_date" required>
@@ -39756,6 +39766,9 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                         <label><input type="radio" name="substitute" value="Si" checked><span>Si</span></label>
                                         <label><input type="radio" name="substitute" value="No"><span>No</span></label>
                                     </fieldset>
+                                    <div class="cleg-proc-step-actions"><button type="button" class="cleg-proc-step-back cleg-proc-btn is-secondary" data-proc-step-back="1">Atrás</button><button type="button" class="cleg-proc-step-next cleg-proc-btn" data-proc-step-next="3">Continuar</button></div>
+                                    </div>
+                                    <div class="cleg-proc-form-step" data-proc-form-step="3" hidden>
                                     <label>Marca / modelo si existe
                                         <input type="text" name="preferred_brand_model" placeholder="IFM, Siemens, Wago, Fortinet, modelo o N/A">
                                     </label>
@@ -39811,7 +39824,8 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                             <div class="cleg-proc-attach-preview" aria-live="polite"></div>
                                         </div>
                                     </div>
-                                    <button class="cleg-proc-btn" type="submit">Guardar solicitud</button>
+                                    <div class="cleg-proc-step-actions"><button type="button" class="cleg-proc-step-back cleg-proc-btn is-secondary" data-proc-step-back="2">Atrás</button><button class="cleg-proc-btn" type="submit">Enviar requisición</button></div>
+                                    </div>
                                 </form>
                             </div>
                         </aside>
@@ -41407,6 +41421,50 @@ if (!function_exists('cleg_procurement_upload_preview_script')) {
         return <<<'HTML'
         <script id="cleg-procurement-upload-preview">
         (function(){
+            var stepLabels = {1:"describe lo que necesitas",2:"define entrega y prioridad",3:"agrega detalles opcionales"};
+            function syncRequestStep(form, number){
+                if (!form) return;
+                var current = String(number || 1);
+                form.querySelectorAll("[data-proc-form-step]").forEach(function(step){
+                    var active = step.getAttribute("data-proc-form-step") === current;
+                    step.hidden = !active;
+                    step.classList.toggle("is-active", active);
+                    step.querySelectorAll("input,select,textarea").forEach(function(control){ control.disabled = !active; });
+                });
+                form.querySelectorAll("[data-proc-step-link]").forEach(function(link){
+                    var active = link.getAttribute("data-proc-step-link") === current;
+                    link.classList.toggle("is-active", active);
+                    link.setAttribute("aria-current", active ? "step" : "false");
+                });
+                var status = form.querySelector("[data-proc-step-status]");
+                if (status) status.textContent = "Paso " + current + " de 3: " + stepLabels[current] + ".";
+            }
+            function initRequestWizard(){
+                document.querySelectorAll(".cleg-proc-request-form form").forEach(function(form){
+                    if (form.getAttribute("data-proc-wizard-ready") === "1") return;
+                    form.setAttribute("data-proc-wizard-ready", "1");
+                    syncRequestStep(form, 1);
+                    form.addEventListener("click", function(event){
+                        var next = event.target.closest("[data-proc-step-next]");
+                        var back = event.target.closest("[data-proc-step-back]");
+                        var link = event.target.closest("[data-proc-step-link]");
+                        var target = next ? next.getAttribute("data-proc-step-next") : (back ? back.getAttribute("data-proc-step-back") : (link ? link.getAttribute("data-proc-step-link") : ""));
+                        if (!target) return;
+                        event.preventDefault();
+                        var active = form.querySelector('[data-proc-form-step].is-active');
+                        if (next && active && !active.querySelector("input,select,textarea").closest("form").reportValidity()) return;
+                        syncRequestStep(form, target);
+                        var heading = form.querySelector('[data-proc-form-step="' + target + '"]');
+                        if (heading) heading.scrollIntoView({behavior:"smooth",block:"start"});
+                    });
+                });
+            }
+            document.addEventListener("submit", function(event){
+                var form = event.target.closest(".cleg-proc-request-form form");
+                if (!form) return;
+                form.querySelectorAll("[data-proc-form-step] input,[data-proc-form-step] select,[data-proc-form-step] textarea").forEach(function(control){ control.disabled = false; });
+            }, true);
+            if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initRequestWizard, {once:true}); else initRequestWizard();
             function syncInputFiles(input, files){
                 if (!input) return false;
                 try {
