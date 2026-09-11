@@ -30799,7 +30799,7 @@ if (!function_exists('cleg_command_center_styles')) {
             }
             .cleg-command-grid {
                 display: grid;
-                grid-template-columns: repeat(4, minmax(0, 1fr));
+                grid-template-columns: repeat(3, minmax(260px, 1fr));
                 gap: clamp(12px, 1.6vw, 18px);
             }
             .cleg-command-card {
@@ -30854,7 +30854,7 @@ if (!function_exists('cleg_command_center_styles')) {
                 writing-mode: horizontal-tb;
                 text-orientation: mixed;
                 word-break: normal;
-                overflow-wrap: break-word;
+                overflow-wrap: normal;
                 hyphens: none;
             }
             .cleg-command-card small {
@@ -30866,7 +30866,7 @@ if (!function_exists('cleg_command_center_styles')) {
             }
             .cleg-command-card strong {
                 color: #fff;
-                font-size: clamp(25px, 2.55vw, 36px);
+                font-size: clamp(25px, 2.25vw, 34px);
                 line-height: 1.04;
                 letter-spacing: 0;
             }
@@ -31132,7 +31132,7 @@ if (!function_exists('cleg_command_center_styles')) {
             body .cleg-command-center-v2 .cleg-command-grid {
                 width: 100% !important;
                 max-width: 100% !important;
-                grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+                grid-template-columns: repeat(3, minmax(280px, 1fr)) !important;
                 gap: clamp(18px, 2vw, 24px) !important;
                 align-items: stretch !important;
             }
@@ -31142,11 +31142,11 @@ if (!function_exists('cleg_command_center_styles')) {
                 justify-content: flex-end !important;
             }
             body .cleg-command-center-v2 .cleg-command-card strong {
-                font-size: clamp(28px, 2.85vw, 40px) !important;
+                font-size: clamp(26px, 2.25vw, 34px) !important;
                 line-height: 1.04 !important;
                 max-width: 100% !important;
                 word-break: normal !important;
-                overflow-wrap: break-word !important;
+                overflow-wrap: normal !important;
                 hyphens: none !important;
             }
             body .cleg-command-center-v2 .cleg-command-card p {
@@ -31251,7 +31251,7 @@ if (!function_exists('cleg_command_center_styles')) {
                     font-size: clamp(27px, 8vw, 34px);
                     line-height: 1.05;
                     word-break: normal;
-                    overflow-wrap: break-word;
+                    overflow-wrap: normal;
                     hyphens: none;
                 }
                 body .cleg-command-center-v2 .cleg-command-card {
@@ -31276,7 +31276,7 @@ if (!function_exists('cleg_command_center_styles')) {
                     padding: 22px 24px;
                 }
                 .cleg-command-grid {
-                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    grid-template-columns: repeat(3, minmax(260px, 1fr));
                 }
                 .cleg-command-card {
                     min-height: 220px;
