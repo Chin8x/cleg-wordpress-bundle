@@ -79,6 +79,13 @@ if (!function_exists('cleg_secure_config_map')) {
             'workspace_agent_api_token' => 'CLEG_WORKSPACE_AGENT_API_TOKEN',
             'workspace_agent_web_sync_endpoint' => 'CLEG_WORKSPACE_AGENT_WEB_SYNC_ENDPOINT',
             'workspace_agent_purchasing_endpoint' => 'CLEG_WORKSPACE_AGENT_PURCHASING_ENDPOINT',
+            'payroll_review_phone' => 'CLEG_PAYROLL_REVIEW_PHONE',
+            'payroll_review_email' => 'CLEG_PAYROLL_REVIEW_EMAIL',
+            'payroll_openwa_base_url' => 'CLEG_PAYROLL_OPENWA_BASE_URL',
+            'payroll_openwa_api_key' => 'CLEG_PAYROLL_OPENWA_API_KEY',
+            'payroll_openwa_session_id' => 'CLEG_PAYROLL_OPENWA_SESSION_ID',
+            'payroll_review_hour' => 'CLEG_PAYROLL_REVIEW_HOUR',
+            'payroll_review_minute' => 'CLEG_PAYROLL_REVIEW_MINUTE',
         );
     }
 }
@@ -19234,6 +19241,90 @@ CSS;
     }
 }
 
+if (!function_exists('cleg_payroll_daily_review_tick')) {
+    function cleg_payroll_daily_review_tick() {
+        if (!cleg_payroll_ready()) {
+            return;
+        }
+
+        $now = new DateTimeImmutable('now', cleg_payroll_timezone());
+        $hour = absint(function_exists('cleg_secure_config_get') ? cleg_secure_config_get('payroll_review_hour', 18) : 18);
+        $minute = absint(function_exists('cleg_secure_config_get') ? cleg_secure_config_get('payroll_review_minute', 0) : 0);
+        $current_minutes = ((int) $now->format('H') * 60) + (int) $now->format('i');
+        $scheduled_minutes = ($hour * 60) + $minute;
+        if ($current_minutes < $scheduled_minutes) {
+            return;
+        }
+
+        $date = $now->format('Y-m-d');
+        $start = cleg_payroll_airtable_datetime($date, '00:00:00');
+        $end = cleg_payroll_airtable_datetime($date, '23:59:59');
+        $clock_in = cleg_payroll_effective_clock_in_formula();
+        $formula = "AND(IS_AFTER({$clock_in},'{$start}'),IS_BEFORE({$clock_in},'{$end}'))";
+        $records = cleg_payroll_records(CLEG_AIRTABLE_TIME_TABLE, array('filterByFormula' => $formula));
+        if (is_wp_error($records) || empty($records)) {
+            return;
+        }
+
+        $pending = 0;
+        foreach ($records as $record) {
+            if (strtolower(trim(cleg_payroll_field($record, 'Approval Status'))) !== 'payroll closed') {
+                $pending++;
+            }
+        }
+
+        $state = $pending > 0 ? 'pending' : 'closed';
+        $key = 'cleg_payroll_daily_review_' . $date;
+        $previous = get_option($key, array());
+        if (($previous['state'] ?? '') === $state) {
+            return;
+        }
+
+        $review_url = home_url('/panel/');
+        $date_label = date_i18n('d/m/Y', strtotime($date));
+        $message = $pending > 0
+            ? 'C&L Payroll: quedan ' . $pending . ' jornada(s) del ' . $date_label . ' por cerrar. Revisa: ' . $review_url
+            : 'C&L Payroll: las ' . count($records) . ' jornada(s) del ' . $date_label . ' estan cerradas y listas para revision/aprobacion. Revisa: ' . $review_url;
+
+        $sent_whatsapp = false;
+        $base = trim((string) (function_exists('cleg_secure_config_get') ? cleg_secure_config_get('payroll_openwa_base_url', '') : ''));
+        $api_key = trim((string) (function_exists('cleg_secure_config_get') ? cleg_secure_config_get('payroll_openwa_api_key', '') : ''));
+        $session = trim((string) (function_exists('cleg_secure_config_get') ? cleg_secure_config_get('payroll_openwa_session_id', '') : ''));
+        $phone = preg_replace('/[^0-9]/', '', (string) (function_exists('cleg_secure_config_get') ? cleg_secure_config_get('payroll_review_phone', '') : ''));
+        if ($base !== '' && $api_key !== '' && $session !== '' && $phone !== '') {
+            $response = wp_remote_post(rtrim($base, '/') . '/api/sessions/' . rawurlencode($session) . '/messages/send-text', array(
+                'timeout' => 15,
+                'headers' => array('X-API-Key' => $api_key, 'Content-Type' => 'application/json'),
+                'body' => wp_json_encode(array('chatId' => $phone . '@c.us', 'text' => $message)),
+            ));
+            $sent_whatsapp = !is_wp_error($response) && (int) wp_remote_retrieve_response_code($response) >= 200 && (int) wp_remote_retrieve_response_code($response) < 300;
+        }
+
+        $email = sanitize_email((string) (function_exists('cleg_secure_config_get') ? cleg_secure_config_get('payroll_review_email', '') : ''));
+        $sent_email = $email !== '' ? (bool) wp_mail($email, 'C&L Payroll - Revision diaria ' . $date_label, $message) : false;
+        if (!$sent_whatsapp && !$sent_email) {
+            update_option($key, array('state' => 'error', 'attempted_at' => current_time('mysql')), false);
+            return;
+        }
+
+        update_option($key, array('state' => $state, 'sent_at' => current_time('mysql'), 'whatsapp' => $sent_whatsapp, 'email' => $sent_email, 'opened' => count($records), 'pending' => $pending), false);
+    }
+}
+
+if (!function_exists('cleg_payroll_daily_review_schedule')) {
+    function cleg_payroll_daily_review_schedule($schedules) {
+        $schedules['cleg_every_15_minutes'] = array('interval' => 15 * MINUTE_IN_SECONDS, 'display' => 'Cada 15 minutos - CLEG Payroll');
+        return $schedules;
+    }
+}
+
+add_filter('cron_schedules', 'cleg_payroll_daily_review_schedule');
+add_action('init', function () {
+    if (!wp_next_scheduled('cleg_payroll_daily_review_tick')) {
+        wp_schedule_event(time() + 300, 'cleg_every_15_minutes', 'cleg_payroll_daily_review_tick');
+    }
+}, 20);
+add_action('cleg_payroll_daily_review_tick', 'cleg_payroll_daily_review_tick');
 add_action('init', 'cleg_payroll_update_rates');
 add_action('admin_post_cleg_payroll_close', 'cleg_payroll_close');
 add_action('admin_post_cleg_payroll_rollback_previous_week', 'cleg_payroll_rollback_previous_week');
