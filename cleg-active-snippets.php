@@ -18341,11 +18341,9 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
                     <a href="<?php echo esc_url(home_url('/payroll-rrhh/')); ?>">Volver a Payroll semanal</a>
                 </form>
                 <section class="cleg-payroll-report-hero">
-                    <div><span><?php echo esc_html($period_label); ?></span><h2>Resumen para contabilidad</h2><p>Basado en líneas cerradas de Payroll. Si un mes está vacío, no hay cierre registrado en ese rango.</p></div>
+                    <div><span><?php echo esc_html($period_label); ?></span><h2>Resumen para contabilidad</h2><p>El PDF respeta los filtros seleccionados: periodo, tipo de trabajador y trabajador individual.</p></div>
                     <div class="cleg-payroll-report-actions">
-                        <?php foreach (array('summary_pdf' => 'PDF resumen cerrado', 'details_pdf' => 'PDF desglose', '480_pdf' => 'PDF 480', 'employees_pdf' => 'PDF aportes empleados') as $file => $label) : ?>
-                            <a class="is-primary" download href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('action' => 'cleg_payroll_reports_pdf', 'report_file' => $file)), admin_url('admin-post.php')), 'cleg_payroll_reports_pdf')); ?>"><?php echo esc_html($label); ?></a>
-                        <?php endforeach; ?>
+                        <a class="is-primary cleg-payroll-single-download" download href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('action' => 'cleg_payroll_reports_pdf', 'report_file' => 'details_pdf')), admin_url('admin-post.php')), 'cleg_payroll_reports_pdf')); ?>">Descargar PDF</a>
                     </div>
                 </section>
                 <section class="cleg-payroll-report-kpis">
@@ -18379,8 +18377,9 @@ body .cleg-payroll .cleg-payroll-report-hero{width:min(1320px,calc(100% - 24px))
 body .cleg-payroll .cleg-payroll-report-hero span{display:block;color:#f5a35c;font-size:12px;font-weight:1000;text-transform:uppercase;letter-spacing:.08em}
 body .cleg-payroll .cleg-payroll-report-hero h2{margin:4px 0 6px;color:#fff;font-size:30px;line-height:1.05}
 body .cleg-payroll .cleg-payroll-report-hero p{margin:0;color:#dce8f4;font-weight:750}
-body .cleg-payroll .cleg-payroll-report-actions{display:grid;grid-template-columns:repeat(2,minmax(170px,1fr));gap:10px}
+body .cleg-payroll .cleg-payroll-report-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px}
 body .cleg-payroll .cleg-payroll-report-actions a{background:#fff;color:#06182d!important;-webkit-text-fill-color:#06182d!important}
+body .cleg-payroll .cleg-payroll-single-download{min-width:240px;text-align:center}
 body .cleg-payroll .cleg-payroll-report-kpis{width:min(1320px,calc(100% - 24px));margin:0 auto 16px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
 body .cleg-payroll .cleg-payroll-report-kpis article{min-height:110px;display:grid;align-content:center;gap:5px;border:1px solid rgba(6,24,45,.12);border-radius:18px;background:#fff;padding:16px;text-align:center;box-shadow:0 14px 34px rgba(6,24,45,.06)}
 body .cleg-payroll .cleg-payroll-report-kpis span{color:#516579;font-size:11px;font-weight:1000;text-transform:uppercase;letter-spacing:.06em}
