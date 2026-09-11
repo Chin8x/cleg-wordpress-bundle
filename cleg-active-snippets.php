@@ -8423,7 +8423,7 @@ if (!function_exists('cleg_admin_request_detail_summary')) {
             'day' => $day,
             'start' => $start !== '' ? $start : $day,
             'end' => $end !== '' ? $end : $day,
-            'reason' => $reason !== '' ? $reason : 'Sin razon escrita',
+            'reason' => $reason !== '' ? $reason : 'Sin razón escrita',
         );
     }
 }
@@ -11776,7 +11776,7 @@ if (!function_exists('cleg_admin_tiempo_real_shortcode')) {
 
 if (!function_exists('cleg_admin_dispositivos_shortcode')) {
     function cleg_admin_dispositivos_shortcode() {
-        $html = cleg_admin_page_open('devices', 'Auditoria de dispositivos', 'Detecta moviles usados por mas de un trabajador.');
+        $html = cleg_admin_page_open('devices', 'Auditoría de dispositivos', 'Detecta móviles usados por más de un trabajador.');
 
         if (strpos($html, 'cleg-admin-empty') !== false) {
             return $html;
@@ -11807,7 +11807,7 @@ if (!function_exists('cleg_admin_dispositivos_shortcode')) {
             return count($b['users']) <=> count($a['users']);
         });
 
-        $html .= '<div class="cleg-panel"><h2>Moviles detectados</h2><div class="cleg-table-wrap"><table><thead><tr><th>Riesgo</th><th>Device ID</th><th>Usuarios</th><th>Usos</th><th>Ultimo Job Site</th></tr></thead><tbody>';
+        $html .= '<div class="cleg-panel"><h2>Móviles detectados</h2><div class="cleg-table-wrap"><table><thead><tr><th>Riesgo</th><th>Device ID</th><th>Usuarios</th><th>Usos</th><th>Último Job Site</th></tr></thead><tbody>';
 
         foreach ($devices as $device => $info) {
             $users = array_keys($info['users']);
@@ -13015,7 +13015,7 @@ if (!function_exists('cleg_admin_job_site_form')) {
             . '<div class="cleg-geofence-picker" data-map-id="' . esc_attr($map_id) . '" data-lat="' . esc_attr($lat) . '" data-lng="' . esc_attr($lng) . '" data-radius="' . esc_attr($radius) . '">'
             . '<div class="cleg-geofence-map" id="' . esc_attr($map_id) . '"><div class="cleg-geofence-center-pin" aria-hidden="true"></div></div>'
             . '<div class="cleg-geofence-selected" aria-live="polite"><strong>Centro seleccionado</strong><span>Selecciona un punto en el mapa o arrastra el pin.</span></div>'
-            . '<div class="cleg-geofence-toolbar"><button type="button" class="cleg-geofence-current">Usar mi ubicacion</button><span>Haz click en el mapa o arrastra el pin para corregir el centro.</span></div>'
+            . '<div class="cleg-geofence-toolbar"><button type="button" class="cleg-geofence-current">Usar mi ubicación</button><span>Haz clic en el mapa o arrastra el pin para corregir el centro.</span></div>'
             . '<div class="cleg-geofence-coords"><label>Latitud<input class="cleg-geofence-lat" name="job_site_latitude" inputmode="decimal" value="' . esc_attr($lat) . '" placeholder="18.441664"></label><label>Longitud<input class="cleg-geofence-lng" name="job_site_longitude" inputmode="decimal" value="' . esc_attr($lng) . '" placeholder="-66.181840"></label></div>'
             . '</div>'
             . '<label>Status<select name="job_site_status"><option value="Active" ' . selected($status, 'Active', false) . '>Active</option><option value="Inactive" ' . selected($status, 'Inactive', false) . '>Inactive</option></select></label>'
@@ -18052,7 +18052,10 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
         $totals = cleg_payroll_report_totals($summary);
         $month_options = cleg_payroll_month_options($month);
         $year_options = cleg_payroll_report_year_options($year);
-        $export_base = array('action' => 'cleg_payroll_reports_export', 'report_mode' => $mode, 'report_month' => $month, 'report_year' => $year, 'worker_type' => $type);
+        $export_base = array('action' => 'cleg_payroll_reports_export', 'report_mode' => $mode, 'report_year' => $year, 'worker_type' => $type);
+        if ($mode !== 'year') {
+            $export_base['report_month'] = $month;
+        }
 
         ob_start();
         ?>
@@ -29591,7 +29594,7 @@ function cleg17_admin_gps_tracking_shortcode() {
                     <button type="button" data-filter="old">Vieja</button>
                     <button type="button" data-filter="missing">Sin GPS</button>
                 </div>
-                <button type="button" class="cleg17-gps-toggle-points is-active" data-show-points="1">Ocultar todas las senales</button>
+                <button type="button" class="cleg17-gps-toggle-points is-active" data-show-points="1">Ocultar todas las señales</button>
                 <button type="button" class="cleg17-gps-fit-all">Ver todos</button>
                 <button type="button" class="cleg17-gps-refresh">Actualizar</button>
             </div>
@@ -29618,7 +29621,7 @@ function cleg17_admin_gps_tracking_shortcode() {
                 <div class="cleg17-gps-list"></div>
                 <div class="cleg17-gps-detail">
                     <h4>Selecciona un trabajador</h4>
-                    <p class="cleg17-gps-status">Aqui se muestra la ultima senal, precision y recorrido del dia.</p>
+                    <p class="cleg17-gps-status">Aquí se muestra la última señal, precisión y recorrido del día.</p>
                 </div>
             </aside>
         </div>
@@ -29989,12 +29992,12 @@ function cleg17_admin_gps_tracking_shortcode() {
                 return;
             }
             listEl.innerHTML = workers.map(function (worker) {
-                var last = worker.latest ? worker.latest.time : 'Sin senal';
+                var last = worker.latest ? worker.latest.time : 'Sin señal';
                 var ago = worker.minutes_ago === null || worker.minutes_ago === undefined ? '' : ' - hace ' + worker.minutes_ago + ' min';
                 var lastType = worker.latest ? pointLabel(worker.latest) + ' ' : '';
                 return '<button type="button" class="cleg17-gps-worker ' + (worker.key === state.selected ? 'is-active' : '') + '" data-worker="' + esc(worker.key) + '">' +
                     '<span class="cleg17-gps-worker-mainline"><span class="cleg17-gps-worker-name">' + esc(worker.name) + '</span><span class="cleg17-gps-worker-status ' + worker.status + '">' + statusLabel(worker.status) + '</span></span>' +
-                    '<span class="cleg17-gps-worker-meta">' + esc(worker.project || 'Sin proyecto') + ' - Ultima senal: ' + esc(lastType + last) + esc(ago) + ' - ' + esc(worker.ping_count || 0) + ' senales</span>' +
+                    '<span class="cleg17-gps-worker-meta">' + esc(worker.project || 'Sin proyecto') + ' - Última señal: ' + esc(lastType + last) + esc(ago) + ' - ' + esc(worker.ping_count || 0) + ' señales</span>' +
                     '</button>';
             }).join('');
         }
@@ -30080,7 +30083,7 @@ function cleg17_admin_gps_tracking_shortcode() {
             ) : '';
 
             detailEl.innerHTML = '<h4>' + esc(worker.name) + '</h4>' +
-                '<p class="cleg17-gps-status">' + esc(worker.project || '-') + ' - ' + statusLabel(worker.status) + ' - ' + (total ? esc(total + ' senales') : 'Sin senales') + '</p>' +
+                '<p class="cleg17-gps-status">' + esc(worker.project || '-') + ' - ' + statusLabel(worker.status) + ' - ' + (total ? esc(total + ' señales') : 'Sin señales') + '</p>' +
                 jump +
                 '<div class="cleg17-gps-route">' + (routeItems || '<span class="cleg17-gps-status">No hay recorrido para esta fecha.</span>') + '</div>';
         }
@@ -30209,7 +30212,7 @@ function cleg17_admin_gps_tracking_shortcode() {
                 }
                 togglePointsEl.classList.toggle('is-active', state.showAllPoints);
                 togglePointsEl.setAttribute('data-show-points', state.showAllPoints ? '1' : '0');
-                togglePointsEl.textContent = state.showAllPoints ? 'Ocultar todas las senales' : 'Ver todas las senales';
+                togglePointsEl.textContent = state.showAllPoints ? 'Ocultar todas las señales' : 'Ver todas las señales';
                 renderAll();
                 if (state.map) {
                     setTimeout(function () { state.map.invalidateSize(); }, 120);
