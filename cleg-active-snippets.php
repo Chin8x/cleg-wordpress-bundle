@@ -22813,6 +22813,7 @@ if (!function_exists('cleg_employee_documents_shortcode')) {
                 </header>
 
                 <?php if ($is_employee) : ?>
+                    <?php if ($latest_line) : ?>
                     <div class="simple-paystub employee">
                         <div class="stub-head">
                             <div><small>Payroll mas reciente</small><strong><?php echo esc_html($latest_period !== '' ? $latest_period : 'Sin cierre aun'); ?></strong></div>
@@ -22828,12 +22829,19 @@ if (!function_exists('cleg_employee_documents_shortcode')) {
                         <span><small>Vacaciones disponibles</small><strong><?php echo esc_html(number_format(cleg_docs_number(cleg_docs_raw($employee, 'PTO Vacation Balance Hours'), 0), 2)); ?> h</strong></span>
                         <span><small>Enfermedad disponible</small><strong><?php echo esc_html(number_format(cleg_docs_number(cleg_docs_raw($employee, 'PTO Sick Balance Hours'), 0), 2)); ?> h</strong></span>
                     </div>
+                    <?php else : ?>
+                    <div class="empty"><h2>Payroll aún no publicado</h2><p>La oficina todavía no ha publicado un cierre de nómina para tu cuenta.</p></div>
+                    <?php endif; ?>
                 <?php else : ?>
+                    <?php if ((float) $payroll_summary['hours'] > 0 || (float) $payroll_summary['net_pay'] > 0 || (float) $payroll_summary['contractor_withholding'] > 0) : ?>
                     <div class="contractor-simple">
                         <span><small>Total cobrado</small><strong>$<?php echo esc_html(number_format((float) $payroll_summary['net_pay'], 2)); ?></strong></span>
                         <span><small>Deduccion <?php echo esc_html(number_format($retention_percent, 2)); ?>%</small><strong>$<?php echo esc_html(number_format((float) $payroll_summary['contractor_withholding'], 2)); ?></strong></span>
                         <span><small>Horas totales</small><strong><?php echo esc_html(number_format((float) $payroll_summary['hours'], 2)); ?> h</strong></span>
                     </div>
+                    <?php else : ?>
+                    <div class="empty"><h2>Pagos aún no publicados</h2><p>La oficina todavía no ha publicado pagos o horas para tu cuenta.</p></div>
+                    <?php endif; ?>
                     <div class="w9-simple">
                         <small>W-9</small>
                         <?php if (!empty($w9_file['url'])) : ?>
