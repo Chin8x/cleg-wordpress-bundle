@@ -3606,7 +3606,7 @@ if (!function_exists('cleg_app_render_worker')) {
 
             <header class="cleg-worker-topbar">
                 <div>
-                    <div class="cleg-app-brand-block">' . cleg_vantrexor_logo_markup('mark') . '<p class="cleg-app-kicker">Vantrexor</p></div>
+                    <div class="cleg-app-brand-block"><?php echo cleg_vantrexor_logo_markup('mark'); ?><p class="cleg-app-kicker">Vantrexor</p></div>
                     <h2><?php echo esc_html($display_name); ?></h2>
                 </div>
                 <details class="cleg-worker-menu">
