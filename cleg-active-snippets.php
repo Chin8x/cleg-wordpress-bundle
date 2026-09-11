@@ -3802,6 +3802,7 @@ if (!function_exists('cleg_app_render_worker')) {
                         <span>Foto o PDF</span>
                         <input type="file" name="receipt_file" accept="image/*,application/pdf" capture="environment" required>
                         <small>Recibo claro, completo y legible.</small>
+                        <small data-worker-receipt-file-status aria-live="polite">Ningún archivo seleccionado.</small>
                     </label>
 
                     <div class="cleg-absence-range">
@@ -3845,6 +3846,7 @@ if (!function_exists('cleg_app_render_worker')) {
                     </label>
 
                     <button class="cleg-small-action cleg-worker-submit-action" type="submit">Enviar recibo</button>
+                    <p class="cleg-clock-message" data-worker-receipt-summary role="status" aria-live="polite"></p>
                     <p class="cleg-clock-message" data-worker-receipt-message role="status" aria-live="polite"></p>
                 </form>
             </aside>
@@ -5074,7 +5076,34 @@ if (!function_exists('cleg_app_script')) {
 
                 if (receiptForm) {
                     const receiptMessage = receiptForm.querySelector('[data-worker-receipt-message]');
+                    const receiptSummary = receiptForm.querySelector('[data-worker-receipt-summary]');
+                    const receiptFile = receiptForm.querySelector('input[name="receipt_file"]');
                     const receiptDate = receiptForm.querySelector('[data-receipt-date]');
+                    const receiptTotal = receiptForm.querySelector('input[name="purchase_total"]');
+                    const receiptJob = receiptForm.querySelector('select[name="purchase_job_site"]');
+                    const receiptCategory = receiptForm.querySelector('select[name="purchase_category"]');
+                    const receiptFileStatus = receiptForm.querySelector('[data-worker-receipt-file-status]');
+                    const updateReceiptSummary = function () {
+                        const file = receiptFile && receiptFile.files && receiptFile.files[0];
+                        if (receiptFileStatus) {
+                            receiptFileStatus.textContent = file ? 'Archivo: ' + file.name + ' (' + Math.ceil(file.size / 1024) + ' KB)' : 'Ningún archivo seleccionado.';
+                        }
+                        if (receiptSummary) {
+                            const values = [
+                                file ? file.name : 'sin archivo',
+                                receiptDate && receiptDate.value ? receiptDate.value : 'sin fecha',
+                                receiptTotal && receiptTotal.value ? '$' + receiptTotal.value : 'sin total',
+                                receiptJob && receiptJob.value ? receiptJob.value : 'sin proyecto',
+                                receiptCategory && receiptCategory.value ? receiptCategory.value : 'sin categoría'
+                            ];
+                            receiptSummary.textContent = 'Revisión: ' + values.join(' · ');
+                        }
+                    };
+                    [receiptFile, receiptDate, receiptTotal, receiptJob, receiptCategory].forEach(function (control) {
+                        if (control) control.addEventListener('change', updateReceiptSummary);
+                        if (control && control.type !== 'file') control.addEventListener('input', updateReceiptSummary);
+                    });
+                    updateReceiptSummary();
                     receiptForm.addEventListener('submit', async function (event) {
                         event.preventDefault();
                         const submit = receiptForm.querySelector('button[type="submit"]');
