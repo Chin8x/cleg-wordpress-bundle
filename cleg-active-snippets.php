@@ -18006,6 +18006,133 @@ if (!function_exists('cleg_payroll_reports_export')) {
 }
 add_action('admin_post_cleg_payroll_reports_export', 'cleg_payroll_reports_export');
 
+if (!function_exists('cleg_payroll_report_pdf_document')) {
+    function cleg_payroll_report_pdf_document($content, $logo = '') {
+        $objects = array();
+        $objects[] = '<< /Type /Catalog /Pages 2 0 R >>';
+        $objects[] = '<< /Type /Pages /Kids [3 0 R] /Count 1 >>';
+        $xobject = $logo !== '' ? ' /XObject << /Logo 7 0 R >>' : '';
+        $objects[] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R /F2 6 0 R >>' . $xobject . ' >> /Contents 4 0 R >>';
+        $objects[] = '<< /Length ' . strlen($content) . " >>\nstream\n" . $content . "\nendstream";
+        $objects[] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+        $objects[] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+        if ($logo !== '') {
+            $objects[] = '<< /Type /XObject /Subtype /Image /Width 180 /Height 180 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' . strlen($logo) . " >>\nstream\n" . $logo . "\nendstream";
+        }
+        $pdf = "%PDF-1.4\n";
+        $offsets = array();
+        foreach ($objects as $index => $object) {
+            $offsets[] = strlen($pdf);
+            $pdf .= ($index + 1) . " 0 obj\n" . $object . "\nendobj\n";
+        }
+        $xref = strlen($pdf);
+        $pdf .= "xref\n0 " . (count($objects) + 1) . "\n0000000000 65535 f \n";
+        foreach ($offsets as $offset) {
+            $pdf .= sprintf("%010d 00000 n \n", $offset);
+        }
+        $pdf .= "trailer\n<< /Size " . (count($objects) + 1) . " /Root 1 0 R >>\nstartxref\n" . $xref . "\n%%EOF";
+        return $pdf;
+    }
+}
+
+if (!function_exists('cleg_payroll_report_pdf_text')) {
+    function cleg_payroll_report_pdf_text($x, $y, $size, $text, $font = 'F1', $color = '0.04 0.09 0.17') {
+        $text = function_exists('cleg_emp_payroll_pdf_text') ? cleg_emp_payroll_pdf_text($text) : str_replace(array('\\', '(', ')'), array('\\\\', '\\(', '\\)'), (string) $text);
+        return "BT\n/{$font} {$size} Tf\n{$color} rg\n" . number_format((float) $x, 2, '.', '') . ' ' . number_format((float) $y, 2, '.', '') . " Td\n({$text}) Tj\nET\n";
+    }
+}
+
+if (!function_exists('cleg_payroll_report_pdf_summary')) {
+    function cleg_payroll_report_pdf_summary($period_label, $summary, $report = 'summary') {
+        $logo = function_exists('cleg_emp_payroll_pdf_logo_data') ? cleg_emp_payroll_pdf_logo_data() : '';
+        $content = "q\n0.04 0.09 0.17 rg\n0 690 612 102 re\nQ\n";
+        if ($logo !== '') {
+            $content .= "q\n72 0 0 72 500 706 cm\n/Logo Do\nQ\n";
+        }
+        $content .= cleg_payroll_report_pdf_text(42, 750, 19, 'C&L ENGINEERING GROUP LLC', 'F2', '1 1 1');
+        $content .= cleg_payroll_report_pdf_text(42, 728, 10, 'Payroll - Documento cerrado / solo consulta', 'F1', '1 1 1');
+        $content .= cleg_payroll_report_pdf_text(42, 668, 15, $period_label, 'F2');
+        $content .= cleg_payroll_report_pdf_text(42, 650, 10, $report === 'details' ? 'Desglose de payroll y aportes' : 'Resumen contable de payroll', 'F1', '0.31 0.38 0.46');
+        $y = 620;
+        $content .= "0.95 0.96 0.98 rg\n42 {$y} 528 24 re\n";
+        $headers = array('Trabajador', 'Tipo', 'Horas', 'Bruto', 'Deducciones', 'Neto');
+        $xs = array(48, 205, 315, 382, 452, 530);
+        foreach ($headers as $i => $header) {
+            $content .= cleg_payroll_report_pdf_text($xs[$i], $y + 8, 8, $header, 'F2', '0.31 0.38 0.46');
+        }
+        $y -= 25;
+        $total_gross = 0;
+        $total_deductions = 0;
+        $total_net = 0;
+        foreach (array_slice($summary, 0, 18) as $worker) {
+            $total_gross += (float) ($worker['gross_pay'] ?? 0);
+            $total_deductions += (float) ($worker['total_deductions'] ?? 0);
+            $total_net += (float) ($worker['net_pay'] ?? 0);
+            $content .= cleg_payroll_report_pdf_text(48, $y, 8, cleg_payroll_report_pdf_truncate($worker['name'] ?? '', 24));
+            $content .= cleg_payroll_report_pdf_text(205, $y, 7, ($worker['worker_type'] ?? '') === 'Employee - Full Payroll' ? 'Empleado' : 'Contratista');
+            $content .= cleg_payroll_report_pdf_text(315, $y, 8, cleg_payroll_format_hours($worker['hours'] ?? 0));
+            $content .= cleg_payroll_report_pdf_text(382, $y, 8, cleg_payroll_money($worker['gross_pay'] ?? 0));
+            $content .= cleg_payroll_report_pdf_text(452, $y, 8, cleg_payroll_money($worker['total_deductions'] ?? 0));
+            $content .= cleg_payroll_report_pdf_text(530, $y, 8, cleg_payroll_money($worker['net_pay'] ?? 0));
+            $content .= "0.84 0.86 0.89 RG\n42 " . ($y - 7) . " m\n570 " . ($y - 7) . " l\nS\n";
+            $y -= 24;
+        }
+        $content .= "0.95 0.96 0.98 rg\n42 " . ($y - 5) . " 528 30 re\n";
+        $content .= cleg_payroll_report_pdf_text(48, $y + 7, 8, 'TOTALES', 'F2');
+        $content .= cleg_payroll_report_pdf_text(382, $y + 7, 8, cleg_payroll_money($total_gross), 'F2');
+        $content .= cleg_payroll_report_pdf_text(452, $y + 7, 8, cleg_payroll_money($total_deductions), 'F2');
+        $content .= cleg_payroll_report_pdf_text(530, $y + 7, 8, cleg_payroll_money($total_net), 'F2');
+        $content .= cleg_payroll_report_pdf_text(42, 66, 8, 'Generado por C&L Payroll. Este documento no es editable y refleja líneas cerradas.', 'F1', '0.31 0.38 0.46');
+        $content .= cleg_payroll_report_pdf_text(42, 51, 8, 'Conserve el CSV/Excel como respaldo técnico y valide obligaciones contributivas con su asesor.', 'F1', '0.31 0.38 0.46');
+        return cleg_payroll_report_pdf_document($content, $logo);
+    }
+}
+
+if (!function_exists('cleg_payroll_report_pdf_truncate')) {
+    function cleg_payroll_report_pdf_truncate($value, $length = 24) {
+        $value = (string) $value;
+        return function_exists('mb_substr') ? mb_substr($value, 0, $length) : substr($value, 0, $length);
+    }
+}
+
+if (!function_exists('cleg_payroll_reports_pdf_export')) {
+    function cleg_payroll_reports_pdf_export() {
+        if (!cleg_payroll_can_view()) {
+            wp_die('No autorizado.');
+        }
+        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'cleg_payroll_reports_pdf')) {
+            wp_die('Solicitud no valida.');
+        }
+        $mode = isset($_GET['report_mode']) ? sanitize_key(wp_unslash($_GET['report_mode'])) : 'month';
+        $month = isset($_GET['report_month']) ? sanitize_text_field(wp_unslash($_GET['report_month'])) : '';
+        $year = isset($_GET['report_year']) ? sanitize_text_field(wp_unslash($_GET['report_year'])) : '';
+        $type = isset($_GET['worker_type']) ? sanitize_key(wp_unslash($_GET['worker_type'])) : 'all';
+        $report = isset($_GET['report_file']) ? sanitize_key(wp_unslash($_GET['report_file'])) : 'summary_pdf';
+        $base_report = preg_replace('/_pdf$/', '', $report);
+        list($start, $end, $period_value, $period_label) = cleg_payroll_report_range($mode, $month, $year);
+        $lines = cleg_payroll_report_lines($start, $end);
+        if (is_wp_error($lines)) {
+            wp_die(esc_html($lines->get_error_message()));
+        }
+        $filtered = cleg_payroll_report_filtered_lines($lines, $type);
+        if ($base_report === '480') {
+            $filtered = array_values(array_filter($filtered, function ($line) { return ($line['worker_type'] ?? '') !== 'Employee - Full Payroll'; }));
+        } elseif ($base_report === 'employees') {
+            $filtered = array_values(array_filter($filtered, function ($line) { return ($line['worker_type'] ?? '') === 'Employee - Full Payroll'; }));
+        }
+        $summary = cleg_payroll_report_summary($filtered);
+        $pdf = cleg_payroll_report_pdf_summary($period_label, $summary, $base_report === 'details' ? 'details' : 'summary');
+        $filename = 'cleg-payroll-' . $base_report . '-' . $period_value . '.pdf';
+        nocache_headers();
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . sanitize_file_name($filename) . '"');
+        header('Content-Length: ' . strlen($pdf));
+        echo $pdf; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+        exit;
+    }
+}
+add_action('admin_post_cleg_payroll_reports_pdf', 'cleg_payroll_reports_pdf_export');
+
 if (!function_exists('cleg_payroll_report_table')) {
     function cleg_payroll_report_table($summary) {
         if (empty($summary)) {
@@ -18096,6 +18223,9 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
                 <section class="cleg-payroll-report-hero">
                     <div><span><?php echo esc_html($period_label); ?></span><h2>Resumen para contabilidad</h2><p>Basado en líneas cerradas de Payroll. Si un mes está vacío, no hay cierre registrado en ese rango.</p></div>
                     <div class="cleg-payroll-report-actions">
+                        <?php foreach (array('summary_pdf' => 'PDF resumen cerrado', 'details_pdf' => 'PDF desglose', '480_pdf' => 'PDF 480', 'employees_pdf' => 'PDF aportes empleados') as $file => $label) : ?>
+                            <a class="is-primary" href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('action' => 'cleg_payroll_reports_pdf', 'report_file' => $file)), admin_url('admin-post.php')), 'cleg_payroll_reports_pdf')); ?>"><?php echo esc_html($label); ?></a>
+                        <?php endforeach; ?>
                         <?php foreach (array('summary' => 'Descargar resumen', 'details' => 'Descargar desglose', '480' => 'Descargar 480', 'employees' => 'Descargar aportes empleados') as $file => $label) : ?>
                             <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('report_file' => $file)), admin_url('admin-post.php')), 'cleg_payroll_reports_export')); ?>"><?php echo esc_html($label); ?></a>
                         <?php endforeach; ?>
