@@ -10324,7 +10324,7 @@ if (!function_exists('cleg_admin_bulk_review_bar')) {
         }
 
         $primary = '';
-        if (cleg_admin_current_user_can_approve_hours() && in_array($status, array('pending', 'manual', 'open'), true)) {
+        if (cleg_admin_current_user_can_approve_hours() && in_array($status, array('pending', 'manual'), true)) {
             $primary = '<button type="submit" name="cleg_admin_action" value="bulk_approve">Aprobar seleccionadas</button>';
         } elseif (cleg_admin_current_user_can_correct_hours() && in_array($status, array('approved', 'deleted'), true)) {
             $primary = '<button type="submit" name="cleg_admin_action" value="bulk_reopen">Mandar a revision</button>';
@@ -10340,7 +10340,7 @@ if (!function_exists('cleg_admin_bulk_review_bar')) {
 
         return '<form id="cleg-bulk-time-form" class="cleg-bulk-review-bar" method="post">'
             . wp_nonce_field('cleg_admin_time_action', 'cleg_admin_nonce', true, false)
-            . '<strong>Seleccionadas</strong>'
+            . '<strong>Seleccionadas</strong><span>Solo se aprobarán jornadas completas, sin alertas GPS ni datos faltantes.</span>'
             . $primary
             . $delete_button
             . '<div class="cleg-delete-popover"><strong>Motivo</strong><label><input type="radio" name="delete_reason" value="Error" checked> Error</label><label><input type="radio" name="delete_reason" value="Prueba de campo"> Prueba de campo</label><label><input type="radio" name="delete_reason" value="Otro"> Otro</label></div>'
@@ -11475,7 +11475,9 @@ if (!function_exists('cleg_admin_handle_time_action')) {
                 }
 
                 if ($action === 'bulk_approve') {
-                    if (cleg_admin_missing_job_site($current_job) || cleg_admin_field($record, 'Clock Out Time') === '') {
+                    $gps_in = cleg_admin_gps_point($record, 'in');
+                    $gps_out = cleg_admin_gps_point($record, 'out');
+                    if (cleg_admin_missing_job_site($current_job) || cleg_admin_field($record, 'Clock Out Time') === '' || $gps_in['map'] === '' || $gps_out['map'] === '' || $gps_in['outside'] || $gps_out['outside']) {
                         $blocked++;
                         continue;
                     }
