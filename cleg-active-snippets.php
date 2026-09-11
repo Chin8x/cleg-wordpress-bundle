@@ -4561,7 +4561,7 @@ if (!function_exists('cleg_app_receipt_submit')) {
             'body' => array(
                 'typecast' => true,
                 'records' => array(array('fields' => cleg_app_remove_empty_values(array(
-                    'Request Code' => $receipt_code,
+                    'Receipt Code' => $receipt_code,
                     'Employee Name' => sanitize_text_field($employee_name),
                     'Employee Email' => sanitize_email($employee_email),
                     'Portal Username' => sanitize_user($user->user_login),
