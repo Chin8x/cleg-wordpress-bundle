@@ -22772,7 +22772,7 @@ if (!function_exists('cleg_document_alerts_shortcode')) {
                         <article class="alert-row <?php echo esc_attr($classification['class']); ?>">
                             <div>
                                 <strong><?php echo esc_html(cleg_alerts_employee_name($record)); ?></strong>
-                                <small><?php echo esc_html(cleg_alerts_field($record, 'Document Type', 'Documento')); ?> Â· <?php echo esc_html(cleg_alerts_field($record, 'Document Code')); ?></small>
+                                <small><?php echo esc_html(cleg_alerts_field($record, 'Document Type', 'Documento')); ?> · <?php echo esc_html(cleg_alerts_field($record, 'Document Code')); ?></small>
                             </div>
                             <span class="pill <?php echo esc_attr($classification['class']); ?>"><?php echo esc_html($classification['label']); ?></span>
                             <span><?php echo esc_html($expiration !== '' ? cleg_alerts_date($expiration) : 'Sin expiracion'); ?></span>
@@ -31559,7 +31559,7 @@ if (!function_exists('cleg_procurement_healthcheck')) {
  * v1.13 compacta filtros, evita solapes moviles y reduce peso visual del numero.
  * v1.14 compacta adjuntos y restringe archivos a documentos.
  * v1.15 compacta pendientes en acordeones y agrega volver desde detalle.
- * v1.16 integra menu movil en headers y rediseÃ±a adjuntos tipo app.
+ * v1.16 integra menu movil en headers y rediseña adjuntos tipo app.
  * v1.17 unifica estado activo verde y header movil con Admin RRHH.
  * v1.18 limita verde fuera de navegacion, mejora contraste movil y muestra evidencia de adjuntos.
  * v1.19 reintroduce por fases iconos aprobados de adjuntos y compactacion movil acotada.
@@ -35492,7 +35492,7 @@ if (!function_exists('cleg_procurement_render_quote_intake_form')) {
         ob_start();
         ?>
         <details class="cleg-proc-quote-intake" open>
-            <summary><span>Agregar cotizacion</span><small><?php echo esc_html($request['id']); ?> Â· <?php echo esc_html($request['item']); ?></small></summary>
+            <summary><span>Agregar cotizacion</span><small><?php echo esc_html($request['id']); ?> · <?php echo esc_html($request['item']); ?></small></summary>
             <form class="cleg-proc-quote-form cleg-proc-quote-form-compact" method="post" enctype="multipart/form-data" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="cleg_proc_add_quote">
                 <input type="hidden" name="request_id" value="<?php echo esc_attr($request['id']); ?>">
@@ -38534,7 +38534,7 @@ if (!function_exists('cleg_procurement_provider_history_key_from_quote')) {
 if (!function_exists('cleg_procurement_provider_history_notes_from_quote')) {
     function cleg_procurement_provider_history_notes_from_quote($request, $quote) {
         $parts = array();
-        $contact = trim(implode(' Â· ', array_filter(array(
+        $contact = trim(implode(' · ', array_filter(array(
             (string) ($quote['supplier_contact_person'] ?? ''),
             (string) ($quote['supplier_contact_email'] ?? ''),
             (string) ($quote['supplier_contact_phone'] ?? ''),
@@ -39018,7 +39018,7 @@ if (!function_exists('cleg_procurement_render_provider_history_panel')) {
                                 $history_source = sanitize_key((string) ($row['_history_source'] ?? ''));
                                 $history_id = (string) ($row['_history_id'] ?? '');
                                 $history_key = (string) ($row['_history_key'] ?? cleg_procurement_history_row_key($row));
-                                $history_contact = trim(implode(' Â· ', array_filter(array(
+                                $history_contact = trim(implode(' · ', array_filter(array(
                                     (string) ($row['supplier_contact_person'] ?? ''),
                                     (string) ($row['supplier_contact_email'] ?? ''),
                                     (string) ($row['supplier_contact_phone'] ?? ''),
@@ -39563,13 +39563,13 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                             <div><strong><?php echo esc_html($commercial_summary['tracking']); ?></strong><small>Tracking</small></div>
                                             <section class="cleg-proc-print-sheet" data-cleg-print-sheet aria-label="Ficha imprimible de requisicion">
                                                 <h2><?php echo esc_html($request['item']); ?></h2>
-                                                <p><?php echo esc_html($request['id']); ?> Â· <?php echo esc_html($request['project']); ?> Â· <?php echo esc_html($statuses[$request['status']] ?? $request['status']); ?></p>
+                                                <p><?php echo esc_html($request['id']); ?> · <?php echo esc_html($request['project']); ?> · <?php echo esc_html($statuses[$request['status']] ?? $request['status']); ?></p>
                                                 <dl>
                                                     <div><dt>Solicitado por</dt><dd><?php echo esc_html($request['requester']); ?></dd></div>
                                                     <div><dt>Cantidad</dt><dd><?php echo esc_html($commercial_summary['quantity']); ?></dd></div>
                                                     <div><dt>Entrega requerida</dt><dd><?php echo esc_html($request['required_delivery_date'] ?? $request['due_date'] ?? 'Pendiente'); ?></dd></div>
                                                     <div><dt>Cotizar para</dt><dd><?php echo esc_html($request['quote_due_date'] ?? 'Pendiente'); ?></dd></div>
-                                                    <div><dt>Precio / PO</dt><dd><?php echo esc_html($commercial_summary['price'] . ' Â· ' . $commercial_summary['po']); ?></dd></div>
+                                                    <div><dt>Precio / PO</dt><dd><?php echo esc_html($commercial_summary['price'] . ' · ' . $commercial_summary['po']); ?></dd></div>
                                                     <div><dt>Tracking</dt><dd><?php echo esc_html($commercial_summary['tracking']); ?></dd></div>
                                                 </dl>
                                                 <?php if (!empty($request['conditions'])) : ?>
@@ -39722,7 +39722,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
         <article>
             <span class="cleg-proc-badge <?php echo esc_attr(cleg_procurement_badge_class($request['status'])); ?>"><?php echo esc_html($statuses[$request['status']] ?? $request['status']); ?></span>
             <h3><?php echo esc_html($request['item']); ?></h3>
-            <p class="cleg-proc-muted"><?php echo esc_html($request['project']); ?> Â· Solicitado por <?php echo esc_html($request['requester']); ?></p>
+            <p class="cleg-proc-muted"><?php echo esc_html($request['project']); ?> · Solicitado por <?php echo esc_html($request['requester']); ?></p>
             <section class="cleg-proc-decision-hero" aria-label="Decision de compra">
                 <div>
                     <span class="cleg-proc-decision-pill is-<?php echo esc_attr($decision_context['tone']); ?>"><?php echo esc_html($decision_context['label']); ?></span>
@@ -39755,7 +39755,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
 
             <section class="cleg-proc-print-sheet" data-cleg-print-sheet aria-label="Ficha imprimible de requisicion">
                 <h2><?php echo esc_html($request['item']); ?></h2>
-                <p><?php echo esc_html($request['id']); ?> Â· <?php echo esc_html($request['project']); ?> Â· <?php echo esc_html($statuses[$request['status']] ?? $request['status']); ?></p>
+                <p><?php echo esc_html($request['id']); ?> · <?php echo esc_html($request['project']); ?> · <?php echo esc_html($statuses[$request['status']] ?? $request['status']); ?></p>
                 <dl>
                     <div><dt>Solicitado por</dt><dd><?php echo esc_html($request['requester']); ?></dd></div>
                     <div><dt>Cantidad</dt><dd><?php echo esc_html((string) ($request['quantity'] ?? '1') . ' ' . (string) ($request['unit'] ?? '')); ?></dd></div>
@@ -39763,7 +39763,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                     <div><dt>Destino</dt><dd><?php echo esc_html($request['delivery_location'] ?? 'Pendiente'); ?></dd></div>
                     <div><dt>Referencia</dt><dd><?php echo esc_html($request['preferred_brand_model'] ?? 'Pendiente'); ?></dd></div>
                     <div><dt>Estado decision</dt><dd><?php echo esc_html($decision_context['label']); ?></dd></div>
-                    <div><dt>Precio / PO</dt><dd><?php echo esc_html($commercial_summary['price'] . ' Â· ' . $commercial_summary['po']); ?></dd></div>
+                    <div><dt>Precio / PO</dt><dd><?php echo esc_html($commercial_summary['price'] . ' · ' . $commercial_summary['po']); ?></dd></div>
                     <div><dt>Tracking</dt><dd><?php echo esc_html($commercial_summary['tracking']); ?></dd></div>
                 </dl>
                 <?php if (!empty($request['conditions'])) : ?>
@@ -39776,9 +39776,9 @@ if (!function_exists('cleg_procurement_render_detail')) {
                 <?php endif; ?>
                 <?php if ($selected_quote) : ?>
                     <h3>Cotizacion seleccionada</h3>
-                    <p><?php echo esc_html(($selected_quote['vendor'] ?? 'Proveedor') . ' Â· ' . cleg_procurement_money($selected_quote['amount'] ?? 0) . ' Â· ETA: ' . ($selected_quote_eta ?: 'Pendiente')); ?></p>
+                    <p><?php echo esc_html(($selected_quote['vendor'] ?? 'Proveedor') . ' · ' . cleg_procurement_money($selected_quote['amount'] ?? 0) . ' · ETA: ' . ($selected_quote_eta ?: 'Pendiente')); ?></p>
                     <?php if (!empty($selected_quote['supplier_contact_person']) || !empty($selected_quote['supplier_contact_email']) || !empty($selected_quote['supplier_contact_phone'])) : ?>
-                        <p><?php echo esc_html(trim((string) ($selected_quote['supplier_contact_person'] ?? '') . ' Â· ' . (string) ($selected_quote['supplier_contact_email'] ?? '') . ' Â· ' . (string) ($selected_quote['supplier_contact_phone'] ?? ''), " \t\n\r\0\x0BÂ·")); ?></p>
+                        <p><?php echo esc_html(trim((string) ($selected_quote['supplier_contact_person'] ?? '') . ' · ' . (string) ($selected_quote['supplier_contact_email'] ?? '') . ' · ' . (string) ($selected_quote['supplier_contact_phone'] ?? ''), " \t\n\r\0\x0B·")); ?></p>
                     <?php endif; ?>
                 <?php endif; ?>
             </section>
@@ -39965,7 +39965,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                                     <?php if ($can_edit_request) : ?>
                                         <div class="cleg-proc-attachment-actions">
                                             <label><input type="checkbox" name="attachment_keys[]" value="<?php echo esc_attr($attachment_key); ?>" data-cleg-attachment-select data-url="<?php echo esc_url($url); ?>" data-name="<?php echo esc_attr($name ?: 'adjunto'); ?>"> Seleccionar</label>
-                                            <button class="cleg-proc-mini-danger" type="submit" name="attachment_key_single" value="<?php echo esc_attr($attachment_key); ?>" aria-label="Eliminar adjunto">Ã—</button>
+                                            <button class="cleg-proc-mini-danger" type="submit" name="attachment_key_single" value="<?php echo esc_attr($attachment_key); ?>" aria-label="Eliminar adjunto">×</button>
                                         </div>
                                     <?php endif; ?>
                                 </article>
@@ -40041,8 +40041,8 @@ if (!function_exists('cleg_procurement_render_detail')) {
                             <?php $has_quickbooks_po = cleg_procurement_po_has_quickbooks_number($po['id'] ?? ''); ?>
                             <div class="cleg-proc-po">
                                 <strong>PO QuickBooks: <?php echo esc_html($has_quickbooks_po ? $po['id'] : 'Pendiente'); ?></strong>
-                                <span><?php echo esc_html($po['vendor']); ?> Â· <?php echo esc_html(cleg_procurement_money($po['amount'])); ?> Â· <?php echo esc_html($po['status']); ?></span>
-                                <small>Tracking: <?php echo esc_html($po['tracking'] ?: 'Pendiente'); ?> Â· ETA: <?php echo esc_html($po['eta'] ?: 'Pendiente'); ?></small>
+                                <span><?php echo esc_html($po['vendor']); ?> · <?php echo esc_html(cleg_procurement_money($po['amount'])); ?> · <?php echo esc_html($po['status']); ?></span>
+                                <small>Tracking: <?php echo esc_html($po['tracking'] ?: 'Pendiente'); ?> · ETA: <?php echo esc_html($po['eta'] ?: 'Pendiente'); ?></small>
                                 <?php if ($can_manage_request) : ?>
                                     <?php if ($has_quickbooks_po) : ?>
                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
@@ -40083,7 +40083,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                     <?php if ($selected_quote) : ?>
                         <div class="cleg-proc-po-source">
                             <strong>Registrar PO real de QuickBooks</strong>
-                            <small><?php echo esc_html(($selected_quote['vendor'] ?? 'Proveedor') . ' Â· ' . cleg_procurement_money($selected_quote['amount'] ?? 0)); ?></small>
+                            <small><?php echo esc_html(($selected_quote['vendor'] ?? 'Proveedor') . ' · ' . cleg_procurement_money($selected_quote['amount'] ?? 0)); ?></small>
                         </div>
                     <?php endif; ?>
                     <label>PO QuickBooks<input type="text" name="quickbooks_po" placeholder="Ej. QB-PO-12345" required></label>
