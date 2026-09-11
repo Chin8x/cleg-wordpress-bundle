@@ -18076,7 +18076,7 @@ if (!function_exists('cleg_payroll_report_pdf_summary')) {
                 $total_gross += $gross;
                 $total_deductions += $deductions;
                 $total_net += $net;
-                $content .= "0.95 0.96 0.98 rg\n42 " . ($y - 8) . " 528 72 re\nf\n";
+                $content .= "0.95 0.96 0.98 rg\n42 " . ($y - 8) . " 528 58 re\nf\n";
                 $content .= cleg_payroll_report_pdf_text(50, $y + 38, 9, cleg_payroll_report_pdf_truncate($worker['name'] ?? '', 30), 'F2');
                 $content .= cleg_payroll_report_pdf_text(300, $y + 38, 8, ($worker['worker_type'] ?? '') === 'Employee - Full Payroll' ? 'Empleado' : 'Contratista');
                 $content .= cleg_payroll_report_pdf_text(50, $y + 23, 7, 'Horas: ' . cleg_payroll_format_hours($worker['hours'] ?? 0) . ' | Regular: ' . cleg_payroll_format_hours($worker['regular_hours'] ?? 0) . ' | Extra: ' . cleg_payroll_format_hours($worker['extra_hours'] ?? 0));
