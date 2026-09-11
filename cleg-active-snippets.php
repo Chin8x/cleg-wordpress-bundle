@@ -18095,7 +18095,7 @@ if (!function_exists('cleg_payroll_report_pdf_summary')) {
             $content .= "q\n72 0 0 72 500 706 cm\n/Logo Do\nQ\n";
         }
         $content .= cleg_payroll_report_pdf_text(42, 750, 19, 'C&L ENGINEERING GROUP LLC', 'F2', '1 1 1');
-        $content .= cleg_payroll_report_pdf_text(42, 728, 10, 'Payroll - Documento cerrado / solo consulta', 'F1', '1 1 1');
+        $content .= cleg_payroll_report_pdf_text(42, 728, 10, 'Payroll', 'F1', '1 1 1');
         $content .= cleg_payroll_report_pdf_text(42, 668, 15, $period_label, 'F2');
         $content .= cleg_payroll_report_pdf_text(42, 650, 10, $report === 'details' ? 'Desglose de payroll y aportes' : 'Resumen contable de payroll', 'F1', '0.31 0.38 0.46');
 
@@ -18119,7 +18119,6 @@ if (!function_exists('cleg_payroll_report_pdf_summary')) {
                 $content .= cleg_payroll_report_pdf_text(50, $y + 9, 7, 'Bruto: ' . cleg_payroll_money($gross) . ' | Neto: ' . cleg_payroll_money($net) . ' | Deducciones totales: ' . cleg_payroll_money($deductions));
                 $deduction_items = cleg_payroll_report_deduction_items($worker);
                 $content .= cleg_payroll_report_pdf_text(50, $y - 5, 7, 'Deducciones: ' . ($deduction_items ? implode(' | ', $deduction_items) : 'Ninguna'));
-                $content .= cleg_payroll_report_pdf_text(50, $y - 19, 7, 'Los importes en cero no se muestran.');
                 $content .= cleg_payroll_report_pdf_text(50, $y - 33, 7, 'Aporte patronal SS: ' . cleg_payroll_money($worker['employer_ss'] ?? 0) . ' | Medicare patronal: ' . cleg_payroll_money($worker['employer_medicare'] ?? 0) . ' | Vacaciones acum.: ' . cleg_payroll_format_hours($worker['vacation_accrued'] ?? 0) . ' | usadas: ' . cleg_payroll_format_hours($worker['vacation_used'] ?? 0) . ' | saldo: ' . cleg_payroll_format_hours($worker['vacation_balance'] ?? 0) . ' | Enfermedad saldo: ' . cleg_payroll_format_hours($worker['sick_balance'] ?? 0), 'F1', '0.31 0.38 0.46');
                 $y -= 86;
             }
