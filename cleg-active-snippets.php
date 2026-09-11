@@ -4542,7 +4542,10 @@ if (!function_exists('cleg_app_receipt_submit')) {
         ));
 
         if (!is_wp_error($response)) {
-            wp_send_json_success(array('message' => 'Recibo enviado para revision.'));
+            wp_send_json_success(array(
+                'message' => 'Recibo enviado para revision. Codigo: ' . $receipt_code,
+                'code' => $receipt_code,
+            ));
         }
 
         $fallback_detail = "Recibo de compra\n"
@@ -4575,7 +4578,10 @@ if (!function_exists('cleg_app_receipt_submit')) {
             wp_send_json_error(array('message' => 'No se pudo enviar el recibo. Intenta de nuevo.'), 500);
         }
 
-        wp_send_json_success(array('message' => 'Recibo enviado para revision.'));
+        wp_send_json_success(array(
+            'message' => 'Recibo enviado para revision. Codigo: ' . $receipt_code,
+            'code' => $receipt_code,
+        ));
     }
 }
 
