@@ -5065,6 +5065,12 @@ if (!function_exists('cleg_app_script')) {
 
                 const requestForm = app.querySelector('[data-worker-request-form]');
                 const receiptForm = app.querySelector('[data-worker-receipt-form]');
+                const localDateValue = function (date) {
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    return year + '-' + month + '-' + day;
+                };
 
                 if (receiptForm) {
                     const receiptMessage = receiptForm.querySelector('[data-worker-receipt-message]');
@@ -5093,7 +5099,7 @@ if (!function_exists('cleg_app_script')) {
                             }
 
                             receiptForm.reset();
-                            if (receiptDate) receiptDate.value = new Date().toISOString().slice(0, 10);
+                            if (receiptDate) receiptDate.value = localDateValue(new Date());
                             if (receiptMessage) {
                                 receiptMessage.textContent = payload.data.message || 'Recibo enviado para revision.';
                                 receiptMessage.classList.remove('is-warning');
@@ -5163,6 +5169,7 @@ if (!function_exists('cleg_app_script')) {
                             const days = dateList(absenceStart ? absenceStart.value : '', absenceEnd ? absenceEnd.value : '');
                             const originalDetail = detailInput ? detailInput.value.trim() : '';
 
+                            let sentDays = 0;
                             for (let index = 0; index < days.length; index++) {
                                 if (requestMessage) {
                                     requestMessage.textContent = days.length > 1 ? 'Enviando ' + (index + 1) + ' de ' + days.length + '...' : 'Enviando...';
@@ -5182,8 +5189,9 @@ if (!function_exists('cleg_app_script')) {
                                 });
                                 const payload = await response.json();
                                 if (!payload || !payload.success) {
-                                    throw new Error(payload && payload.data && payload.data.message ? payload.data.message : 'No se pudo enviar. Intenta de nuevo.');
+                                    throw new Error('Se enviaron ' + sentDays + ' de ' + days.length + ' dias. ' + (payload && payload.data && payload.data.message ? payload.data.message : 'No se pudo completar el rango. Revisa los dias enviados antes de reintentar.'));
                                 }
+                                sentDays++;
                             }
 
                             requestForm.reset();
