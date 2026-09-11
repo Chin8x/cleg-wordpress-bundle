@@ -17891,6 +17891,40 @@ if (!function_exists('cleg_payroll_report_filtered_lines')) {
     }
 }
 
+if (!function_exists('cleg_payroll_report_worker_filter')) {
+    function cleg_payroll_report_worker_filter($lines, $worker_id) {
+        $worker_id = sanitize_text_field((string) $worker_id);
+        if ($worker_id === '' || $worker_id === 'all') {
+            return $lines;
+        }
+        return array_values(array_filter($lines, function ($line) use ($worker_id) {
+            return (string) ($line['employee_id'] ?? '') === $worker_id;
+        }));
+    }
+}
+
+if (!function_exists('cleg_payroll_report_deduction_items')) {
+    function cleg_payroll_report_deduction_items($worker) {
+        $items = array();
+        $is_employee = ($worker['worker_type'] ?? '') === 'Employee - Full Payroll';
+        if ($is_employee) {
+            foreach (array('ss_employee' => 'SS', 'medicare_employee' => 'Medicare', 'sinot_employee' => 'SINOT', 'pr_income_tax' => 'Income Tax PR') as $field => $label) {
+                if ((float) ($worker[$field] ?? 0) > 0) {
+                    $items[] = $label . ' ' . cleg_payroll_money($worker[$field]);
+                }
+            }
+        } elseif ((float) ($worker['contractor_withholding'] ?? 0) > 0) {
+            $items[] = 'Retención 480 ' . cleg_payroll_money($worker['contractor_withholding']);
+        }
+        foreach (array('fixed_deductions' => 'Fijas', 'manual_deduction' => 'Manual') as $field => $label) {
+            if ((float) ($worker[$field] ?? 0) > 0) {
+                $items[] = $label . ' ' . cleg_payroll_money($worker[$field]);
+            }
+        }
+        return $items;
+    }
+}
+
 if (!function_exists('cleg_payroll_report_summary')) {
     function cleg_payroll_report_summary($lines) {
         $summary = array();
@@ -17898,6 +17932,7 @@ if (!function_exists('cleg_payroll_report_summary')) {
             $key = $line['employee_id'] ?: md5($line['name']);
             if (!isset($summary[$key])) {
                 $summary[$key] = array(
+                    'employee_id' => $line['employee_id'],
                     'name' => $line['name'],
                     'worker_type' => $line['worker_type'],
                     'form_type' => $line['form_type'],
@@ -17991,13 +18026,14 @@ if (!function_exists('cleg_payroll_reports_export')) {
         $month = isset($_GET['report_month']) ? sanitize_text_field(wp_unslash($_GET['report_month'])) : '';
         $year = isset($_GET['report_year']) ? sanitize_text_field(wp_unslash($_GET['report_year'])) : '';
         $type = isset($_GET['worker_type']) ? sanitize_key(wp_unslash($_GET['worker_type'])) : 'all';
+        $worker_id = isset($_GET['worker_id']) ? sanitize_text_field(wp_unslash($_GET['worker_id'])) : 'all';
         $report = isset($_GET['report_file']) ? sanitize_key(wp_unslash($_GET['report_file'])) : 'summary';
         list($start, $end, $period_value) = cleg_payroll_report_range($mode, $month, $year);
         $lines = cleg_payroll_report_lines($start, $end);
         if (is_wp_error($lines)) {
             wp_die(esc_html($lines->get_error_message()));
         }
-        $summary = cleg_payroll_report_summary(cleg_payroll_report_filtered_lines($lines, $type));
+        $summary = cleg_payroll_report_summary(cleg_payroll_report_worker_filter(cleg_payroll_report_filtered_lines($lines, $type), $worker_id));
         $rows = cleg_payroll_report_csv_rows($summary, $report);
         $filename = 'cleg-payroll-' . $report . '-' . $period_value . '.csv';
 
@@ -18081,8 +18117,9 @@ if (!function_exists('cleg_payroll_report_pdf_summary')) {
                 $content .= cleg_payroll_report_pdf_text(300, $y + 38, 8, ($worker['worker_type'] ?? '') === 'Employee - Full Payroll' ? 'Empleado' : 'Contratista');
                 $content .= cleg_payroll_report_pdf_text(50, $y + 23, 7, 'Horas: ' . cleg_payroll_format_hours($worker['hours'] ?? 0) . ' | Regular: ' . cleg_payroll_format_hours($worker['regular_hours'] ?? 0) . ' | Extra: ' . cleg_payroll_format_hours($worker['extra_hours'] ?? 0));
                 $content .= cleg_payroll_report_pdf_text(50, $y + 9, 7, 'Bruto: ' . cleg_payroll_money($gross) . ' | Neto: ' . cleg_payroll_money($net) . ' | Deducciones totales: ' . cleg_payroll_money($deductions));
-                $content .= cleg_payroll_report_pdf_text(50, $y - 5, 7, 'SS empleado: ' . cleg_payroll_money($worker['ss_employee'] ?? 0) . ' | Medicare: ' . cleg_payroll_money($worker['medicare_employee'] ?? 0) . ' | SINOT: ' . cleg_payroll_money($worker['sinot_employee'] ?? 0));
-                $content .= cleg_payroll_report_pdf_text(50, $y - 19, 7, 'Income Tax PR: ' . cleg_payroll_money($worker['pr_income_tax'] ?? 0) . ' | Retención 480: ' . cleg_payroll_money($worker['contractor_withholding'] ?? 0) . ' | Otras: ' . cleg_payroll_money((float) ($worker['fixed_deductions'] ?? 0) + (float) ($worker['manual_deduction'] ?? 0))); 
+                $deduction_items = cleg_payroll_report_deduction_items($worker);
+                $content .= cleg_payroll_report_pdf_text(50, $y - 5, 7, 'Deducciones: ' . ($deduction_items ? implode(' | ', $deduction_items) : 'Ninguna'));
+                $content .= cleg_payroll_report_pdf_text(50, $y - 19, 7, 'Los importes en cero no se muestran.');
                 $content .= cleg_payroll_report_pdf_text(50, $y - 33, 7, 'Aporte patronal SS: ' . cleg_payroll_money($worker['employer_ss'] ?? 0) . ' | Medicare patronal: ' . cleg_payroll_money($worker['employer_medicare'] ?? 0) . ' | Vacaciones acum.: ' . cleg_payroll_format_hours($worker['vacation_accrued'] ?? 0) . ' | usadas: ' . cleg_payroll_format_hours($worker['vacation_used'] ?? 0) . ' | saldo: ' . cleg_payroll_format_hours($worker['vacation_balance'] ?? 0) . ' | Enfermedad saldo: ' . cleg_payroll_format_hours($worker['sick_balance'] ?? 0), 'F1', '0.31 0.38 0.46');
                 $y -= 86;
             }
@@ -18150,6 +18187,7 @@ if (!function_exists('cleg_payroll_reports_pdf_export')) {
         $month = isset($_GET['report_month']) ? sanitize_text_field(wp_unslash($_GET['report_month'])) : '';
         $year = isset($_GET['report_year']) ? sanitize_text_field(wp_unslash($_GET['report_year'])) : '';
         $type = isset($_GET['worker_type']) ? sanitize_key(wp_unslash($_GET['worker_type'])) : 'all';
+        $worker_id = isset($_GET['worker_id']) ? sanitize_text_field(wp_unslash($_GET['worker_id'])) : 'all';
         $report = isset($_GET['report_file']) ? sanitize_key(wp_unslash($_GET['report_file'])) : 'summary_pdf';
         $base_report = preg_replace('/_pdf$/', '', $report);
         list($start, $end, $period_value, $period_label) = cleg_payroll_report_range($mode, $month, $year);
@@ -18157,7 +18195,7 @@ if (!function_exists('cleg_payroll_reports_pdf_export')) {
         if (is_wp_error($lines)) {
             wp_die(esc_html($lines->get_error_message()));
         }
-        $filtered = cleg_payroll_report_filtered_lines($lines, $type);
+        $filtered = cleg_payroll_report_worker_filter(cleg_payroll_report_filtered_lines($lines, $type), $worker_id);
         if ($base_report === '480') {
             $filtered = array_values(array_filter($filtered, function ($line) { return ($line['worker_type'] ?? '') !== 'Employee - Full Payroll'; }));
         } elseif ($base_report === 'employees') {
@@ -18213,14 +18251,13 @@ if (!function_exists('cleg_payroll_report_table')) {
         if (empty($summary)) {
             return '<div class="cleg-payroll-report-empty"><h2>Sin cierres en este periodo</h2><p>Cuando Payroll se cierre, esta pantalla mostrara los totales reales para contabilidad.</p></div>';
         }
-        $html = '<div class="cleg-payroll-report-table"><table><thead><tr><th>Trabajador</th><th>Tipo</th><th>Horas</th><th>Bruto</th><th>Deducciones</th><th>Neto</th><th>Aportes patronales</th><th>Detalle</th></tr></thead><tbody>';
+        $html = '<div class="cleg-payroll-report-table"><table><thead><tr><th>Trabajador</th><th>Horas</th><th>Bruto</th><th>Deducciones</th><th>Neto</th><th>Aportes patronales</th><th>Detalle</th></tr></thead><tbody>';
         foreach ($summary as $worker) {
             $employer = (float) ($worker['employer_ss'] ?? 0) + (float) ($worker['employer_medicare'] ?? 0);
-            $html .= '<tr><td class="cleg-report-worker"><strong>' . esc_html($worker['name']) . '</strong><small>' . esc_html($worker['form_type']) . '</small></td>'
-                . '<td class="cleg-report-type">' . esc_html(cleg_payroll_employee_display_type($worker['worker_type'])) . '</td>'
+            $html .= '<tr><td class="cleg-report-worker"><strong>' . esc_html($worker['name']) . ' <small>(' . esc_html(cleg_payroll_employee_display_type($worker['worker_type'])) . ')</small></strong><small>' . esc_html($worker['form_type']) . '</small></td>'
                 . '<td class="cleg-report-hours"><strong>' . esc_html(cleg_payroll_format_hours($worker['hours'])) . '</strong><small>Reg ' . esc_html(cleg_payroll_format_hours($worker['regular_hours'])) . ' / Extra ' . esc_html(cleg_payroll_format_hours($worker['extra_hours'])) . '</small></td>'
                 . '<td class="cleg-report-money">' . esc_html(cleg_payroll_money($worker['gross_pay'])) . '</td>'
-                . '<td class="cleg-report-deductions"><strong>' . esc_html(cleg_payroll_money($worker['total_deductions'])) . '</strong><small>SS ' . esc_html(cleg_payroll_money($worker['ss_employee'])) . ' · Med ' . esc_html(cleg_payroll_money($worker['medicare_employee'])) . ' · SINOT ' . esc_html(cleg_payroll_money($worker['sinot_employee'])) . ' · PR ' . esc_html(cleg_payroll_money($worker['pr_income_tax'])) . ' · 480 ' . esc_html(cleg_payroll_money($worker['contractor_withholding'])) . '</small></td>'
+                . '<td class="cleg-report-deductions"><strong>' . esc_html(cleg_payroll_money($worker['total_deductions'])) . '</strong><small>' . esc_html(implode(' · ', cleg_payroll_report_deduction_items($worker))) . '</small></td>'
                 . '<td class="cleg-report-net"><strong>' . esc_html(cleg_payroll_money($worker['net_pay'])) . '</strong></td>'
                 . '<td class="cleg-report-employer"><strong>' . esc_html(cleg_payroll_money($employer)) . '</strong><small>SS patronal ' . esc_html(cleg_payroll_money($worker['employer_ss'])) . ' · Medicare patronal ' . esc_html(cleg_payroll_money($worker['employer_medicare'])) . '</small></td>'
                 . '<td class="cleg-report-detail"><details><summary>Desglose</summary><div class="cleg-payroll-report-breakdown">'
@@ -18243,18 +18280,19 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
         $month = isset($_GET['report_month']) ? sanitize_text_field(wp_unslash($_GET['report_month'])) : wp_date('Y-m', null, cleg_payroll_timezone());
         $year = isset($_GET['report_year']) ? sanitize_text_field(wp_unslash($_GET['report_year'])) : wp_date('Y', null, cleg_payroll_timezone());
         $type = isset($_GET['worker_type']) ? sanitize_key(wp_unslash($_GET['worker_type'])) : 'all';
+        $worker_id = isset($_GET['worker_id']) ? sanitize_text_field(wp_unslash($_GET['worker_id'])) : 'all';
         list($start, $end, $period_value, $period_label) = cleg_payroll_report_range($mode, $month, $year);
         $lines = cleg_payroll_report_lines($start, $end);
         if (is_wp_error($lines)) {
             return '<section class="cleg-payroll cleg-admin-ui"><div class="cleg-payroll-empty"><h2>Error reportes</h2><p>' . esc_html($lines->get_error_message()) . '</p></div></section>';
         }
 
-        $filtered = cleg_payroll_report_filtered_lines($lines, $type);
+        $filtered = cleg_payroll_report_worker_filter(cleg_payroll_report_filtered_lines($lines, $type), $worker_id);
         $summary = cleg_payroll_report_summary($filtered);
         $totals = cleg_payroll_report_totals($summary);
         $month_options = cleg_payroll_month_options($month);
         $year_options = cleg_payroll_report_year_options($year);
-        $export_base = array('action' => 'cleg_payroll_reports_export', 'report_mode' => $mode, 'report_year' => $year, 'worker_type' => $type);
+        $export_base = array('action' => 'cleg_payroll_reports_export', 'report_mode' => $mode, 'report_year' => $year, 'worker_type' => $type, 'worker_id' => $worker_id);
         if ($mode !== 'year') {
             $export_base['report_month'] = $month;
         }
@@ -18291,6 +18329,14 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
                             <option value="all" <?php selected($type, 'all'); ?>>Todos</option>
                             <option value="employees" <?php selected($type, 'employees'); ?>>Empleados / aportes</option>
                             <option value="contractors" <?php selected($type, 'contractors'); ?>>Contratistas / 480</option>
+                        </select>
+                    </label>
+                    <label>Trabajador
+                        <select name="worker_id" onchange="this.form.submit()">
+                            <option value="all">Todos los trabajadores</option>
+                            <?php foreach (cleg_payroll_report_summary($lines) as $worker_option) : ?>
+                                <option value="<?php echo esc_attr($worker_option['employee_id']); ?>" <?php selected($worker_id, $worker_option['employee_id']); ?>><?php echo esc_html($worker_option['name']); ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </label>
                     <a href="<?php echo esc_url(home_url('/payroll-rrhh/')); ?>">Volver a Payroll semanal</a>
