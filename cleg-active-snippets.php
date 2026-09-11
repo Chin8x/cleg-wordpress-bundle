@@ -39729,10 +39729,10 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                     <input type="hidden" name="requester" value="<?php echo esc_attr($user->display_name); ?>">
                                     <input type="hidden" name="intake_category" value="Industrial component">
                                     <input type="hidden" name="urgency_reason" value="Cotizacion requerida pronto">
-                                    <nav class="cleg-proc-form-steps" aria-label="Pasos de la solicitud">
-                                        <button type="button" class="is-active" data-proc-step-link="1">1. Necesidad</button>
-                                        <button type="button" data-proc-step-link="2">2. Entrega</button>
-                                        <button type="button" data-proc-step-link="3">3. Detalles</button>
+                                    <nav class="cleg-proc-tabs cleg-proc-form-steps" aria-label="Pasos de la solicitud">
+                                        <a href="#proc-step-1" class="is-active" data-proc-step-link="1">1. Necesidad</a>
+                                        <a href="#proc-step-2" data-proc-step-link="2">2. Entrega</a>
+                                        <a href="#proc-step-3" data-proc-step-link="3">3. Detalles</a>
                                     </nav>
                                     <p class="cleg-proc-step-status" data-proc-step-status aria-live="polite">Paso 1 de 3: describe lo que necesitas.</p>
                                     <div class="cleg-proc-form-step is-active" data-proc-form-step="1">
