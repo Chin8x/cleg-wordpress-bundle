@@ -18045,7 +18045,7 @@ if (!function_exists('cleg_payroll_report_pdf_text')) {
 if (!function_exists('cleg_payroll_report_pdf_summary')) {
     function cleg_payroll_report_pdf_summary($period_label, $summary, $report = 'summary') {
         $logo = function_exists('cleg_emp_payroll_pdf_logo_data') ? cleg_emp_payroll_pdf_logo_data() : '';
-        $content = "q\n0.04 0.09 0.17 rg\n0 690 612 102 re\nQ\n";
+        $content = "q\n0.04 0.09 0.17 rg\n0 690 612 102 re\nf\nQ\n";
         if ($logo !== '') {
             $content .= "q\n72 0 0 72 500 706 cm\n/Logo Do\nQ\n";
         }
