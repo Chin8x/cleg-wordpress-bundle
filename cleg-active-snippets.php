@@ -39719,7 +39719,7 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                     <section class="cleg-proc-workspace" id="bandeja">
                         <aside class="cleg-proc-panel cleg-proc-request-form" id="solicitud">
                             <div class="cleg-proc-panel-head">
-                                <h2>Nueva solicitud</h2>
+                                <h2 style="color:#fff!important;-webkit-text-fill-color:#fff!important;">Nueva solicitud</h2>
                                 <?php echo cleg_procurement_render_mobile_menu($view, $base_url, $detail_url, $show_ai, $show_history); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                             </div>
                             <div class="cleg-proc-panel-body">
