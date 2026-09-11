@@ -17813,13 +17813,17 @@ if (!function_exists('cleg_payroll_report_line_value')) {
 }
 
 if (!function_exists('cleg_payroll_report_lines')) {
-    function cleg_payroll_report_lines($start, $end) {
+    function cleg_payroll_report_lines($start, $end, $provided_lines = null) {
+        if (is_array($provided_lines) && !empty($provided_lines)) {
+            $lines = $provided_lines;
+        } else {
         $formula = "AND(OR({Period End}='{$start}',IS_AFTER({Period End},'{$start}')),OR({Period End}='{$end}',IS_BEFORE({Period End},'{$end}')))";
         $lines = cleg_payroll_records(CLEG_AIRTABLE_PAYROLL_LINES_TABLE, array(
             'filterByFormula' => $formula,
             'sort[0][field]' => 'Period End',
             'sort[0][direction]' => 'asc',
         ));
+        }
 
         if (is_wp_error($lines)) {
             return $lines;
@@ -18127,8 +18131,6 @@ if (!function_exists('cleg_payroll_report_pdf_summary')) {
             $content .= cleg_payroll_report_pdf_text(300, $y + 16, 8, 'Bruto ' . cleg_payroll_money($total_gross), 'F2');
             $content .= cleg_payroll_report_pdf_text(410, $y + 16, 8, 'Deducciones ' . cleg_payroll_money($total_deductions), 'F2');
             $content .= cleg_payroll_report_pdf_text(510, $y + 16, 8, 'Neto ' . cleg_payroll_money($total_net), 'F2');
-            $content .= cleg_payroll_report_pdf_text(42, 66, 8, 'Generado por C&L Payroll. Este documento no es editable y refleja líneas cerradas.', 'F1', '0.31 0.38 0.46');
-            $content .= cleg_payroll_report_pdf_text(42, 51, 8, 'Las vacaciones se muestran por trabajador como acumuladas, usadas y saldo al cierre.', 'F1', '0.31 0.38 0.46');
             return cleg_payroll_report_pdf_document($content, $logo);
         }
 
@@ -18161,8 +18163,6 @@ if (!function_exists('cleg_payroll_report_pdf_summary')) {
         $content .= cleg_payroll_report_pdf_text(382, $y + 7, 8, cleg_payroll_money($total_gross), 'F2');
         $content .= cleg_payroll_report_pdf_text(452, $y + 7, 8, cleg_payroll_money($total_deductions), 'F2');
         $content .= cleg_payroll_report_pdf_text(530, $y + 7, 8, cleg_payroll_money($total_net), 'F2');
-        $content .= cleg_payroll_report_pdf_text(42, 66, 8, 'Generado por C&L Payroll. Este documento no es editable y refleja líneas cerradas.', 'F1', '0.31 0.38 0.46');
-        $content .= cleg_payroll_report_pdf_text(42, 51, 8, 'Documento generado desde líneas cerradas de Payroll para revisión y archivo contable.', 'F1', '0.31 0.38 0.46');
         return cleg_payroll_report_pdf_document($content, $logo);
     }
 }
@@ -18190,7 +18190,7 @@ if (!function_exists('cleg_payroll_reports_pdf_export')) {
         $report = isset($_GET['report_file']) ? sanitize_key(wp_unslash($_GET['report_file'])) : 'summary_pdf';
         $base_report = preg_replace('/_pdf$/', '', $report);
         list($start, $end, $period_value, $period_label) = cleg_payroll_report_range($mode, $month, $year);
-        $lines = cleg_payroll_report_lines($start, $end);
+        $lines = cleg_payroll_report_lines($start, $end, !empty($period_lines) ? $period_lines : null);
         if (is_wp_error($lines)) {
             wp_die(esc_html($lines->get_error_message()));
         }
