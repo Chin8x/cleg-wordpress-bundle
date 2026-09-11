@@ -18195,7 +18195,7 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
         $total_regular_hours = 0;
         $total_extra_hours = 0;
         foreach ($data as $row) {
-            $total_pay += (float) ($row['net_pay'] ?? $row['pay']);
+            $total_pay += round((float) ($row['net_pay'] ?? $row['pay']), 2);
             $total_hours += (float) $row['hours'];
             $total_regular_hours += (float) ($row['regular_hours'] ?? 0);
             $total_extra_hours += (float) ($row['extra_hours'] ?? 0);
@@ -18637,7 +18637,7 @@ if (!function_exists('cleg_payroll_export')) {
 
         $total_pay = 0;
         foreach ($data as $row) {
-            $total_pay += (float) ($row['net_pay'] ?? $row['pay']);
+            $total_pay += round((float) ($row['net_pay'] ?? $row['pay']), 2);
         }
 
         $detail_sheet_rows = array(
