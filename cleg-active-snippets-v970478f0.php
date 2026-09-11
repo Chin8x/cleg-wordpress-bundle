@@ -6697,7 +6697,7 @@ if (!function_exists('cleg_admin_nav')) {
             'requests' => array('Solicitudes', home_url('/admin-solicitudes/'), 'forms_requests'),
             'procurement' => array('Compras', home_url('/admin-procurement/'), 'procurement_quotes'),
         );
-        $task_nav = '<nav class="cleg-admin-task-nav cleg-mobile-only" aria-label="Navegacion por tareas">';
+        $task_nav = '<nav class="cleg-admin-nav cleg-admin-task-nav cleg-mobile-only" aria-label="Navegacion por tareas">';
         foreach ($task_items as $key => $task) {
             if (!cleg_admin_nav_module_enabled($task[2])) {
                 continue;
@@ -6707,7 +6707,7 @@ if (!function_exists('cleg_admin_nav')) {
                 || ($key === 'procurement' && $module === 'procurement');
             $task_nav .= '<a class="' . esc_attr($task_active ? 'is-active' : '') . '" href="' . esc_url($task[1]) . '">' . esc_html($task[0]) . '</a>';
         }
-        $task_nav .= '<details class="cleg-admin-task-more"><summary>Más</summary><div>';
+        $task_nav .= '<details class="cleg-admin-mobile-menu cleg-admin-task-more"><summary><span>Más</span><b>Menu</b></summary><div>';
         foreach ($mobile_items as $key => $item) {
             $task_nav .= '<a class="' . esc_attr($key === $active ? 'is-active' : '') . '" href="' . esc_url($item[1]) . '">' . esc_html($item[0]) . '</a>';
         }
@@ -6716,16 +6716,7 @@ if (!function_exists('cleg_admin_nav')) {
         }
         $task_nav .= '</div></details></nav>';
 
-        $mobile = $task_nav . '<details class="cleg-admin-mobile-menu"><summary><span>' . esc_html($active_label) . '</span><b>Menu</b></summary><div>';
-
-        foreach ($mobile_items as $key => $item) {
-            $mobile .= '<a class="' . esc_attr($key === $active ? 'is-active' : '') . '" href="' . esc_url($item[1]) . '">' . esc_html($item[0]) . '</a>';
-        }
-        foreach ($utility_items as $item) {
-            $mobile .= '<a class="' . esc_attr($item[2]) . '" href="' . esc_url($item[1]) . '">' . esc_html($item[0]) . '</a>';
-        }
-
-        $mobile .= '</div></details>';
+        $mobile = $task_nav;
 
         $html = $mobile . '<nav class="cleg-admin-nav cleg-admin-nav-' . esc_attr($module) . '" aria-label="Navegacion de modulo ' . esc_attr($module_labels[$module] ?? 'administrativo') . '">';
 
