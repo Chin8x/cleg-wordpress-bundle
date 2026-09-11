@@ -18375,7 +18375,7 @@ body .cleg-payroll .cleg-payroll-report-filters label.is-hidden{display:none}
 body .cleg-payroll .cleg-payroll-report-filters a,body .cleg-payroll .cleg-payroll-report-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border-radius:999px;background:#06182d;color:#fff!important;-webkit-text-fill-color:#fff!important;padding:10px 14px;font-weight:950;text-decoration:none!important;text-align:center}
 body .cleg-payroll .cleg-payroll-report-hero{width:min(1320px,calc(100% - 24px));margin:0 auto 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;border:1px solid rgba(6,24,45,.12);border-radius:24px;background:linear-gradient(135deg,#06182d,#123454);color:#fff;padding:22px;box-shadow:0 18px 44px rgba(6,24,45,.16);box-sizing:border-box}
 body .cleg-payroll .cleg-payroll-report-hero span{display:block;color:#f5a35c;font-size:12px;font-weight:1000;text-transform:uppercase;letter-spacing:.08em}
-body .cleg-payroll .cleg-payroll-report-hero h2{margin:4px 0 6px;color:#fff;font-size:30px;line-height:1.05}
+body .cleg-payroll .cleg-payroll-report-hero h2{margin:4px 0 6px;color:#fff!important;-webkit-text-fill-color:#fff!important;font-size:30px;line-height:1.05}
 body .cleg-payroll .cleg-payroll-report-hero p{margin:0;color:#dce8f4;font-weight:750}
 body .cleg-payroll .cleg-payroll-report-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px}
 body .cleg-payroll .cleg-payroll-report-actions a{background:#fff;color:#06182d!important;-webkit-text-fill-color:#06182d!important}
