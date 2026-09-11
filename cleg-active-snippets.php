@@ -41515,7 +41515,7 @@ if (!function_exists('cleg_procurement_upload_preview_script')) {
                         if (!target) return;
                         event.preventDefault();
                         var active = form.querySelector('[data-proc-form-step].is-active');
-                        if (next && active && !active.querySelector("input,select,textarea").closest("form").reportValidity()) return;
+                        if (active && target > current && !form.reportValidity()) return;
                         syncRequestStep(form, target);
                         var heading = form.querySelector('[data-proc-form-step="' + target + '"]');
                         if (heading) heading.scrollIntoView({behavior:"smooth",block:"start"});
