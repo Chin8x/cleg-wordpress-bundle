@@ -1793,6 +1793,14 @@ add_shortcode('cleg_form_hub', function () {
     return '<div class="cleg-hub cleg-hub-error">No tienes permisos para ver esta pÃ¡gina.</div>';
   }
 
+  // Esta ruta pertenece al portal antiguo. Las acciones vigentes viven en
+  // Solicitudes para administración y en el panel personal para trabajadores.
+  $legacy_destination = in_array('administrator', $roles, true)
+    ? home_url('/admin-solicitudes/')
+    : home_url('/panel/');
+  wp_safe_redirect($legacy_destination);
+  exit;
+
   // Prefill
   $display_name = $u->display_name ?: '';
   $user_email   = $u->user_email ?: '';
