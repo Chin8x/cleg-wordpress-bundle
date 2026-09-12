@@ -6799,22 +6799,22 @@ if (!function_exists('cleg_admin_page_open')) {
         $success_notice = '';
 
         if ($approved_id !== '') {
-            $success_notice = '<div class="cleg-admin-notice is-success cleg-undo-toast"><strong>Horas aprobadas</strong><form method="post">'
+            $success_notice = '<div class="cleg-admin-notice is-success cleg-undo-toast" role="status" aria-live="polite"><strong>Horas aprobadas</strong><form method="post">'
                 . wp_nonce_field('cleg_admin_time_action', 'cleg_admin_nonce', true, false)
                 . '<input type="hidden" name="cleg_admin_record_id" value="' . esc_attr($approved_id) . '">'
                 . '<button type="submit" name="cleg_admin_action" value="undo_approval">Deshacer</button>'
                 . '</form></div>';
         } elseif ($undone !== '') {
-            $success_notice = '<div class="cleg-admin-notice is-success"><strong>Aprobacion deshecha.</strong></div>';
+            $success_notice = '<div class="cleg-admin-notice is-success" role="status" aria-live="polite"><strong>Aprobacion deshecha.</strong></div>';
         } elseif ($manual_created === 1) {
-            $success_notice = '<div class="cleg-admin-notice is-success"><strong>Jornada manual creada para revision.</strong><span>Debe aprobarse antes de aparecer en Payroll. Payroll solo muestra jornadas con estado Approved.</span></div>';
+            $success_notice = '<div class="cleg-admin-notice is-success" role="status" aria-live="polite"><strong>Jornada manual creada para revision.</strong><span>Debe aprobarse antes de aparecer en Payroll. Payroll solo muestra jornadas con estado Approved.</span></div>';
         } elseif ($saved !== '') {
-            $success_notice = '<div class="cleg-admin-notice is-success"><strong>Cambios guardados.</strong>' . ($blocked > 0 ? '<span>' . esc_html($blocked) . ' fila(s) no se procesaron por faltar Job Site, salida o permiso.</span>' : '') . '</div>';
+            $success_notice = '<div class="cleg-admin-notice is-success" role="status" aria-live="polite"><strong>Cambios guardados.</strong>' . ($blocked > 0 ? '<span>' . esc_html($blocked) . ' fila(s) no se procesaron por faltar Job Site, salida o permiso.</span>' : '') . '</div>';
         }
 
         return cleg_admin_desktop_menu_lock_styles() . '<section class="cleg-admin-ui"><main class="cleg-admin-main cleg-admin-shell">'
             . cleg_admin_page_header($title, $subtitle, array('eyebrow' => cleg_admin_module_eyebrow($active)))
-            . ($notice !== '' ? '<div class="cleg-admin-notice is-error">' . esc_html($notice) . '</div>' : '')
+            . ($notice !== '' ? '<div class="cleg-admin-notice is-error" role="alert" aria-live="assertive">' . esc_html($notice) . '</div>' : '')
             . $success_notice
             . cleg_admin_nav($active);
     }
