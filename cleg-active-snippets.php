@@ -20896,7 +20896,9 @@ if (!function_exists('cleg_emp_payroll_shortcode')) {
             <?php echo cleg_emp_payroll_styles(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
         </section>
         <?php
-        return ob_get_clean();
+        $output = ob_get_clean();
+        $output .= '<script id="cleg-employee-payroll-inline-guard">(function(){function hideExternalHeadings(){document.querySelectorAll("body.page-id-259 h1,body.page-id-259 h2").forEach(function(heading){if(!heading.closest(".cleg-emp-payroll")){heading.style.display="none";}});}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",hideExternalHeadings);}else{hideExternalHeadings();}})();</script>';
+        return $output;
     }
 }
 
