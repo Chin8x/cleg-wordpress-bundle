@@ -7365,7 +7365,18 @@ if (!function_exists('cleg_admin_error')) {
 if (!function_exists('cleg_admin_recent_table')) {
     function cleg_admin_recent_table($records, $limit = 10) {
         $records = array_slice($records, 0, $limit);
-        $html = '<div class="cleg-panel"><h2>Actividad reciente</h2><div class="cleg-table-wrap"><table><thead><tr><th>Empleado</th><th>Job Site</th><th>Entrada</th><th>Salida</th><th>Status</th><th>Alertas</th></tr></thead><tbody>';
+        $mobile = '<div class="cleg-mobile-only cleg-mobile-card-stack" aria-label="Actividad reciente">';
+        foreach ($records as $record) {
+            $employee = cleg_admin_field($record, 'Employee Name', 'Sin empleado');
+            $site = cleg_admin_field($record, 'Job Site Name', 'Sin proyecto');
+            $alerts = cleg_admin_field($record, 'Audit Flags', 'Sin alertas');
+            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>Actividad</span><strong>' . esc_html($employee) . '</strong></div>' . cleg_admin_status_pill(cleg_admin_field($record, 'Approval Status')) . '</div><div class="cleg-mobile-facts"><div><small>Proyecto</small><b>' . esc_html($site) . '</b></div><div><small>Entrada</small><b>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock In Time'))) . '</b></div><div><small>Salida</small><b>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock Out Time'))) . '</b></div></div><p class="cleg-mobile-muted">Alertas: ' . esc_html($alerts) . '</p></article>';
+        }
+        if (empty($records)) {
+            $mobile .= '<article class="cleg-mobile-card"><strong>No hay actividad reciente.</strong><p class="cleg-mobile-muted">Las jornadas aparecerán aquí cuando exista movimiento.</p></article>';
+        }
+        $mobile .= '</div>';
+        $html = '<div class="cleg-panel"><h2>Actividad reciente</h2>' . $mobile . '<div class="cleg-table-wrap cleg-desktop-table"><table><thead><tr><th>Empleado</th><th>Job Site</th><th>Entrada</th><th>Salida</th><th>Status</th><th>Alertas</th></tr></thead><tbody>';
 
         foreach ($records as $record) {
             $html .= '<tr><td>' . esc_html(cleg_admin_field($record, 'Employee Name')) . '</td><td>' . esc_html(cleg_admin_field($record, 'Job Site Name')) . '</td><td>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock In Time'))) . '</td><td>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock Out Time'))) . '</td><td>' . cleg_admin_status_pill(cleg_admin_field($record, 'Approval Status')) . '</td><td>' . esc_html(cleg_admin_field($record, 'Audit Flags', '--')) . '</td></tr>';
