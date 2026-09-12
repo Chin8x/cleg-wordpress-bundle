@@ -3518,7 +3518,7 @@ if (!function_exists('cleg_app_render_worker')) {
                     <div class="cleg-app-brand-block"><?php echo cleg_vantrexor_logo_markup('mark'); ?><p class="cleg-app-kicker">Vantrexor</p></div>
                     <h2><?php echo esc_html($display_name); ?></h2>
                 </div>
-                <details class="cleg-worker-menu">
+                <details class="cleg-worker-menu" id="cleg-worker-menu">
                     <summary aria-label="Opciones">Menu</summary>
                     <div>
                         <?php if (function_exists('cleg_shell_render_worker_menu_items')) : ?>
@@ -3554,6 +3554,13 @@ if (!function_exists('cleg_app_render_worker')) {
                     </div>
                 </details>
             </header>
+
+            <nav class="cleg-worker-task-nav" aria-label="Tareas del portal">
+                <a href="#cleg-weekly-hours">Horas</a>
+                <a href="#cleg-worker-news">Solicitudes</a>
+                <a href="#cleg-worker-purchase">Compras</a>
+                <a href="#cleg-worker-menu">Más</a>
+            </nav>
 
             <main class="cleg-clock-stage">
                 <div class="cleg-clock-status" data-clock-status>
@@ -4536,6 +4543,13 @@ if (!function_exists('cleg_app_script')) {
                         }
                     });
                 }
+                const taskMenuLink = app.querySelector('.cleg-worker-task-nav a[href="#cleg-worker-menu"]');
+                if (taskMenuLink && workerMenu && workerMenuSummary) {
+                    taskMenuLink.addEventListener('click', function () {
+                        workerMenu.open = true;
+                        workerMenuSummary.setAttribute('aria-expanded', 'true');
+                    });
+                }
 
                 const form = app.querySelector('[data-clock-form]');
                 const button = app.querySelector('[data-clock-button]');
@@ -5318,6 +5332,7 @@ if (!function_exists('cleg_app_styles')) {
                 gap: 18px;
                 padding: 0 0 22px;
             }
+            .cleg-worker-task-nav { display: none; }
             .cleg-app-kicker {
                 margin: 0 0 4px;
                 color: var(--cleg-muted);
@@ -5898,6 +5913,34 @@ if (!function_exists('cleg_app_styles')) {
                     width: 100%;
                     padding-bottom: 24px;
                 }
+                .cleg-worker-task-nav {
+                    display: grid;
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    gap: 6px;
+                    width: 100%;
+                    margin: -8px 0 8px;
+                    padding: 6px;
+                    border: 1px solid var(--cleg-line);
+                    border-radius: 14px;
+                    background: rgba(255,255,255,.92);
+                    box-shadow: 0 10px 24px rgba(7,24,39,.06);
+                }
+                .cleg-worker-task-nav a {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 44px;
+                    padding: 8px 5px;
+                    border-radius: 10px;
+                    color: var(--cleg-ink);
+                    font-size: 12px;
+                    font-weight: 900;
+                    line-height: 1.1;
+                    text-align: center;
+                    text-decoration: none;
+                }
+                .cleg-worker-task-nav a:focus-visible,
+                .cleg-worker-task-nav a:hover { background: #eef4fb; }
                 .cleg-worker-menu > div {
                     position: fixed;
                     top: calc(max(16px, env(safe-area-inset-top)) + 58px);
@@ -13785,7 +13828,7 @@ if (!function_exists('cleg_admin_solicitudes_shortcode')) {
         }
         $history_total = count($groups['history']);
 
-        $html .= '<style>.cleg-requests-summary-table th,.cleg-requests-summary-table td{vertical-align:top}.cleg-requests-summary-table td strong{display:block;font-size:14px;line-height:1.25}.cleg-requests-summary-table td small{display:block;color:var(--muted);font-size:12px;line-height:1.35;margin-top:4px}.cleg-request-reason{display:block;max-width:360px;line-height:1.35}.cleg-request-group-actions summary{display:inline-flex;align-items:center;justify-content:center;min-height:34px;border-radius:8px;background:#eef2f7;color:var(--ink);padding:7px 10px;font-weight:900;cursor:pointer}.cleg-request-group-actions>div{display:grid;grid-template-columns:minmax(84px,.7fr) minmax(0,1fr);gap:8px;align-items:center;margin-top:8px}.cleg-request-group-actions .cleg-request-action-stack{margin:0}.cleg-requests-history{overflow:hidden}.cleg-requests-history>summary{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 20px;cursor:pointer;list-style:none}.cleg-requests-history>summary::-webkit-details-marker{display:none}.cleg-requests-history>summary strong{display:block;color:var(--ink);font-size:18px}.cleg-requests-history>summary small{display:block;color:var(--muted);font-size:12px;margin-top:3px}.cleg-requests-history>.cleg-panel{border:0;border-top:1px solid var(--line);border-radius:0;box-shadow:none;margin:0}.cleg-requests-history>.cleg-panel>.cleg-panel-head{display:none}.cleg-requests-history .cleg-table-wrap{border:0;border-radius:0}@media(max-width:760px){.cleg-requests-summary-table thead{display:none}.cleg-requests-summary-table tr{display:grid;grid-template-columns:1fr;gap:8px;padding:12px}.cleg-requests-summary-table td{display:block;border:0!important;padding:0!important}.cleg-request-reason{max-width:none}}</style>';
+        $html .= '<style>.cleg-requests-summary-table th,.cleg-requests-summary-table td{vertical-align:top}.cleg-requests-summary-table td strong{display:block;font-size:14px;line-height:1.25}.cleg-requests-summary-table td small{display:block;color:var(--muted);font-size:12px;line-height:1.35;margin-top:4px}.cleg-request-reason{display:block;max-width:360px;line-height:1.35}.cleg-request-group-actions summary{display:inline-flex;align-items:center;justify-content:center;min-height:34px;border-radius:8px;background:#eef2f7;color:var(--ink);padding:7px 10px;font-weight:900;cursor:pointer}.cleg-request-group-actions>div{display:grid;grid-template-columns:minmax(84px,.7fr) minmax(0,1fr);gap:8px;align-items:center;margin-top:8px}.cleg-request-group-actions .cleg-request-action-stack{margin:0}.cleg-requests-history{overflow:hidden}.cleg-requests-history>summary{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px 20px;cursor:pointer;list-style:none}.cleg-requests-history>summary::-webkit-details-marker{display:none}.cleg-requests-history>summary strong{display:block;color:var(--ink);font-size:18px}.cleg-requests-history>summary small{display:block;color:var(--muted);font-size:12px;margin-top:3px}.cleg-requests-history>.cleg-panel{border:0;border-top:1px solid var(--line);border-radius:0;box-shadow:none;margin:0}.cleg-requests-history>.cleg-panel>.cleg-panel-head{display:none}.cleg-requests-history .cleg-table-wrap{border:0;border-radius:0}@media(max-width:760px){.cleg-requests-summary-table{border-collapse:separate!important;border-spacing:0 10px!important;background:transparent!important}.cleg-requests-summary-table thead{display:none}.cleg-requests-summary-table tr{display:grid;grid-template-columns:1fr;gap:8px;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 10px 22px rgba(7,24,39,.06)}.cleg-requests-summary-table td{display:block;border:0!important;padding:0!important}.cleg-request-reason{max-width:none}.cleg-requests-summary-table .cleg-request-actions,.cleg-requests-summary-table .cleg-request-actions button,.cleg-requests-summary-table .cleg-request-delete,.cleg-requests-summary-table .cleg-request-delete summary{width:100%}.cleg-requests-summary-table .cleg-request-actions button{min-height:44px}.cleg-requests-summary-table .cleg-request-delete summary{text-align:center}}</style>';
 
         $html .= '<div class="cleg-metrics-grid cleg-metrics-grid-compact">'
             . '<div class="cleg-metric"><strong>' . esc_html((string) count($groups['approved'])) . '</strong><span>Aprobadas</span><small>Impactan la operacion</small></div>'
