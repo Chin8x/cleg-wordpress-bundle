@@ -1793,6 +1793,14 @@ add_shortcode('cleg_form_hub', function () {
     return '<div class="cleg-hub cleg-hub-error">No tienes permisos para ver esta pÃ¡gina.</div>';
   }
 
+  // Esta ruta pertenece al portal antiguo. Las acciones vigentes viven en
+  // Solicitudes para administración y en el panel personal para trabajadores.
+  $legacy_destination = in_array('administrator', $roles, true)
+    ? home_url('/admin-solicitudes/')
+    : home_url('/panel/');
+  wp_safe_redirect($legacy_destination);
+  exit;
+
   // Prefill
   $display_name = $u->display_name ?: '';
   $user_email   = $u->user_email ?: '';
@@ -4361,8 +4369,9 @@ if (!function_exists('cleg_app_worker_request_submit')) {
             wp_send_json_error(array('message' => 'Escribe una nota corta.'), 400);
         }
 
+        $request_code = 'REQ-' . gmdate('Ymd-His') . '-' . (int) $user->ID;
         $fields = array(
-            'Request Code' => 'REQ-' . gmdate('Ymd-His') . '-' . (int) $user->ID,
+            'Request Code' => $request_code,
             'Employee Name' => sanitize_text_field($user->display_name ?: $user->user_login),
             'Employee Email' => sanitize_email($user->user_email),
             'Portal Username' => sanitize_user($user->user_login),
@@ -4384,7 +4393,10 @@ if (!function_exists('cleg_app_worker_request_submit')) {
             wp_send_json_error(array('message' => 'No se pudo enviar. Intenta de nuevo.'), 500);
         }
 
-        wp_send_json_success(array('message' => $type === 'Ausencia' ? 'Ausencia enviada.' : 'Mensaje enviado.'));
+        wp_send_json_success(array(
+            'message' => ($type === 'Ausencia' ? 'Ausencia enviada. ' : 'Mensaje enviado. ') . 'Codigo: ' . $request_code,
+            'code' => $request_code,
+        ));
     }
 }
 
@@ -4538,7 +4550,10 @@ if (!function_exists('cleg_app_receipt_submit')) {
         ));
 
         if (!is_wp_error($response)) {
-            wp_send_json_success(array('message' => 'Recibo enviado para revision.'));
+            wp_send_json_success(array(
+                'message' => 'Recibo enviado para revision. Codigo: ' . $receipt_code,
+                'code' => $receipt_code,
+            ));
         }
 
         $fallback_detail = "Recibo de compra\n"
@@ -4554,7 +4569,7 @@ if (!function_exists('cleg_app_receipt_submit')) {
             'body' => array(
                 'typecast' => true,
                 'records' => array(array('fields' => cleg_app_remove_empty_values(array(
-                    'Request Code' => $receipt_code,
+                    'Receipt Code' => $receipt_code,
                     'Employee Name' => sanitize_text_field($employee_name),
                     'Employee Email' => sanitize_email($employee_email),
                     'Portal Username' => sanitize_user($user->user_login),
@@ -4571,7 +4586,10 @@ if (!function_exists('cleg_app_receipt_submit')) {
             wp_send_json_error(array('message' => 'No se pudo enviar el recibo. Intenta de nuevo.'), 500);
         }
 
-        wp_send_json_success(array('message' => 'Recibo enviado para revision.'));
+        wp_send_json_success(array(
+            'message' => 'Recibo enviado para revision. Codigo: ' . $receipt_code,
+            'code' => $receipt_code,
+        ));
     }
 }
 
@@ -5170,7 +5188,8 @@ if (!function_exists('cleg_app_script')) {
                             if (dates.length >= 31) {
                                 throw new Error('El rango maximo es de 31 dias.');
                             }
-                            dates.push(cursor.toISOString().slice(0, 10));
+                            const localDate = [cursor.getFullYear(), String(cursor.getMonth() + 1).padStart(2, '0'), String(cursor.getDate()).padStart(2, '0')].join('-');
+                            dates.push(localDate);
                             cursor.setDate(cursor.getDate() + 1);
                         }
 
@@ -5194,11 +5213,14 @@ if (!function_exists('cleg_app_script')) {
                             submit.textContent = 'Enviando...';
                         }
                         if (requestMessage) requestMessage.textContent = 'Enviando...';
+                        let requestedDays = [];
+                        let sentDays = 0;
+                        const requestCodes = [];
                         try {
-                            const days = dateList(absenceStart ? absenceStart.value : '', absenceEnd ? absenceEnd.value : '');
+                            requestedDays = dateList(absenceStart ? absenceStart.value : '', absenceEnd ? absenceEnd.value : '');
+                            const days = requestedDays;
                             const originalDetail = detailInput ? detailInput.value.trim() : '';
 
-                            let sentDays = 0;
                             for (let index = 0; index < days.length; index++) {
                                 if (requestMessage) {
                                     requestMessage.textContent = days.length > 1 ? 'Enviando ' + (index + 1) + ' de ' + days.length + '...' : 'Enviando...';
@@ -5221,12 +5243,22 @@ if (!function_exists('cleg_app_script')) {
                                     throw new Error('Se enviaron ' + sentDays + ' de ' + days.length + ' dias. ' + (payload && payload.data && payload.data.message ? payload.data.message : 'No se pudo completar el rango. Revisa los dias enviados antes de reintentar.'));
                                 }
                                 sentDays++;
+                                if (payload.data && payload.data.code) requestCodes.push(payload.data.code);
                             }
 
                             requestForm.reset();
-                            if (requestMessage) requestMessage.textContent = days.length > 1 ? 'Ausencia enviada por ' + days.length + ' dias.' : 'Ausencia enviada.';
+                            if (requestMessage) {
+                                const codeText = requestCodes.length ? ' Codigos: ' + requestCodes.join(', ') + '.' : '';
+                                requestMessage.textContent = (days.length > 1 ? 'Ausencia enviada por ' + days.length + ' dias.' : 'Ausencia enviada.') + codeText;
+                            }
                         } catch (error) {
-                            if (requestMessage) requestMessage.textContent = error.message || 'No se pudo enviar. Intenta de nuevo.';
+                            if (sentDays > 0 && requestedDays[sentDays]) {
+                                if (absenceStart) absenceStart.value = requestedDays[sentDays];
+                                if (absenceEnd) absenceEnd.value = requestedDays[requestedDays.length - 1] || requestedDays[sentDays];
+                                if (requestMessage) requestMessage.textContent = (error.message || 'No se pudo completar el rango.') + ' El formulario quedó desde ' + requestedDays[sentDays] + ' para evitar duplicar los días enviados.';
+                            } else if (requestMessage) {
+                                requestMessage.textContent = error.message || 'No se pudo enviar. Intenta de nuevo.';
+                            }
                         } finally {
                             if (submit) {
                                 submit.disabled = false;
@@ -6775,22 +6807,22 @@ if (!function_exists('cleg_admin_page_open')) {
         $success_notice = '';
 
         if ($approved_id !== '') {
-            $success_notice = '<div class="cleg-admin-notice is-success cleg-undo-toast"><strong>Horas aprobadas</strong><form method="post">'
+            $success_notice = '<div class="cleg-admin-notice is-success cleg-undo-toast" role="status" aria-live="polite"><strong>Horas aprobadas</strong><form method="post">'
                 . wp_nonce_field('cleg_admin_time_action', 'cleg_admin_nonce', true, false)
                 . '<input type="hidden" name="cleg_admin_record_id" value="' . esc_attr($approved_id) . '">'
                 . '<button type="submit" name="cleg_admin_action" value="undo_approval">Deshacer</button>'
                 . '</form></div>';
         } elseif ($undone !== '') {
-            $success_notice = '<div class="cleg-admin-notice is-success"><strong>Aprobacion deshecha.</strong></div>';
+            $success_notice = '<div class="cleg-admin-notice is-success" role="status" aria-live="polite"><strong>Aprobacion deshecha.</strong></div>';
         } elseif ($manual_created === 1) {
-            $success_notice = '<div class="cleg-admin-notice is-success"><strong>Jornada manual creada para revision.</strong><span>Debe aprobarse antes de aparecer en Payroll. Payroll solo muestra jornadas con estado Approved.</span></div>';
+            $success_notice = '<div class="cleg-admin-notice is-success" role="status" aria-live="polite"><strong>Jornada manual creada para revision.</strong><span>Debe aprobarse antes de aparecer en Payroll. Payroll solo muestra jornadas con estado Approved.</span></div>';
         } elseif ($saved !== '') {
-            $success_notice = '<div class="cleg-admin-notice is-success"><strong>Cambios guardados.</strong>' . ($blocked > 0 ? '<span>' . esc_html($blocked) . ' fila(s) no se procesaron por faltar Job Site, salida o permiso.</span>' : '') . '</div>';
+            $success_notice = '<div class="cleg-admin-notice is-success" role="status" aria-live="polite"><strong>Cambios guardados.</strong>' . ($blocked > 0 ? '<span>' . esc_html($blocked) . ' fila(s) no se procesaron por faltar Job Site, salida o permiso.</span>' : '') . '</div>';
         }
 
         return cleg_admin_desktop_menu_lock_styles() . '<section class="cleg-admin-ui"><main class="cleg-admin-main cleg-admin-shell">'
             . cleg_admin_page_header($title, $subtitle, array('eyebrow' => cleg_admin_module_eyebrow($active)))
-            . ($notice !== '' ? '<div class="cleg-admin-notice is-error">' . esc_html($notice) . '</div>' : '')
+            . ($notice !== '' ? '<div class="cleg-admin-notice is-error" role="alert" aria-live="assertive">' . esc_html($notice) . '</div>' : '')
             . $success_notice
             . cleg_admin_nav($active);
     }
@@ -7267,6 +7299,17 @@ if (!function_exists('cleg_admin_desktop_menu_lock_styles')) {
         white-space:normal!important;
     }
 }
+@media(max-width:760px){
+    body .cleg-admin-ui > .cleg-admin-shell > .cleg-admin-mobile-menu{
+        display:block!important;
+    }
+    body .cleg-admin-ui .cleg-mobile-card a.cleg-row-action,
+    body .cleg-admin-ui .cleg-mobile-card button,
+    body .cleg-admin-ui .cleg-mobile-actions a,
+    body .cleg-admin-ui .cleg-mobile-actions button{
+        min-height:44px!important;
+    }
+}
 </style>
 HTML;
     }
@@ -7341,7 +7384,18 @@ if (!function_exists('cleg_admin_error')) {
 if (!function_exists('cleg_admin_recent_table')) {
     function cleg_admin_recent_table($records, $limit = 10) {
         $records = array_slice($records, 0, $limit);
-        $html = '<div class="cleg-panel"><h2>Actividad reciente</h2><div class="cleg-table-wrap"><table><thead><tr><th>Empleado</th><th>Job Site</th><th>Entrada</th><th>Salida</th><th>Status</th><th>Alertas</th></tr></thead><tbody>';
+        $mobile = '<div class="cleg-mobile-only cleg-mobile-card-stack" aria-label="Actividad reciente">';
+        foreach ($records as $record) {
+            $employee = cleg_admin_field($record, 'Employee Name', 'Sin empleado');
+            $site = cleg_admin_field($record, 'Job Site Name', 'Sin proyecto');
+            $alerts = cleg_admin_field($record, 'Audit Flags', 'Sin alertas');
+            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>Actividad</span><strong>' . esc_html($employee) . '</strong></div>' . cleg_admin_status_pill(cleg_admin_field($record, 'Approval Status')) . '</div><div class="cleg-mobile-facts"><div><small>Proyecto</small><b>' . esc_html($site) . '</b></div><div><small>Entrada</small><b>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock In Time'))) . '</b></div><div><small>Salida</small><b>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock Out Time'))) . '</b></div></div><p class="cleg-mobile-muted">Alertas: ' . esc_html($alerts) . '</p></article>';
+        }
+        if (empty($records)) {
+            $mobile .= '<article class="cleg-mobile-card"><strong>No hay actividad reciente.</strong><p class="cleg-mobile-muted">Las jornadas aparecerán aquí cuando exista movimiento.</p></article>';
+        }
+        $mobile .= '</div>';
+        $html = $mobile . '<div class="cleg-panel"><h2>Actividad reciente</h2><div class="cleg-table-wrap cleg-desktop-table"><table><thead><tr><th>Empleado</th><th>Job Site</th><th>Entrada</th><th>Salida</th><th>Status</th><th>Alertas</th></tr></thead><tbody>';
 
         foreach ($records as $record) {
             $html .= '<tr><td>' . esc_html(cleg_admin_field($record, 'Employee Name')) . '</td><td>' . esc_html(cleg_admin_field($record, 'Job Site Name')) . '</td><td>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock In Time'))) . '</td><td>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock Out Time'))) . '</td><td>' . cleg_admin_status_pill(cleg_admin_field($record, 'Approval Status')) . '</td><td>' . esc_html(cleg_admin_field($record, 'Audit Flags', '--')) . '</td></tr>';
@@ -10324,7 +10378,7 @@ if (!function_exists('cleg_admin_bulk_review_bar')) {
         }
 
         $primary = '';
-        if (cleg_admin_current_user_can_approve_hours() && in_array($status, array('pending', 'manual', 'open'), true)) {
+        if (cleg_admin_current_user_can_approve_hours() && in_array($status, array('pending', 'manual'), true)) {
             $primary = '<button type="submit" name="cleg_admin_action" value="bulk_approve">Aprobar seleccionadas</button>';
         } elseif (cleg_admin_current_user_can_correct_hours() && in_array($status, array('approved', 'deleted'), true)) {
             $primary = '<button type="submit" name="cleg_admin_action" value="bulk_reopen">Mandar a revision</button>';
@@ -10340,7 +10394,7 @@ if (!function_exists('cleg_admin_bulk_review_bar')) {
 
         return '<form id="cleg-bulk-time-form" class="cleg-bulk-review-bar" method="post">'
             . wp_nonce_field('cleg_admin_time_action', 'cleg_admin_nonce', true, false)
-            . '<strong>Seleccionadas</strong>'
+            . '<strong>Seleccionadas</strong><span>Solo se aprobarán jornadas completas, sin alertas GPS ni datos faltantes.</span>'
             . $primary
             . $delete_button
             . '<div class="cleg-delete-popover"><strong>Motivo</strong><label><input type="radio" name="delete_reason" value="Error" checked> Error</label><label><input type="radio" name="delete_reason" value="Prueba de campo"> Prueba de campo</label><label><input type="radio" name="delete_reason" value="Otro"> Otro</label></div>'
@@ -11475,7 +11529,9 @@ if (!function_exists('cleg_admin_handle_time_action')) {
                 }
 
                 if ($action === 'bulk_approve') {
-                    if (cleg_admin_missing_job_site($current_job) || cleg_admin_field($record, 'Clock Out Time') === '') {
+                    $gps_in = cleg_admin_gps_point($record, 'in');
+                    $gps_out = cleg_admin_gps_point($record, 'out');
+                    if (cleg_admin_missing_job_site($current_job) || cleg_admin_field($record, 'Clock Out Time') === '' || $gps_in['map'] === '' || $gps_out['map'] === '' || $gps_in['outside'] || $gps_out['outside']) {
                         $blocked++;
                         continue;
                     }
@@ -12968,7 +13024,11 @@ if (!function_exists('cleg_admin_project_compact_list')) {
             $project_name = cleg_admin_field($site, 'Job Site Name');
             $project_url = cleg_admin_context_url('/admin-job-sites/', array('cleg_project' => $project_name));
             $stats = $project_stats[$project_name] ?? array('employees' => array(), 'week_hours' => 0, 'open' => 0);
-            $html .= '<a class="cleg-project-compact-card" href="' . esc_url($project_url) . '"><div><strong>' . esc_html($project_name ?: 'Sin nombre') . '</strong><span>' . esc_html(cleg_admin_field($site, 'Address', 'Sin direccion')) . '</span></div><div class="cleg-project-compact-meta"><b>' . esc_html(count($stats['employees'] ?? array())) . '</b><small>empleados</small></div><div class="cleg-project-compact-meta"><b>' . esc_html(cleg_admin_hours_label((float) ($stats['week_hours'] ?? 0))) . '</b><small>semana</small></div><i>›</i></a>';
+            $has_coordinates = cleg_admin_field($site, 'Latitude') !== '' && cleg_admin_field($site, 'Longitude') !== '';
+            $requires_geo = cleg_admin_field($site, 'Requires Geofence', '') === '1' || strtolower(cleg_admin_field($site, 'Requires Geofence', '')) === 'yes';
+            $geo_label = $requires_geo && !$has_coordinates ? 'Geofence incompleto' : ($requires_geo ? 'Geofence activo' : 'Sin geofence');
+            $geo_class = $requires_geo && !$has_coordinates ? ' is-warn' : '';
+            $html .= '<a class="cleg-project-compact-card" href="' . esc_url($project_url) . '"><div><strong>' . esc_html($project_name ?: 'Sin nombre') . '</strong><span>' . esc_html(cleg_admin_field($site, 'Address', 'Sin direccion')) . '</span><small class="cleg-project-compact-status' . esc_attr($geo_class) . '">' . esc_html(cleg_admin_field($site, 'Status', 'Estado no indicado')) . ' · ' . esc_html($geo_label) . '</small></div><div class="cleg-project-compact-meta"><b>' . esc_html(count($stats['employees'] ?? array())) . '</b><small>empleados</small></div><div class="cleg-project-compact-meta"><b>' . esc_html(cleg_admin_hours_label((float) ($stats['week_hours'] ?? 0))) . '</b><small>semana</small></div><i>›</i></a>';
         }
 
         if (empty($sites)) {
@@ -14945,8 +15005,9 @@ if (!function_exists('cleg_tenant_admin_modules_panel')) {
 
 if (!function_exists('cleg_tenant_admin_invites_panel')) {
     function cleg_tenant_admin_invites_panel(array $tenant, array $users): string {
+        $mobile = '<div class="cleg-tenant-mobile-list" aria-label="Invitaciones">';
         $html = '<section class="cleg-panel cleg-tenant-invites-panel"><div class="cleg-panel-head"><div><h2>Invitaciones</h2></div>' . cleg_tenant_admin_help('Ultimas invitaciones detectadas para esta empresa.') . '</div>';
-        $html .= '<div class="cleg-table-wrap"><table><thead><tr><th>Usuario</th><th>Email</th><th>Invitado</th><th>Estado</th></tr></thead><tbody>';
+        $html .= '<div class="cleg-table-wrap cleg-tenant-desktop-table"><table><thead><tr><th>Usuario</th><th>Email</th><th>Invitado</th><th>Estado</th></tr></thead><tbody>';
         $rows = 0;
         foreach ($users as $user) {
             if (!$user instanceof WP_User) {
@@ -14958,30 +15019,35 @@ if (!function_exists('cleg_tenant_admin_invites_panel')) {
             }
             $rows++;
             $status = (string) get_user_meta($user->ID, 'cleg_tenant_status', true);
+            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>Invitación</span><strong>' . esc_html($user->display_name ?: $user->user_login) . '</strong></div><span class="cleg-pill is-ok">' . esc_html($status === 'inactive' ? 'Inactivo' : 'Activo') . '</span></div><div class="cleg-mobile-facts"><div><small>Email</small><b>' . esc_html($user->user_email) . '</b></div><div><small>Invitado</small><b>' . esc_html($invited_at) . '</b></div></div></article>';
             $html .= '<tr><td><strong>' . esc_html($user->display_name ?: $user->user_login) . '</strong></td><td>' . esc_html($user->user_email) . '</td><td>' . esc_html($invited_at) . '</td><td><span class="cleg-pill is-ok">' . esc_html($status === 'inactive' ? 'Inactivo' : 'Activo') . '</span></td></tr>';
         }
         if ($rows === 0) {
+            $mobile .= '<article class="cleg-mobile-card"><strong>No hay invitaciones registradas.</strong></article>';
             $html .= '<tr><td colspan="4">Todavia no hay invitaciones registradas para esta empresa.</td></tr>';
         }
 
-        return $html . '</tbody></table></div></section>';
+        return $mobile . '</div>' . $html . '</tbody></table></div></section>';
     }
 }
 
 if (!function_exists('cleg_tenant_admin_audit_panel')) {
     function cleg_tenant_admin_audit_panel(array $tenant): string {
+        $mobile = '<div class="cleg-tenant-mobile-list" aria-label="Auditoria">';
         $html = '<section class="cleg-panel cleg-tenant-audit-panel"><div class="cleg-panel-head"><div><h2>Auditoria</h2></div>' . cleg_tenant_admin_help('Registro breve de acciones realizadas desde Administracion.') . '</div>';
-        $html .= '<div class="cleg-table-wrap"><table><thead><tr><th>Evento</th><th>Detalle</th><th>Actor</th><th>Fecha</th></tr></thead><tbody>';
+        $html .= '<div class="cleg-table-wrap cleg-tenant-desktop-table"><table><thead><tr><th>Evento</th><th>Detalle</th><th>Actor</th><th>Fecha</th></tr></thead><tbody>';
         $events = cleg_tenant_admin_audit_events($tenant);
         if (empty($events)) {
+            $mobile .= '<article class="cleg-mobile-card"><strong>No hay eventos registrados.</strong></article>';
             $html .= '<tr><td colspan="4">Todavia no hay eventos registrados por esta pantalla.</td></tr>';
         }
         foreach ($events as $event) {
             $actor = !empty($event['actor']) ? get_userdata((int) $event['actor']) : false;
+            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>Evento</span><strong>' . esc_html((string) ($event['event'] ?? 'Evento')) . '</strong></div><span class="cleg-pill ' . esc_attr(($event['status'] ?? '') === 'ok' ? 'is-ok' : 'is-warn') . '">' . esc_html(($event['status'] ?? '') === 'ok' ? 'Correcto' : 'Revisar') . '</span></div><p class="cleg-mobile-muted">' . esc_html((string) ($event['detail'] ?? '')) . '</p><div class="cleg-mobile-facts"><div><small>Actor</small><b>' . esc_html($actor ? $actor->display_name : 'Sistema') . '</b></div><div><small>Fecha</small><b>' . esc_html((string) ($event['at'] ?? '')) . '</b></div></div></article>';
             $html .= '<tr><td><span class="cleg-pill ' . esc_attr(($event['status'] ?? '') === 'ok' ? 'is-ok' : 'is-warn') . '">' . esc_html((string) ($event['event'] ?? 'Evento')) . '</span></td><td>' . esc_html((string) ($event['detail'] ?? '')) . '</td><td>' . esc_html($actor ? $actor->display_name : 'Sistema') . '</td><td>' . esc_html((string) ($event['at'] ?? '')) . '</td></tr>';
         }
 
-        return $html . '</tbody></table></div></section>';
+        return $mobile . '</div>' . $html . '</tbody></table></div></section>';
     }
 }
 
@@ -15119,6 +15185,8 @@ if (!function_exists('cleg_tenant_admin_styles')) {
 .cleg-tenant-pin-notice div{display:grid;gap:3px}.cleg-tenant-pin-notice div span{color:#0f6b3c;font-size:12px;font-weight:950;text-transform:uppercase}.cleg-tenant-pin-notice div strong{font-size:18px}.cleg-tenant-pin-notice div small{color:#516579;font-weight:750}
 .cleg-tenant-pin-notice code{border:1px solid #b7e2c8;border-radius:10px;background:#fff;padding:12px;color:#06182d;font-size:15px;font-weight:850;white-space:nowrap}.cleg-tenant-pin-notice code b{font-size:22px;letter-spacing:3px}
 .cleg-tenant-pin-notice button{min-height:42px;border:0;border-radius:8px;background:#107344;color:#fff;padding:10px 14px;font-weight:950;cursor:pointer}
+.cleg-tenant-mobile-list{display:none}
+.cleg-tenant-mobile-list .cleg-mobile-card{margin:0 auto 10px;width:min(1320px,calc(100% - 24px))}
 @media(min-width:901px){
     .cleg-module-admin-root .cleg-admin-mobile-menu{display:none!important}
 }
@@ -15130,6 +15198,8 @@ if (!function_exists('cleg_tenant_admin_styles')) {
     .cleg-tenant-hero{align-items:stretch;flex-direction:column}
     .cleg-tenant-primary,.cleg-tenant-hero a{width:100%}
     .cleg-module-admin-root .cleg-admin-nav{display:none!important}
+    .cleg-tenant-mobile-list{display:block!important}
+    .cleg-tenant-desktop-table{display:none!important}
     .cleg-tenant-tabs{padding-bottom:12px}
     .cleg-tenant-metrics,.cleg-tenant-overview-grid,.cleg-tenant-role-grid{grid-template-columns:1fr!important}
     .cleg-tenant-user-form{grid-template-columns:1fr!important}
@@ -17745,7 +17815,14 @@ if (!function_exists('cleg_payroll_month_summary_merge')) {
 
 if (!function_exists('cleg_payroll_month_summary_table')) {
     function cleg_payroll_month_summary_table($summary, $empty_message = 'Sin datos para este mes.') {
-        $html = '<div class="cleg-payroll-month-table"><table><thead><tr><th>Trabajador</th><th>Horas</th><th>Regular</th><th>Extra</th><th>Bruto</th><th>Total pagado</th><th>Periodos</th></tr></thead><tbody>';
+        $html = '<div class="cleg-payroll-month-table"><div class="cleg-payroll-month-cards" aria-label="Resumen mensual por trabajador">';
+        foreach ((array) $summary as $row) {
+            $html .= '<article class="cleg-payroll-month-card"><div class="cleg-payroll-month-card-head"><strong>' . esc_html($row['name'] ?? '') . '</strong><b>$' . esc_html(number_format((float) ($row['net_pay'] ?? 0), 2)) . '</b></div><div class="cleg-payroll-month-card-facts"><div><small>Horas</small><strong>' . esc_html(cleg_payroll_format_hours((float) ($row['hours'] ?? 0))) . '</strong></div><div><small>Regular / extra</small><strong>' . esc_html(cleg_payroll_format_hours((float) ($row['regular_hours'] ?? 0))) . ' / ' . esc_html(cleg_payroll_format_hours((float) ($row['extra_hours'] ?? 0))) . '</strong></div><div><small>Bruto</small><strong>$' . esc_html(number_format((float) ($row['gross_pay'] ?? 0), 2)) . '</strong></div><div><small>Periodos</small><strong>' . esc_html((string) absint($row['periods'] ?? 0)) . '</strong></div></div></article>';
+        }
+        if (empty($summary)) {
+            $html .= '<article class="cleg-payroll-month-card is-empty"><strong>' . esc_html($empty_message) . '</strong></article>';
+        }
+        $html .= '</div><table><thead><tr><th>Trabajador</th><th>Horas</th><th>Regular</th><th>Extra</th><th>Bruto</th><th>Total pagado</th><th>Periodos</th></tr></thead><tbody>';
         foreach ((array) $summary as $row) {
             $html .= '<tr><td><strong>' . esc_html($row['name'] ?? '') . '</strong></td>'
                 . '<td>' . esc_html(cleg_payroll_format_hours((float) ($row['hours'] ?? 0))) . '</td>'
@@ -18389,7 +18466,14 @@ if (!function_exists('cleg_payroll_report_table')) {
         if (empty($summary)) {
             return '<div class="cleg-payroll-report-empty"><h2>Sin cierres en este periodo</h2><p>Cuando Payroll se cierre, esta pantalla mostrara los totales reales para contabilidad.</p></div>';
         }
-        $html = '<div class="cleg-payroll-report-table"><table><thead><tr><th>Trabajador</th><th>Horas</th><th>Bruto</th><th>Deducciones</th><th>Neto</th><th>Aportes patronales</th><th>Detalle</th></tr></thead><tbody>';
+        $html = '<div class="cleg-payroll-report-table"><div class="cleg-payroll-report-cards" aria-label="Resumen de payroll por trabajador">';
+        foreach ($summary as $worker) {
+            $employer = (float) ($worker['employer_ss'] ?? 0) + (float) ($worker['employer_medicare'] ?? 0);
+            $deductions = cleg_payroll_report_deduction_items($worker);
+            $deduction_label = !empty($deductions) ? implode(' · ', $deductions) : 'Sin deducciones';
+            $html .= '<article class="cleg-payroll-report-card"><div class="cleg-payroll-report-card-head"><div><strong>' . esc_html($worker['name']) . '</strong><small>' . esc_html(cleg_payroll_employee_display_type($worker['worker_type'])) . '</small></div><b>' . esc_html(cleg_payroll_money($worker['net_pay'])) . '</b></div><div class="cleg-payroll-report-card-facts"><div><small>Horas</small><strong>' . esc_html(cleg_payroll_format_hours($worker['hours'])) . '</strong></div><div><small>Bruto</small><strong>' . esc_html(cleg_payroll_money($worker['gross_pay'])) . '</strong></div><div><small>Deducciones</small><strong>' . esc_html(cleg_payroll_money($worker['total_deductions'])) . '</strong><span>' . esc_html($deduction_label) . '</span></div><div><small>Aporte patronal</small><strong>' . esc_html(cleg_payroll_money($employer)) . '</strong></div></div></article>';
+        }
+        $html .= '</div><table><thead><tr><th>Trabajador</th><th>Horas</th><th>Bruto</th><th>Deducciones</th><th>Neto</th><th>Aportes patronales</th><th>Detalle</th></tr></thead><tbody>';
         foreach ($summary as $worker) {
             $employer = (float) ($worker['employer_ss'] ?? 0) + (float) ($worker['employer_medicare'] ?? 0);
             $html .= '<tr><td class="cleg-report-worker"><strong>' . esc_html($worker['name']) . ' <small>(' . esc_html(cleg_payroll_employee_display_type($worker['worker_type'])) . ')</small></strong><small>' . esc_html($worker['form_type']) . '</small></td>'
@@ -18526,6 +18610,20 @@ body .cleg-payroll .cleg-payroll-report-kpis strong{color:#06182d;font-size:23px
 body .cleg-payroll .cleg-payroll-report-kpis small{color:#64748b;font-weight:800}
 body .cleg-payroll .cleg-payroll-report-table,body .cleg-payroll .cleg-payroll-report-empty{width:min(1320px,calc(100% - 24px));margin:0 auto 28px;border:1px solid rgba(6,24,45,.12);border-radius:20px;background:#fff;box-shadow:0 14px 34px rgba(6,24,45,.06);overflow:hidden}
 body .cleg-payroll .cleg-payroll-report-table{overflow-x:auto}
+body .cleg-payroll .cleg-payroll-report-cards{display:none}
+body .cleg-payroll .cleg-payroll-report-card{display:grid;gap:12px;padding:14px;border:1px solid rgba(6,24,45,.12);border-radius:14px;background:#fff}
+body .cleg-payroll .cleg-payroll-report-card+.cleg-payroll-report-card{margin-top:10px}
+body .cleg-payroll .cleg-payroll-report-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+body .cleg-payroll .cleg-payroll-report-card-head strong,body .cleg-payroll .cleg-payroll-report-card-head small{display:block}
+body .cleg-payroll .cleg-payroll-report-card-head strong{color:#06182d;font-size:16px}
+body .cleg-payroll .cleg-payroll-report-card-head small{margin-top:3px;color:#64748b;font-size:11px;font-weight:800}
+body .cleg-payroll .cleg-payroll-report-card-head b{color:#107344;font-size:20px;white-space:nowrap}
+body .cleg-payroll .cleg-payroll-report-card-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+body .cleg-payroll .cleg-payroll-report-card-facts>div{padding:9px;border-radius:10px;background:#f7f9fc}
+body .cleg-payroll .cleg-payroll-report-card-facts small,body .cleg-payroll .cleg-payroll-report-card-facts strong,body .cleg-payroll .cleg-payroll-report-card-facts span{display:block}
+body .cleg-payroll .cleg-payroll-report-card-facts small{color:#64748b;font-size:10px;font-weight:950;text-transform:uppercase}
+body .cleg-payroll .cleg-payroll-report-card-facts strong{margin-top:3px;color:#06182d;font-size:13px}
+body .cleg-payroll .cleg-payroll-report-card-facts span{margin-top:3px;color:#516579;font-size:11px;line-height:1.3}
 body .cleg-payroll .cleg-payroll-report-table table{width:100%;min-width:1180px;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
 body .cleg-payroll .cleg-payroll-report-table th,body .cleg-payroll .cleg-payroll-report-table td{padding:13px 14px;border-bottom:1px solid rgba(6,24,45,.08);vertical-align:middle;text-align:left}
 body .cleg-payroll .cleg-payroll-report-table tbody tr:nth-child(even){background:#fbfdff}
@@ -18544,7 +18642,7 @@ body .cleg-payroll .cleg-payroll-report-empty{padding:26px;text-align:center;box
 body .cleg-payroll .cleg-payroll-report-empty h2{margin:0 0 8px;color:#06182d}
 body .cleg-payroll .cleg-payroll-report-empty p{margin:0;color:#516579;font-weight:750}
 @media(max-width:1200px){body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:repeat(3,1fr)}body .cleg-payroll .cleg-payroll-report-hero{grid-template-columns:1fr}}
-@media(max-width:760px){body .cleg-payroll .cleg-payroll-report-filters{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-actions{grid-template-columns:1fr}}
+@media(max-width:760px){body .cleg-payroll .cleg-payroll-report-filters{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-actions{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-table{overflow:visible}body .cleg-payroll .cleg-payroll-report-table table{display:none}body .cleg-payroll .cleg-payroll-report-cards{display:block}}
 </style>
 HTML;
     }
@@ -19211,6 +19309,18 @@ if (!function_exists('cleg_payroll_styles')) {
 .cleg-payroll-month-grid article{border:1px solid rgba(6,24,45,.12);border-radius:14px;background:#fff;padding:16px;box-shadow:0 14px 34px rgba(6,24,45,.06);overflow:auto}
 .cleg-payroll-month-grid h2{margin:0 0 6px;font-size:22px;color:#06182d}
 .cleg-payroll-month-grid p{margin:0 0 12px;color:#516579;font-weight:750}
+.cleg-payroll-month-cards{display:none}
+.cleg-payroll-month-card{display:grid;gap:10px;padding:13px;border:1px solid rgba(6,24,45,.12);border-radius:12px;background:#fff}
+.cleg-payroll-month-card+.cleg-payroll-month-card{margin-top:10px}
+.cleg-payroll-month-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.cleg-payroll-month-card-head strong{color:#06182d;font-size:15px}
+.cleg-payroll-month-card-head b{color:#107344;font-size:18px;white-space:nowrap}
+.cleg-payroll-month-card-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.cleg-payroll-month-card-facts>div{padding:8px;border-radius:9px;background:#f7f9fc}
+.cleg-payroll-month-card-facts small,.cleg-payroll-month-card-facts strong{display:block}
+.cleg-payroll-month-card-facts small{color:#64748b;font-size:10px;font-weight:950;text-transform:uppercase}
+.cleg-payroll-month-card-facts strong{margin-top:3px;color:#06182d;font-size:12px}
+.cleg-payroll-month-card.is-empty{text-align:center;color:#516579}
 .cleg-payroll-month-table table{width:100%;min-width:760px;border-collapse:separate;border-spacing:0}
 .cleg-payroll-month-table th,.cleg-payroll-month-table td{padding:10px;border-bottom:1px solid rgba(6,24,45,.1);text-align:left}
 .cleg-payroll-month-table th{color:#516579;font-size:12px;text-transform:uppercase}
@@ -19293,9 +19403,28 @@ if (!function_exists('cleg_payroll_styles')) {
 	    .cleg-payroll-rollback-form{grid-template-columns:1fr}
         .cleg-payroll-rollback summary{align-items:flex-start;flex-direction:column}
 	    .cleg-payroll-metrics{display:grid}
-        .cleg-payroll-month-grid{grid-template-columns:1fr}
+    .cleg-payroll-month-grid{grid-template-columns:1fr}
+    .cleg-payroll-month-table table{display:none}
+    .cleg-payroll-month-cards{display:block}
     .cleg-payroll{padding:16px}
     .cleg-payroll table{min-width:1040px}
+    .cleg-payroll-table{overflow:visible!important}
+    .cleg-payroll-table table{display:block;min-width:0!important}
+    .cleg-payroll-table thead{display:none}
+    .cleg-payroll-table tbody{display:grid;gap:12px}
+    .cleg-payroll-table tbody tr{display:block;border:1px solid rgba(6,24,45,.12);border-radius:14px;background:#fff;box-shadow:0 12px 28px rgba(6,24,45,.07);padding:12px}
+    .cleg-payroll-table tbody td{display:block;width:100%;min-width:0!important;padding:8px 0;border-bottom:1px solid rgba(6,24,45,.08);text-align:left!important}
+    .cleg-payroll-table tbody td:last-child{border-bottom:0}
+    .cleg-payroll-table tbody td:not(.worker-cell):before{display:block;margin-bottom:4px;color:#516579;font-size:10px;font-weight:950;text-transform:uppercase}
+    .cleg-payroll-table tbody td:nth-child(2):before{content:'Horas'}
+    .cleg-payroll-table tbody td:nth-child(3):before{content:'Horas regulares'}
+    .cleg-payroll-table tbody td:nth-child(4):before{content:'Horas extra'}
+    .cleg-payroll-table tbody td:nth-child(5):before{content:'Bruto'}
+    .cleg-payroll-table tbody td:nth-child(6):before{content:'Ajustes'}
+    .cleg-payroll-table tbody td:nth-child(7):before{content:'Deducción'}
+    .cleg-payroll-table tbody td:nth-child(8):before{content:'Neto'}
+    .cleg-payroll-table tbody td.worker-cell{padding-top:0}
+    .cleg-payroll-table .hours-detail{position:relative;left:auto;right:auto;top:auto;width:100%;max-height:none}
     .cleg-payroll .hours-detail{position:fixed;left:16px;right:16px;top:96px;width:auto;max-height:70svh;overflow:auto}
 }
 </style>
@@ -20695,6 +20824,23 @@ if (!function_exists('cleg_emp_payroll_shortcode')) {
 
                 <div class="panel">
                     <h3>Historial de pagos</h3>
+                    <div class="mobile-payroll-cards" aria-label="Historial de pagos en tarjetas">
+                    <?php if (empty($lines)) : ?>
+                        <div class="empty-payroll-card">Aún no hay nóminas cerradas para mostrar.</div>
+                    <?php endif; ?>
+                    <?php foreach ($lines as $line) : ?>
+                        <?php
+                        $mobile_line_id = sanitize_text_field($line['id'] ?? '');
+                        $mobile_pdf_url = $mobile_line_id !== '' ? wp_nonce_url(add_query_arg(array('action' => 'cleg_employee_payroll_pdf', 'line_id' => $mobile_line_id), admin_url('admin-post.php')), 'cleg_employee_payroll_pdf_' . $mobile_line_id) : '';
+                        $mobile_other = (float) cleg_emp_payroll_field($line, 'Fixed Deductions', 0) + (float) cleg_emp_payroll_field($line, 'ASUME / Garnishment', 0) + (float) cleg_emp_payroll_field($line, 'Loan Advance Deduction', 0) + (float) cleg_emp_payroll_field($line, 'Health / Voluntary Deduction', 0);
+                        ?>
+                        <article class="mobile-payroll-card">
+                            <div class="mobile-payroll-card-head"><strong><?php echo esc_html(cleg_emp_payroll_date(cleg_emp_payroll_field($line, 'Period Start')) . ' - ' . cleg_emp_payroll_date(cleg_emp_payroll_field($line, 'Period End'))); ?></strong><b><?php echo esc_html(cleg_emp_payroll_money(cleg_emp_payroll_field($line, 'Net Pay', 0))); ?></b></div>
+                            <div class="mobile-payroll-facts"><div><small>Horas</small><strong><?php echo esc_html(number_format((float) cleg_emp_payroll_field($line, 'Regular Hours', 0), 2)); ?> reg / <?php echo esc_html(number_format((float) cleg_emp_payroll_field($line, 'Overtime Hours', 0), 2)); ?> extra</strong></div><div><small>Bruto</small><strong><?php echo esc_html(cleg_emp_payroll_money(cleg_emp_payroll_field($line, 'Gross Pay', 0))); ?></strong></div><div><small>Deducciones</small><strong>SS <?php echo esc_html(cleg_emp_payroll_money(cleg_emp_payroll_field($line, 'Social Security Employee', 0))); ?> · Medicare <?php echo esc_html(cleg_emp_payroll_money(cleg_emp_payroll_field($line, 'Medicare Employee', 0))); ?> · PR <?php echo esc_html(cleg_emp_payroll_money(cleg_emp_payroll_field($line, 'PR Income Tax Withheld', 0))); ?> · SINOT <?php echo esc_html(cleg_emp_payroll_money(cleg_emp_payroll_field($line, 'SINOT Employee', 0))); ?> · Otras <?php echo esc_html(cleg_emp_payroll_money($mobile_other)); ?></strong></div></div>
+                            <?php if ($mobile_pdf_url !== '') : ?><a class="pdf-btn" href="<?php echo esc_url($mobile_pdf_url); ?>">Descargar PDF</a><?php endif; ?>
+                        </article>
+                    <?php endforeach; ?>
+                    </div>
                     <div class="table-wrap">
                         <table>
                             <thead><tr><th>Periodo</th><th>Horas</th><th>Bruto <?php echo cleg_emp_payroll_help('Bruto', 'Total ganado antes de descontar taxes, deducciones o ajustes negativos.'); ?></th><th>Seguro Social <?php echo cleg_emp_payroll_help('Seguro Social', 'Retencion federal del empleado. Para 2026 es 6.2% hasta la base salarial anual aplicable.'); ?></th><th>Medicare <?php echo cleg_emp_payroll_help('Medicare', 'Retencion federal del empleado. Para 2026 es 1.45%; puede aplicar Medicare adicional en ingresos altos.'); ?></th><th>Income Tax PR <?php echo cleg_emp_payroll_help('Income Tax PR', 'Retencion de Hacienda Puerto Rico segun el perfil fiscal y el formulario 499 R-4.'); ?></th><th>SINOT <?php echo cleg_emp_payroll_help('SINOT', 'Seguro por incapacidad no ocupacional. Si C&L descuenta al empleado, se muestra aqui.'); ?></th><th>Otras deducciones <?php echo cleg_emp_payroll_help('Otras deducciones', 'ASUME, embargo, prestamo, anticipo, plan medico, deducciones fijas o ajustes autorizados.'); ?></th><th>Neto <?php echo cleg_emp_payroll_help('Neto', 'Cantidad final a pagar despues de deducciones y ajustes.'); ?></th><th>PDF</th></tr></thead>
@@ -20759,7 +20905,7 @@ if (!function_exists('cleg_emp_payroll_shortcode')) {
 
 if (!function_exists('cleg_emp_payroll_styles')) {
     function cleg_emp_payroll_styles() {
-        return '<style>body.page-id-493,body.page-id-493 .site,body.page-id-493 .site-content{background:#eef3f8!important}.cleg-emp-payroll{background:#eef3f8!important;color:#06182d!important;min-height:100svh;padding:clamp(18px,4vw,48px);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.cleg-emp-payroll *{box-sizing:border-box;letter-spacing:0!important;text-shadow:none!important}.cleg-emp-payroll .shell{width:min(100%,1180px);margin:0 auto}.cleg-emp-payroll .hero{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}.cleg-emp-payroll .hero p{margin:0 0 6px!important;color:#516579!important;text-transform:uppercase;font-size:12px;font-weight:900}.cleg-emp-payroll h2{color:#06182d!important;font-size:clamp(32px,5vw,52px);line-height:1;margin:0!important}.cleg-emp-payroll h3{color:#06182d!important}.cleg-emp-payroll .hero span{display:block;margin-top:6px;color:#516579!important;font-weight:800}.cleg-emp-payroll .back-btn,.cleg-emp-payroll .pdf-btn{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border-radius:999px;background:#182537!important;color:#fff!important;-webkit-text-fill-color:#fff!important;padding:10px 14px;font-weight:900;text-decoration:none!important;white-space:nowrap}.cleg-emp-payroll .source-note{margin:0 0 14px;padding:13px 15px;border-radius:12px;background:#fff7ed!important;border:1px solid #fed7aa;color:#7c2d12!important;font-weight:800}.cleg-emp-payroll .source-note strong{color:#9a3412!important}.metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}.metric-grid article,.panel,.empty{background:#fff!important;border:1px solid rgba(6,24,45,.12)!important;border-radius:14px;padding:16px;box-shadow:0 14px 34px rgba(6,24,45,.06)!important;color:#06182d!important}.metric-grid small{display:block;color:#516579!important;font-weight:900;text-transform:uppercase}.metric-grid strong{display:block;color:#06182d!important;font-size:26px;margin-top:5px}.metric-grid span,.panel p{color:#516579!important;font-weight:800}.panel{margin-bottom:14px}.panel h3{margin:0 0 12px}.table-wrap{overflow:auto}.cleg-emp-payroll table{width:100%;min-width:1160px;border-collapse:separate;border-spacing:0;background:#fff!important;color:#06182d!important}.cleg-emp-payroll th,.cleg-emp-payroll td{padding:12px;border-bottom:1px solid rgba(6,24,45,.1);text-align:left;color:#20344d!important;vertical-align:top}.cleg-emp-payroll th{position:relative;background:#f8fafc!important;color:#516579!important;font-size:11px;text-transform:uppercase;white-space:normal}.cleg-emp-payroll td small{display:block;margin-top:4px;color:#516579!important;font-weight:800}.cleg-emp-payroll tr:nth-child(even){background:#f9fbfd!important}.help-tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:4px;border-radius:999px;background:#182537!important;color:#fff!important;font-size:11px;font-weight:900;text-transform:none;cursor:help}.help-tip span{display:none;position:absolute;z-index:20;left:50%;top:24px;width:240px;transform:translateX(-50%);padding:10px 12px;border-radius:10px;background:#06182d!important;color:#fff!important;box-shadow:0 18px 40px rgba(6,24,45,.24);font-size:12px;line-height:1.35;text-transform:none}.help-tip:hover span,.help-tip:focus span{display:block}.pill{display:inline-flex;border-radius:999px;background:#e7f7ee!important;color:#107344!important;font-size:12px;font-weight:900;padding:5px 10px}.pdf-btn{min-height:34px!important;padding:7px 11px!important;font-size:12px}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.cleg-emp-payroll dl{display:grid;grid-template-columns:160px 1fr;gap:8px;margin:0}.cleg-emp-payroll dt{color:#516579!important;font-weight:900}.cleg-emp-payroll dd{margin:0;color:#06182d!important;font-weight:800}.empty{width:min(100%,680px);margin:0 auto}@media(max-width:820px){.metric-grid,.two{grid-template-columns:1fr}.cleg-emp-payroll .hero{display:grid}.cleg-emp-payroll .back-btn{width:100%}.help-tip span{left:auto;right:-10px;transform:none}}.cleg-emp-payroll .hero{position:relative!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;gap:18px!important;min-height:118px!important;margin:2px auto 14px!important;padding:24px!important;border:1px solid rgba(255,255,255,.18)!important;border-radius:22px!important;background:linear-gradient(135deg,#06182d 0%,#132a46 58%,#25364d 100%)!important;color:#fff!important;box-shadow:0 28px 70px rgba(6,24,45,.24)!important;overflow:hidden!important}.cleg-emp-payroll .hero:before{content:""!important;position:absolute!important;inset:-35% auto auto 55%!important;width:420px!important;height:420px!important;border-radius:999px!important;background:radial-gradient(circle,rgba(255,255,255,.18),transparent 62%)!important;pointer-events:none!important}.cleg-emp-payroll .hero:after{content:""!important;position:absolute!important;inset:auto 22px 18px auto!important;width:118px!important;height:3px!important;border-radius:999px!important;background:linear-gradient(90deg,#c75000,rgba(255,255,255,.65))!important;opacity:.92!important;pointer-events:none!important}.cleg-emp-payroll .hero>div,.cleg-emp-payroll .hero>.back-btn{position:relative!important;z-index:1!important}.cleg-emp-payroll .hero p,.cleg-emp-payroll .hero span{display:none!important}.cleg-emp-payroll .hero h2{margin:0!important;color:#fff!important;-webkit-text-fill-color:#fff!important;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-size:clamp(42px,6vw,72px)!important;font-weight:400!important;line-height:.92!important;letter-spacing:0!important;text-shadow:0 2px 18px rgba(0,0,0,.32)!important}.cleg-emp-payroll .hero .back-btn{min-height:52px!important;border-radius:8px!important;background:#fff!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important;padding:12px 18px!important;font-size:14px!important;font-weight:800!important}@media(max-width:820px){.cleg-emp-payroll .hero{grid-template-columns:1fr!important;min-height:96px!important;padding:18px 16px!important;border-radius:18px!important}.cleg-emp-payroll .hero h2{font-size:clamp(34px,12vw,52px)!important}.cleg-emp-payroll .hero .back-btn{width:100%!important}}</style>';
+        return '<style>body.page-id-493,body.page-id-493 .site,body.page-id-493 .site-content{background:#eef3f8!important}.cleg-emp-payroll{background:#eef3f8!important;color:#06182d!important;min-height:100svh;padding:clamp(18px,4vw,48px);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.cleg-emp-payroll *{box-sizing:border-box;letter-spacing:0!important;text-shadow:none!important}.cleg-emp-payroll .shell{width:min(100%,1180px);margin:0 auto}.cleg-emp-payroll .hero{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}.cleg-emp-payroll .hero p{margin:0 0 6px!important;color:#516579!important;text-transform:uppercase;font-size:12px;font-weight:900}.cleg-emp-payroll h2{color:#06182d!important;font-size:clamp(32px,5vw,52px);line-height:1;margin:0!important}.cleg-emp-payroll h3{color:#06182d!important}.cleg-emp-payroll .hero span{display:block;margin-top:6px;color:#516579!important;font-weight:800}.cleg-emp-payroll .back-btn,.cleg-emp-payroll .pdf-btn{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border-radius:999px;background:#182537!important;color:#fff!important;-webkit-text-fill-color:#fff!important;padding:10px 14px;font-weight:900;text-decoration:none!important;white-space:nowrap}.cleg-emp-payroll .source-note{margin:0 0 14px;padding:13px 15px;border-radius:12px;background:#fff7ed!important;border:1px solid #fed7aa;color:#7c2d12!important;font-weight:800}.cleg-emp-payroll .source-note strong{color:#9a3412!important}.metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}.metric-grid article,.panel,.empty{background:#fff!important;border:1px solid rgba(6,24,45,.12)!important;border-radius:14px;padding:16px;box-shadow:0 14px 34px rgba(6,24,45,.06)!important;color:#06182d!important}.metric-grid small{display:block;color:#516579!important;font-weight:900;text-transform:uppercase}.metric-grid strong{display:block;color:#06182d!important;font-size:26px;margin-top:5px}.metric-grid span,.panel p{color:#516579!important;font-weight:800}.panel{margin-bottom:14px}.panel h3{margin:0 0 12px}.table-wrap{overflow:auto}.mobile-payroll-cards{display:none}.mobile-payroll-card{display:grid;gap:10px;padding:13px;border:1px solid rgba(6,24,45,.12);border-radius:12px;background:#f9fbfd}.mobile-payroll-card+.mobile-payroll-card{margin-top:10px}.mobile-payroll-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.mobile-payroll-card-head strong{font-size:14px;line-height:1.2}.mobile-payroll-card-head b{font-size:18px;color:#107344;white-space:nowrap}.mobile-payroll-facts{display:grid;gap:8px}.mobile-payroll-facts>div{padding:8px;border:1px solid rgba(6,24,45,.1);border-radius:8px;background:#fff}.mobile-payroll-facts small{display:block;color:#516579;font-size:11px;font-weight:900;text-transform:uppercase}.mobile-payroll-facts strong{display:block;margin-top:3px;color:#06182d;font-size:12px;line-height:1.35}.empty-payroll-card{padding:16px;border:1px dashed rgba(6,24,45,.2);border-radius:10px;color:#516579;text-align:center;font-weight:800}.cleg-emp-payroll table{width:100%;min-width:1160px;border-collapse:separate;border-spacing:0;background:#fff!important;color:#06182d!important}.cleg-emp-payroll th,.cleg-emp-payroll td{padding:12px;border-bottom:1px solid rgba(6,24,45,.1);text-align:left;color:#20344d!important;vertical-align:top}.cleg-emp-payroll th{position:relative;background:#f8fafc!important;color:#516579!important;font-size:11px;text-transform:uppercase;white-space:normal}.cleg-emp-payroll td small{display:block;margin-top:4px;color:#516579!important;font-weight:800}.cleg-emp-payroll tr:nth-child(even){background:#f9fbfd!important}.help-tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:4px;border-radius:999px;background:#182537!important;color:#fff!important;font-size:11px;font-weight:900;text-transform:none;cursor:help}.help-tip span{display:none;position:absolute;z-index:20;left:50%;top:24px;width:240px;transform:translateX(-50%);padding:10px 12px;border-radius:10px;background:#06182d!important;color:#fff!important;box-shadow:0 18px 40px rgba(6,24,45,.24);font-size:12px;line-height:1.35;text-transform:none}.help-tip:hover span,.help-tip:focus span{display:block}.pill{display:inline-flex;border-radius:999px;background:#e7f7ee!important;color:#107344!important;font-size:12px;font-weight:900;padding:5px 10px}.pdf-btn{min-height:34px!important;padding:7px 11px!important;font-size:12px}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.cleg-emp-payroll dl{display:grid;grid-template-columns:160px 1fr;gap:8px;margin:0}.cleg-emp-payroll dt{color:#516579!important;font-weight:900}.cleg-emp-payroll dd{margin:0;color:#06182d!important;font-weight:800}.empty{width:min(100%,680px);margin:0 auto}@media(max-width:820px){.metric-grid,.two{grid-template-columns:1fr}.cleg-emp-payroll .hero{display:grid}.cleg-emp-payroll .back-btn{width:100%}.help-tip span{left:auto;right:-10px;transform:none}.mobile-payroll-cards{display:grid;gap:10px}.cleg-emp-payroll .table-wrap{display:none}}.cleg-emp-payroll .hero{position:relative!important;display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;gap:18px!important;min-height:118px!important;margin:2px auto 14px!important;padding:24px!important;border:1px solid rgba(255,255,255,.18)!important;border-radius:22px!important;background:linear-gradient(135deg,#06182d 0%,#132a46 58%,#25364d 100%)!important;color:#fff!important;box-shadow:0 28px 70px rgba(6,24,45,.24)!important;overflow:hidden!important}.cleg-emp-payroll .hero:before{content:""!important;position:absolute!important;inset:-35% auto auto 55%!important;width:420px!important;height:420px!important;border-radius:999px!important;background:radial-gradient(circle,rgba(255,255,255,.18),transparent 62%)!important;pointer-events:none!important}.cleg-emp-payroll .hero:after{content:""!important;position:absolute!important;inset:auto 22px 18px auto!important;width:118px!important;height:3px!important;border-radius:999px!important;background:linear-gradient(90deg,#c75000,rgba(255,255,255,.65))!important;opacity:.92!important;pointer-events:none!important}.cleg-emp-payroll .hero>div,.cleg-emp-payroll .hero>.back-btn{position:relative!important;z-index:1!important}.cleg-emp-payroll .hero p,.cleg-emp-payroll .hero span{display:none!important}.cleg-emp-payroll .hero h2{margin:0!important;color:#fff!important;-webkit-text-fill-color:#fff!important;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-size:clamp(42px,6vw,72px)!important;font-weight:400!important;line-height:.92!important;letter-spacing:0!important;text-shadow:0 2px 18px rgba(0,0,0,.32)!important}.cleg-emp-payroll .hero .back-btn{min-height:52px!important;border-radius:8px!important;background:#fff!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important;padding:12px 18px!important;font-size:14px!important;font-weight:800!important}@media(max-width:820px){.cleg-emp-payroll .hero{grid-template-columns:1fr!important;min-height:96px!important;padding:18px 16px!important;border-radius:18px!important}.cleg-emp-payroll .hero h2{font-size:clamp(34px,12vw,52px)!important}.cleg-emp-payroll .hero .back-btn{width:100%!important}}</style>';
     }
 }
 
@@ -39859,37 +40005,10 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                     <div class="cleg-proc-attach-grid" aria-label="Adjuntos">
                                         <div class="cleg-proc-attach-slot">
                                             <label class="cleg-proc-attach-action">
-                                                <input type="file" name="reference_images[]" accept="image/*" capture="environment">
-                                                <span class="cleg-proc-attach-icon is-camera" aria-hidden="true"></span>
-                                                <strong>Camara</strong>
-                                                <small>Tomar foto</small>
-                                            </label>
-                                            <div class="cleg-proc-attach-preview" aria-live="polite"></div>
-                                        </div>
-                                        <div class="cleg-proc-attach-slot">
-                                            <label class="cleg-proc-attach-action">
-                                                <input type="file" name="reference_images[]" accept="video/*" capture="environment">
-                                                <span class="cleg-proc-attach-icon is-video" aria-hidden="true"></span>
-                                                <strong>Video</strong>
-                                                <small>Grabar</small>
-                                            </label>
-                                            <div class="cleg-proc-attach-preview" aria-live="polite"></div>
-                                        </div>
-                                        <div class="cleg-proc-attach-slot">
-                                            <label class="cleg-proc-attach-action">
-                                                <input type="file" name="reference_images[]" accept="image/*,video/*" multiple>
-                                                <span class="cleg-proc-attach-icon is-gallery" aria-hidden="true"></span>
-                                                <strong>Galeria</strong>
-                                                <small>Fotos/videos</small>
-                                            </label>
-                                            <div class="cleg-proc-attach-preview" aria-live="polite"></div>
-                                        </div>
-                                        <div class="cleg-proc-attach-slot">
-                                            <label class="cleg-proc-attach-action">
-                                                <input type="file" name="reference_images[]" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar,.7z,.ppt,.pptx,.dwg,.dxf,application/pdf,text/plain,text/csv,application/zip,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" multiple>
+                                                <input type="file" name="reference_images[]" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar,.7z,.ppt,.pptx,.dwg,.dxf" multiple>
                                                 <span class="cleg-proc-attach-icon is-file" aria-hidden="true"></span>
-                                                <strong>Archivos</strong>
-                                                <small>PDF, docs, otros</small>
+                                                <strong>Adjuntar evidencia</strong>
+                                                <small>Fotos, videos, audio o documentos</small>
                                             </label>
                                             <div class="cleg-proc-attach-preview" aria-live="polite"></div>
                                         </div>
@@ -40366,37 +40485,10 @@ if (!function_exists('cleg_procurement_render_detail')) {
                     <div class="cleg-proc-attach-grid cleg-proc-summary-uploads" aria-label="Agregar adjuntos">
                         <div class="cleg-proc-attach-slot">
                             <label class="cleg-proc-attach-action">
-                                <input type="file" name="reference_images[]" accept="image/*" capture="environment">
-                                <span class="cleg-proc-attach-icon is-camera" aria-hidden="true"></span>
-                                <strong>Camara</strong>
-                                <small>Tomar foto</small>
-                            </label>
-                            <div class="cleg-proc-attach-preview" aria-live="polite"></div>
-                        </div>
-                        <div class="cleg-proc-attach-slot">
-                            <label class="cleg-proc-attach-action">
-                                <input type="file" name="reference_images[]" accept="video/*" capture="environment">
-                                <span class="cleg-proc-attach-icon is-video" aria-hidden="true"></span>
-                                <strong>Video</strong>
-                                <small>Grabar</small>
-                            </label>
-                            <div class="cleg-proc-attach-preview" aria-live="polite"></div>
-                        </div>
-                        <div class="cleg-proc-attach-slot">
-                            <label class="cleg-proc-attach-action">
-                                <input type="file" name="reference_images[]" accept="image/*,video/*" multiple>
-                                <span class="cleg-proc-attach-icon is-gallery" aria-hidden="true"></span>
-                                <strong>Galeria</strong>
-                                <small>Fotos/videos</small>
-                            </label>
-                            <div class="cleg-proc-attach-preview" aria-live="polite"></div>
-                        </div>
-                        <div class="cleg-proc-attach-slot">
-                            <label class="cleg-proc-attach-action">
-                                <input type="file" name="reference_images[]" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar,.7z,.ppt,.pptx,.dwg,.dxf,application/pdf,text/plain,text/csv,application/zip,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" multiple>
+                                <input type="file" name="reference_images[]" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip,.rar,.7z,.ppt,.pptx,.dwg,.dxf" multiple>
                                 <span class="cleg-proc-attach-icon is-file" aria-hidden="true"></span>
-                                <strong>Archivos</strong>
-                                <small>PDF, docs</small>
+                                <strong>Adjuntar evidencia</strong>
+                                <small>Fotos, videos, audio o documentos</small>
                             </label>
                             <div class="cleg-proc-attach-preview" aria-live="polite"></div>
                         </div>
@@ -41522,7 +41614,7 @@ if (!function_exists('cleg_procurement_upload_preview_script')) {
                         if (!target) return;
                         event.preventDefault();
                         var active = form.querySelector('[data-proc-form-step].is-active');
-                        if (next && active && !active.querySelector("input,select,textarea").closest("form").reportValidity()) return;
+                        if (active && target > current && !form.reportValidity()) return;
                         syncRequestStep(form, target);
                         var heading = form.querySelector('[data-proc-form-step="' + target + '"]');
                         if (heading) heading.scrollIntoView({behavior:"smooth",block:"start"});
@@ -44696,10 +44788,13 @@ if (!function_exists('cleg_admin_receipts_table')) {
             . '<a class="' . esc_attr($active_status === 'Revisar' ? 'is-active' : '') . '" href="' . esc_url(add_query_arg('receipt_status', 'Revisar', home_url('/admin-recibos/'))) . '"><span>Por revisar</span><strong>' . esc_html($review_count) . '</strong></a>'
             . '<a class="' . esc_attr($active_status === 'Resuelto' ? 'is-active' : '') . '" href="' . esc_url(add_query_arg('receipt_status', 'Resuelto', home_url('/admin-recibos/'))) . '"><span>Resueltos</span><strong>' . esc_html($resolved_count) . '</strong></a>'
             . '</nav>';
-        $html .= '<div class="cleg-panel cleg-receipt-panel"><div class="cleg-panel-head"><div><h2>Recibos de compra</h2><p>Organizados por dia, proyecto, persona y monto desde Airtable.</p></div></div><div class="cleg-table-wrap cleg-desktop-table"><table><thead><tr><th>Recibo</th><th>Fecha</th><th>Persona</th><th>Proyecto</th><th>Compra</th><th>Total</th><th>Estado</th><th>Acciones</th><th>Archivo</th></tr></thead><tbody>';
+        $html .= '<div class="cleg-panel cleg-receipt-panel"><div class="cleg-panel-head"><div><h2>Recibos de compra</h2><p>Organizados por dia, proyecto, persona y monto desde Airtable.</p></div></div>';
+        $mobile = '<div class="cleg-receipt-mobile-list" aria-label="Recibos en tarjetas">';
+        $table = '<div class="cleg-table-wrap cleg-receipt-desktop-table"><table><thead><tr><th>Recibo</th><th>Fecha</th><th>Persona</th><th>Proyecto</th><th>Compra</th><th>Total</th><th>Estado</th><th>Acciones</th><th>Archivo</th></tr></thead><tbody>';
 
         if (empty($records)) {
-            $html .= '<tr><td colspan="9">No hay recibos con esos filtros.</td></tr>';
+            $table .= '<tr><td colspan="9">No hay recibos con esos filtros.</td></tr>';
+            $mobile .= '<div class="cleg-receipt-mobile-empty">No hay recibos con esos filtros.</div>';
         }
 
         foreach ((array) $records as $record) {
@@ -44713,7 +44808,8 @@ if (!function_exists('cleg_admin_receipts_table')) {
             $amount = cleg_admin_field($record, 'Total', '0');
             $status = cleg_admin_field($record, 'Status', 'Archivado');
 
-            $html .= '<tr><td><strong>' . esc_html($code) . '</strong><small>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Submitted At'))) . '</small></td>'
+            $mobile .= '<article class="cleg-receipt-mobile-card"><div class="cleg-receipt-mobile-head"><div><strong>' . esc_html($code) . '</strong><small>' . esc_html(cleg_admin_date($date !== '' ? $date : cleg_admin_field($record, 'Submitted At'))) . '</small></div>' . cleg_admin_receipt_status_pill($status) . '</div><div class="cleg-receipt-mobile-facts"><div><small>Persona</small><strong>' . esc_html($employee) . '</strong></div><div><small>Proyecto</small><strong>' . esc_html($project) . '</strong></div><div><small>Compra</small><strong>' . esc_html($category) . '</strong></div><div><small>Total</small><strong>$' . esc_html(number_format((float) $amount, 2)) . '</strong></div></div><p class="cleg-receipt-mobile-description">' . esc_html($description !== '' ? $description : 'Sin descripcion') . '</p><div class="cleg-receipt-mobile-actions">' . cleg_admin_receipt_action_form($record) . cleg_admin_receipt_preview($record) . '</div></article>';
+            $table .= '<tr><td><strong>' . esc_html($code) . '</strong><small>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Submitted At'))) . '</small></td>'
                 . '<td>' . esc_html($date !== '' ? cleg_admin_date($date) : 'Pendiente') . '</td>'
                 . '<td><strong>' . esc_html($employee) . '</strong><small>' . esc_html($username) . '</small></td>'
                 . '<td>' . esc_html($project) . '</td>'
@@ -44724,7 +44820,8 @@ if (!function_exists('cleg_admin_receipts_table')) {
                 . '<td>' . cleg_admin_receipt_preview($record) . '</td></tr>';
         }
 
-        return $html . '</tbody></table></div></div>' . cleg_admin_receipts_styles();
+        $mobile .= '</div>';
+        return $html . $mobile . $table . '</tbody></table></div></div>' . cleg_admin_receipts_styles();
     }
 }
 
@@ -44894,8 +44991,20 @@ if (!function_exists('cleg_admin_receipts_styles')) {
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-actions.is-submitting button{cursor:wait;opacity:.6}
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-actions.is-submitting button.is-loading{opacity:1;background:#06182d;color:#fff}
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-actions button:disabled{opacity:.45}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-list{display:none}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-card{display:grid;gap:12px;padding:14px;border:1px solid var(--cleg-app-line);border-radius:12px;background:#fff;box-shadow:var(--cleg-app-shadow)}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-card+.cleg-receipt-mobile-card{margin-top:10px}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-head strong{display:block;color:var(--cleg-app-ink);font-size:15px}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-head small,body .cleg-proc-receipts-screen .cleg-receipt-mobile-facts small{display:block;color:var(--cleg-app-muted);font-size:11px;font-weight:800}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-facts>div{min-width:0;padding:9px;border:1px solid #edf1f5;border-radius:8px;background:#f8fafc}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-facts strong{display:block;margin-top:3px;color:var(--cleg-app-ink);font-size:13px;line-height:1.25;overflow-wrap:anywhere}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-description{color:var(--cleg-app-muted);font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
+            body .cleg-proc-receipts-screen .cleg-receipt-mobile-empty{padding:18px;border:1px dashed var(--cleg-app-line);border-radius:10px;color:var(--cleg-app-muted);text-align:center;font-weight:850}
             @media(max-width:1180px){body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
-            @media(max-width:900px){body .cleg-proc-receipts-screen .cleg-receipt-kpis{flex-wrap:nowrap!important;overflow-x:auto!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis a{flex:0 0 152px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary{align-items:flex-start!important;flex-direction:column!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary small{margin-left:0!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary:after{position:absolute!important;right:12px!important;top:10px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer{position:relative!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{grid-template-columns:1fr!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters button,body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters .cleg-clear-filter{width:100%}body .cleg-proc-receipts-screen .cleg-receipt-panel th,body .cleg-proc-receipts-screen .cleg-receipt-panel td{white-space:nowrap!important}}
+            @media(max-width:900px){body .cleg-proc-receipts-screen .cleg-receipt-kpis{flex-wrap:nowrap!important;overflow-x:auto!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis a{flex:0 0 152px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary{align-items:flex-start!important;flex-direction:column!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary small{margin-left:0!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary:after{position:absolute!important;right:12px!important;top:10px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer{position:relative!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{grid-template-columns:1fr!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters button,body .cleg-procurement.cleg-proc-receipts-screen .cleg-clear-filter{width:100%}body .cleg-proc-receipts-screen .cleg-receipt-panel .cleg-receipt-desktop-table{display:none!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-list{display:block!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions{min-width:0;width:100%}body .cleg-proc-receipts-screen .cleg-receipt-panel th,body .cleg-proc-receipts-screen .cleg-receipt-panel td{white-space:nowrap!important}}
         </style><script>(function(){function setZoom(detail,zoom){zoom=Math.max(.6,Math.min(3,zoom));detail.dataset.zoom=String(zoom);var img=detail.querySelector(".cleg-receipt-stage img");var label=detail.querySelector("[data-receipt-zoom-label]");if(img)img.style.setProperty("--receipt-zoom",zoom);if(label)label.textContent=Math.round(zoom*100)+"%";}document.addEventListener("toggle",function(event){var detail=event.target;if(detail.matches&&detail.matches(".cleg-receipt-preview")&&detail.open){setZoom(detail,1);}} ,true);document.addEventListener("click",function(event){var detail=event.target.closest(".cleg-receipt-preview");if(!detail)return;if(event.target.closest("[data-receipt-close]")){detail.open=false;return;}if(event.target.closest("[data-receipt-zoom-in]")){setZoom(detail,parseFloat(detail.dataset.zoom||"1")+.25);return;}if(event.target.closest("[data-receipt-zoom-out]")){setZoom(detail,parseFloat(detail.dataset.zoom||"1")-.25);}});document.addEventListener("submit",function(event){var form=event.target;if(!form.matches||!form.matches(".cleg-receipt-actions"))return;form.classList.add("is-submitting");var clicked=event.submitter||(document.activeElement&&document.activeElement.tagName==="BUTTON"?document.activeElement:null);form.querySelectorAll("button").forEach(function(button){if(button===clicked){button.classList.add("is-loading");button.dataset.originalText=button.textContent;button.textContent="Guardando...";}else{button.disabled=true;}});});})();</script>';
     }
 }
