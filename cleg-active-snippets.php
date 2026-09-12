@@ -37806,6 +37806,7 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                     <div class="cleg-proc-form-step is-active" data-proc-form-step="1">
                                     <label>Proyecto
                                         <select name="project" required>
+                                            <option value="" disabled selected>Selecciona el proyecto</option>
                                             <option>Argos Dorado Plant</option>
                                             <option>Argos Terminal San Juan</option>
                                             <option>Medtronic Humacao</option>
