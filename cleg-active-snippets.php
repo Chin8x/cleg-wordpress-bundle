@@ -20119,6 +20119,14 @@ function cleg12_shortcode_live_map_real() {
 
 add_shortcode('cleg_admin_live_map', 'cleg12_shortcode_live_map_real');
 
+if (!function_exists('cleg12_mobile_touch_styles')) {
+    function cleg12_mobile_touch_styles($content) {
+        if (strpos((string) $content, 'class="cleg12-wrap"') === false) return $content;
+        return '<style>@media(max-width:980px){.cleg12-wrap .cleg12-expand,.cleg12-wrap .cleg12-modal-bar button,.cleg12-wrap .cleg12-shortcuts button{min-height:44px!important}}</style>' . $content;
+    }
+    add_filter('the_content', 'cleg12_mobile_touch_styles', 16);
+}
+
 function cleg12_assets() {
     static $done = false;
     if ($done) {
@@ -23185,6 +23193,14 @@ if (!function_exists('cleg_docs_role_styles')) {
 
 add_shortcode('cleg_employee_documents', 'cleg_employee_documents_shortcode');
 add_filter('the_content', 'cleg_docs_auto_page', 20);
+
+if (!function_exists('cleg_docs_mobile_touch_styles')) {
+    function cleg_docs_mobile_touch_styles($content) {
+        if (strpos((string) $content, 'class="cleg-docs"') === false) return $content;
+        return '<style>@media(max-width:820px){.cleg-docs .back-btn,.cleg-docs .doc-btn{min-height:44px!important}}</style>' . $content;
+    }
+    add_filter('the_content', 'cleg_docs_mobile_touch_styles', 21);
+}
 /**
  * END modulos/09-documents/16-cleg-15-employee-documents-portal-v1.php
  */
@@ -23551,6 +23567,14 @@ if (!function_exists('cleg_alerts_styles')) {
 
 add_shortcode('cleg_document_alerts', 'cleg_document_alerts_shortcode');
 add_filter('the_content', 'cleg_document_alerts_auto_empleados', 15);
+
+if (!function_exists('cleg_alerts_mobile_touch_styles')) {
+    function cleg_alerts_mobile_touch_styles($content) {
+        if (strpos((string) $content, 'class="cleg-doc-alerts"') === false) return $content;
+        return '<style>@media(max-width:860px){.cleg-doc-alerts .alerts-head a,.cleg-doc-alerts .alert-row a{min-height:44px!important}}</style>' . $content;
+    }
+    add_filter('the_content', 'cleg_alerts_mobile_touch_styles', 16);
+}
 
 if (!function_exists('cleg_alerts_desktop_menu_lock_styles')) {
     function cleg_alerts_desktop_menu_lock_styles() {
