@@ -1161,7 +1161,6 @@ if (!function_exists('cleg00_routes')) {
         return array(
             'worker' => array(
                 '/panel/',
-                '/formularios/',
                 '/mis-nominas/',
                 '/mis-documentos/',
             ),
@@ -23585,7 +23584,6 @@ if (!function_exists('cleg_rrhh_design_should_print')) {
             '/empleados/',
             '/mis-nominas/',
             '/mis-documentos/',
-            '/formularios/',
             '/admin-procurement/',
         );
 
@@ -27153,7 +27151,6 @@ if (!function_exists('cleg_rrhh_design_should_print')) {
             '/empleados/',
             '/mis-nominas/',
             '/mis-documentos/',
-            '/formularios/',
             '/admin-procurement/',
         );
 
