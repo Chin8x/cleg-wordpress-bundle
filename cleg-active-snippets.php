@@ -15283,6 +15283,7 @@ if (!function_exists('cleg_tenant_admin_styles')) {
     .cleg-tenant-metrics,.cleg-tenant-overview-grid,.cleg-tenant-role-grid{grid-template-columns:1fr!important}
     .cleg-tenant-user-form{grid-template-columns:1fr!important}
     .cleg-tenant-user-form input,.cleg-tenant-user-form select,.cleg-tenant-user-form textarea,.cleg-tenant-user-form button,.cleg-tenant-user-actions button,.cleg-tenant-pin-actions button{min-height:44px}
+    .cleg-tenant-module-actions button{min-height:44px}
     .cleg-tenant-action-list a{display:block}
     .cleg-tenant-action-list span{text-align:left;display:block;margin-top:4px}
     .cleg-tenant-module-grid{grid-template-columns:1fr}
