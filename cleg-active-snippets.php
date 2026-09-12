@@ -42692,7 +42692,7 @@ if (!function_exists('cleg_admin_receipt_preview')) {
             return '<a class="cleg-receipt-pdf" href="' . esc_url($file['url']) . '" target="_blank" rel="noopener">Abrir PDF</a>';
         }
 
-        return '<details class="cleg-receipt-preview"><summary><img src="' . esc_url($file['url']) . '" alt="' . esc_attr($file['name']) . '"><span>Ampliar</span></summary><div class="cleg-receipt-lightbox"><div class="cleg-receipt-toolbar"><button type="button" data-receipt-zoom-out>-</button><span data-receipt-zoom-label>100%</span><button type="button" data-receipt-zoom-in>+</button><button type="button" data-receipt-close>Cerrar</button></div><div class="cleg-receipt-stage"><img src="' . esc_url($file['url']) . '" alt="' . esc_attr($file['name']) . '" style="--receipt-zoom:1"></div></div></details>';
+        return '<details class="cleg-receipt-preview"><summary><img src="' . esc_url($file['url']) . '" alt="' . esc_attr($file['name']) . '"><span>Ampliar</span></summary><div class="cleg-receipt-lightbox"><div class="cleg-receipt-toolbar"><button type="button" data-receipt-zoom-out aria-label="Reducir zoom">-</button><span data-receipt-zoom-label>100%</span><button type="button" data-receipt-zoom-in aria-label="Aumentar zoom">+</button><button type="button" data-receipt-close aria-label="Cerrar vista previa">Cerrar</button></div><div class="cleg-receipt-stage"><img src="' . esc_url($file['url']) . '" alt="' . esc_attr($file['name']) . '" style="--receipt-zoom:1"></div></div></details>';
     }
 }
 
