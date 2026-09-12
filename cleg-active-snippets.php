@@ -7376,7 +7376,7 @@ if (!function_exists('cleg_admin_recent_table')) {
             $mobile .= '<article class="cleg-mobile-card"><strong>No hay actividad reciente.</strong><p class="cleg-mobile-muted">Las jornadas aparecerán aquí cuando exista movimiento.</p></article>';
         }
         $mobile .= '</div>';
-        $html = '<div class="cleg-panel"><h2>Actividad reciente</h2>' . $mobile . '<div class="cleg-table-wrap cleg-desktop-table"><table><thead><tr><th>Empleado</th><th>Job Site</th><th>Entrada</th><th>Salida</th><th>Status</th><th>Alertas</th></tr></thead><tbody>';
+        $html = $mobile . '<div class="cleg-panel"><h2>Actividad reciente</h2><div class="cleg-table-wrap cleg-desktop-table"><table><thead><tr><th>Empleado</th><th>Job Site</th><th>Entrada</th><th>Salida</th><th>Status</th><th>Alertas</th></tr></thead><tbody>';
 
         foreach ($records as $record) {
             $html .= '<tr><td>' . esc_html(cleg_admin_field($record, 'Employee Name')) . '</td><td>' . esc_html(cleg_admin_field($record, 'Job Site Name')) . '</td><td>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock In Time'))) . '</td><td>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Clock Out Time'))) . '</td><td>' . cleg_admin_status_pill(cleg_admin_field($record, 'Approval Status')) . '</td><td>' . esc_html(cleg_admin_field($record, 'Audit Flags', '--')) . '</td></tr>';
