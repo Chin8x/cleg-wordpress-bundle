@@ -19596,6 +19596,14 @@ add_action('admin_post_cleg_payroll_rollback_previous_week', 'cleg_payroll_rollb
 add_action('admin_post_cleg_payroll_export', 'cleg_payroll_export');
 add_shortcode('cleg_admin_payroll', 'cleg_admin_payroll_shortcode');
 add_shortcode('cleg_admin_payroll_reports', 'cleg_admin_payroll_reports_shortcode');
+
+if (!function_exists('cleg_payroll_mobile_touch_styles')) {
+    function cleg_payroll_mobile_touch_styles($content) {
+        if (strpos((string) $content, 'class="cleg-payroll"') === false) return $content;
+        return '<style>@media(max-width:760px){.cleg-payroll button,.cleg-payroll a,.cleg-payroll summary,.cleg-payroll input,.cleg-payroll select,.cleg-payroll textarea{min-height:44px!important}.cleg-payroll .cleg-payroll-disabled{min-height:44px!important}}</style>' . $content;
+    }
+    add_filter('the_content', 'cleg_payroll_mobile_touch_styles', 99);
+}
 /**
 /**
  * END modulos/08-payroll/09-cleg-06-payroll-rrhh.php
