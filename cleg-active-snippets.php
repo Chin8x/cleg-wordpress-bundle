@@ -39375,6 +39375,9 @@ if (!function_exists('cleg_procurement_styles')) {
             body .cleg-procurement .cleg-proc-row-ficha-actions{grid-column:1/-1!important;display:flex!important;align-items:center!important;gap:7px!important;flex-wrap:wrap!important;border:1px solid #aebdcc!important;border-radius:8px!important;background:#fff!important;padding:10px!important}
             body .cleg-procurement .cleg-proc-row-ficha-actions .cleg-proc-btn,
             body .cleg-procurement .cleg-proc-detail-actions .cleg-proc-btn{min-height:36px!important;border-radius:999px!important;padding:8px 12px!important;font-size:12px!important;font-weight:950!important;line-height:1!important;white-space:nowrap!important}
+            body .cleg-procurement .cleg-proc-row-ficha-actions .cleg-proc-btn,
+            body .cleg-procurement .cleg-proc-detail-actions .cleg-proc-btn,
+            body .cleg-procurement .cleg-proc-client-actions .cleg-proc-btn{min-height:44px!important}
             body .cleg-procurement .cleg-proc-print-sheet{display:none!important}
             body .cleg-procurement details.cleg-proc-subsection{display:grid!important;border:1px solid #aebdcc!important;border-radius:8px!important;background:#fff!important;padding:0!important;margin:12px 0!important;overflow:hidden!important;box-shadow:0 10px 24px rgba(6,24,45,.045)!important}
             body .cleg-procurement details.cleg-proc-subsection>summary{cursor:pointer!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;min-height:44px!important;padding:12px 14px!important;list-style:none!important;background:#f8fafc!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important;font-size:13px!important;font-weight:950!important;line-height:1.15!important}
