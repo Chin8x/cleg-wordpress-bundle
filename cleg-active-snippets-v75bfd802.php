@@ -4571,6 +4571,13 @@ if (!function_exists('cleg_app_script')) {
                         workerMenuSummary.setAttribute('aria-expanded', 'true');
                     });
                 }
+                app.querySelectorAll('.cleg-worker-task-nav a[href^="#"]').forEach(function (link) {
+                    if (link === taskMenuLink) return;
+                    link.addEventListener('click', function () {
+                        const target = document.getElementById(link.getAttribute('href').slice(1));
+                        if (target) target.classList.remove('is-hidden');
+                    });
+                });
 
                 const form = app.querySelector('[data-clock-form]');
                 const button = app.querySelector('[data-clock-button]');
