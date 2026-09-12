@@ -13016,7 +13016,11 @@ if (!function_exists('cleg_admin_project_compact_list')) {
             $project_name = cleg_admin_field($site, 'Job Site Name');
             $project_url = cleg_admin_context_url('/admin-job-sites/', array('cleg_project' => $project_name));
             $stats = $project_stats[$project_name] ?? array('employees' => array(), 'week_hours' => 0, 'open' => 0);
-            $html .= '<a class="cleg-project-compact-card" href="' . esc_url($project_url) . '"><div><strong>' . esc_html($project_name ?: 'Sin nombre') . '</strong><span>' . esc_html(cleg_admin_field($site, 'Address', 'Sin direccion')) . '</span></div><div class="cleg-project-compact-meta"><b>' . esc_html(count($stats['employees'] ?? array())) . '</b><small>empleados</small></div><div class="cleg-project-compact-meta"><b>' . esc_html(cleg_admin_hours_label((float) ($stats['week_hours'] ?? 0))) . '</b><small>semana</small></div><i>›</i></a>';
+            $has_coordinates = cleg_admin_field($site, 'Latitude') !== '' && cleg_admin_field($site, 'Longitude') !== '';
+            $requires_geo = cleg_admin_field($site, 'Requires Geofence', '') === '1' || strtolower(cleg_admin_field($site, 'Requires Geofence', '')) === 'yes';
+            $geo_label = $requires_geo && !$has_coordinates ? 'Geofence incompleto' : ($requires_geo ? 'Geofence activo' : 'Sin geofence');
+            $geo_class = $requires_geo && !$has_coordinates ? ' is-warn' : '';
+            $html .= '<a class="cleg-project-compact-card" href="' . esc_url($project_url) . '"><div><strong>' . esc_html($project_name ?: 'Sin nombre') . '</strong><span>' . esc_html(cleg_admin_field($site, 'Address', 'Sin direccion')) . '</span><small class="cleg-project-compact-status' . esc_attr($geo_class) . '">' . esc_html(cleg_admin_field($site, 'Status', 'Estado no indicado')) . ' · ' . esc_html($geo_label) . '</small></div><div class="cleg-project-compact-meta"><b>' . esc_html(count($stats['employees'] ?? array())) . '</b><small>empleados</small></div><div class="cleg-project-compact-meta"><b>' . esc_html(cleg_admin_hours_label((float) ($stats['week_hours'] ?? 0))) . '</b><small>semana</small></div><i>›</i></a>';
         }
 
         if (empty($sites)) {
