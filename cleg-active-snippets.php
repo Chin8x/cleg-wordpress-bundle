@@ -18415,7 +18415,14 @@ if (!function_exists('cleg_payroll_report_table')) {
         if (empty($summary)) {
             return '<div class="cleg-payroll-report-empty"><h2>Sin cierres en este periodo</h2><p>Cuando Payroll se cierre, esta pantalla mostrara los totales reales para contabilidad.</p></div>';
         }
-        $html = '<div class="cleg-payroll-report-table"><table><thead><tr><th>Trabajador</th><th>Horas</th><th>Bruto</th><th>Deducciones</th><th>Neto</th><th>Aportes patronales</th><th>Detalle</th></tr></thead><tbody>';
+        $html = '<div class="cleg-payroll-report-table"><div class="cleg-payroll-report-cards" aria-label="Resumen de payroll por trabajador">';
+        foreach ($summary as $worker) {
+            $employer = (float) ($worker['employer_ss'] ?? 0) + (float) ($worker['employer_medicare'] ?? 0);
+            $deductions = cleg_payroll_report_deduction_items($worker);
+            $deduction_label = !empty($deductions) ? implode(' · ', $deductions) : 'Sin deducciones';
+            $html .= '<article class="cleg-payroll-report-card"><div class="cleg-payroll-report-card-head"><div><strong>' . esc_html($worker['name']) . '</strong><small>' . esc_html(cleg_payroll_employee_display_type($worker['worker_type'])) . '</small></div><b>' . esc_html(cleg_payroll_money($worker['net_pay'])) . '</b></div><div class="cleg-payroll-report-card-facts"><div><small>Horas</small><strong>' . esc_html(cleg_payroll_format_hours($worker['hours'])) . '</strong></div><div><small>Bruto</small><strong>' . esc_html(cleg_payroll_money($worker['gross_pay'])) . '</strong></div><div><small>Deducciones</small><strong>' . esc_html(cleg_payroll_money($worker['total_deductions'])) . '</strong><span>' . esc_html($deduction_label) . '</span></div><div><small>Aporte patronal</small><strong>' . esc_html(cleg_payroll_money($employer)) . '</strong></div></div></article>';
+        }
+        $html .= '</div><table><thead><tr><th>Trabajador</th><th>Horas</th><th>Bruto</th><th>Deducciones</th><th>Neto</th><th>Aportes patronales</th><th>Detalle</th></tr></thead><tbody>';
         foreach ($summary as $worker) {
             $employer = (float) ($worker['employer_ss'] ?? 0) + (float) ($worker['employer_medicare'] ?? 0);
             $html .= '<tr><td class="cleg-report-worker"><strong>' . esc_html($worker['name']) . ' <small>(' . esc_html(cleg_payroll_employee_display_type($worker['worker_type'])) . ')</small></strong><small>' . esc_html($worker['form_type']) . '</small></td>'
@@ -18552,6 +18559,20 @@ body .cleg-payroll .cleg-payroll-report-kpis strong{color:#06182d;font-size:23px
 body .cleg-payroll .cleg-payroll-report-kpis small{color:#64748b;font-weight:800}
 body .cleg-payroll .cleg-payroll-report-table,body .cleg-payroll .cleg-payroll-report-empty{width:min(1320px,calc(100% - 24px));margin:0 auto 28px;border:1px solid rgba(6,24,45,.12);border-radius:20px;background:#fff;box-shadow:0 14px 34px rgba(6,24,45,.06);overflow:hidden}
 body .cleg-payroll .cleg-payroll-report-table{overflow-x:auto}
+body .cleg-payroll .cleg-payroll-report-cards{display:none}
+body .cleg-payroll .cleg-payroll-report-card{display:grid;gap:12px;padding:14px;border:1px solid rgba(6,24,45,.12);border-radius:14px;background:#fff}
+body .cleg-payroll .cleg-payroll-report-card+.cleg-payroll-report-card{margin-top:10px}
+body .cleg-payroll .cleg-payroll-report-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+body .cleg-payroll .cleg-payroll-report-card-head strong,body .cleg-payroll .cleg-payroll-report-card-head small{display:block}
+body .cleg-payroll .cleg-payroll-report-card-head strong{color:#06182d;font-size:16px}
+body .cleg-payroll .cleg-payroll-report-card-head small{margin-top:3px;color:#64748b;font-size:11px;font-weight:800}
+body .cleg-payroll .cleg-payroll-report-card-head b{color:#107344;font-size:20px;white-space:nowrap}
+body .cleg-payroll .cleg-payroll-report-card-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+body .cleg-payroll .cleg-payroll-report-card-facts>div{padding:9px;border-radius:10px;background:#f7f9fc}
+body .cleg-payroll .cleg-payroll-report-card-facts small,body .cleg-payroll .cleg-payroll-report-card-facts strong,body .cleg-payroll .cleg-payroll-report-card-facts span{display:block}
+body .cleg-payroll .cleg-payroll-report-card-facts small{color:#64748b;font-size:10px;font-weight:950;text-transform:uppercase}
+body .cleg-payroll .cleg-payroll-report-card-facts strong{margin-top:3px;color:#06182d;font-size:13px}
+body .cleg-payroll .cleg-payroll-report-card-facts span{margin-top:3px;color:#516579;font-size:11px;line-height:1.3}
 body .cleg-payroll .cleg-payroll-report-table table{width:100%;min-width:1180px;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
 body .cleg-payroll .cleg-payroll-report-table th,body .cleg-payroll .cleg-payroll-report-table td{padding:13px 14px;border-bottom:1px solid rgba(6,24,45,.08);vertical-align:middle;text-align:left}
 body .cleg-payroll .cleg-payroll-report-table tbody tr:nth-child(even){background:#fbfdff}
@@ -18570,7 +18591,7 @@ body .cleg-payroll .cleg-payroll-report-empty{padding:26px;text-align:center;box
 body .cleg-payroll .cleg-payroll-report-empty h2{margin:0 0 8px;color:#06182d}
 body .cleg-payroll .cleg-payroll-report-empty p{margin:0;color:#516579;font-weight:750}
 @media(max-width:1200px){body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:repeat(3,1fr)}body .cleg-payroll .cleg-payroll-report-hero{grid-template-columns:1fr}}
-@media(max-width:760px){body .cleg-payroll .cleg-payroll-report-filters{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-actions{grid-template-columns:1fr}}
+@media(max-width:760px){body .cleg-payroll .cleg-payroll-report-filters{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-actions{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-table{overflow:visible}body .cleg-payroll .cleg-payroll-report-table table{display:none}body .cleg-payroll .cleg-payroll-report-cards{display:block}}
 </style>
 HTML;
     }
