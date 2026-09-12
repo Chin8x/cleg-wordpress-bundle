@@ -4299,7 +4299,7 @@ if (!function_exists('cleg_app_worker_request_submit')) {
             if ($absence_end_date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $absence_end_date)) $absence_end_date = $absence_date;
             $start_date = DateTimeImmutable::createFromFormat('!Y-m-d', $absence_date, wp_timezone());
             $end_date = DateTimeImmutable::createFromFormat('!Y-m-d', $absence_end_date, wp_timezone());
-            if (!$start_date || !$end_date || $end_date < $start_date || (int) $start_date->diff($end_date)->days > 30) {
+            if (!$start_date || !$end_date || $start_date->format('Y-m-d') !== $absence_date || $end_date->format('Y-m-d') !== $absence_end_date || $end_date < $start_date || (int) $start_date->diff($end_date)->days > 30) {
                 wp_send_json_error(array('message' => 'El rango debe ser valido y no puede superar 31 dias.'), 400);
             }
             $range_label = $absence_date === $absence_end_date ? 'Dia que faltaste: ' . $absence_date : 'Rango solicitado: ' . $absence_date . ' al ' . $absence_end_date;
