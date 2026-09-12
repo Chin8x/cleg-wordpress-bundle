@@ -3772,6 +3772,7 @@ if (!function_exists('cleg_app_render_worker')) {
                         <label class="cleg-field"><span>Hasta</span><input type="date" data-absence-end></label>
                     </div>
                     <label class="cleg-field"><span>Nota opcional</span><textarea name="request_detail" rows="2" placeholder="Ej. cita medica o asunto familiar"></textarea></label>
+                    <p class="cleg-clock-message cleg-absence-preview" data-absence-preview role="status" aria-live="polite">Selecciona el dia o rango que vas a reportar.</p>
                     <button class="cleg-small-action cleg-worker-submit-action" type="submit">Enviar</button>
                     <p class="cleg-clock-message" data-worker-request-message role="status" aria-live="polite"></p>
                 </form>
@@ -5070,6 +5071,7 @@ if (!function_exists('cleg_app_script')) {
                     const requestMessage = requestForm.querySelector('[data-worker-request-message]');
                     const absenceStart = requestForm.querySelector('[data-absence-start]');
                     const absenceEnd = requestForm.querySelector('[data-absence-end]');
+                    const absencePreview = requestForm.querySelector('[data-absence-preview]');
                     const detailInput = requestForm.querySelector('textarea[name="request_detail"]');
                     const dateList = function (startValue, endValue) {
                         const dates = [];
@@ -5098,12 +5100,30 @@ if (!function_exists('cleg_app_script')) {
                     };
 
                     if (absenceStart && absenceEnd) {
+                        const updateAbsencePreview = function () {
+                            if (!absencePreview) return;
+                            if (!absenceStart.value) {
+                                absencePreview.textContent = 'Selecciona el dia o rango que vas a reportar.';
+                                return;
+                            }
+                            try {
+                                const previewDays = dateList(absenceStart.value, absenceEnd.value || absenceStart.value);
+                                absencePreview.textContent = previewDays.length === 1
+                                    ? 'Se reportara 1 dia: ' + previewDays[0] + '.'
+                                    : 'Se reportaran ' + previewDays.length + ' dias: ' + previewDays[0] + ' al ' + previewDays[previewDays.length - 1] + '.';
+                            } catch (error) {
+                                absencePreview.textContent = error.message || 'Revisa las fechas seleccionadas.';
+                            }
+                        };
                         absenceStart.addEventListener('change', function () {
                             absenceEnd.min = absenceStart.value || '';
                             if (!absenceEnd.value || absenceEnd.value < absenceStart.value) {
                                 absenceEnd.value = absenceStart.value || '';
                             }
+                            updateAbsencePreview();
                         });
+                        absenceEnd.addEventListener('change', updateAbsencePreview);
+                        updateAbsencePreview();
                     }
 
                     requestForm.addEventListener('submit', async function (event) {
