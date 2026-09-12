@@ -38289,6 +38289,14 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
 }
 add_shortcode('cleg_admin_procurement', 'cleg_admin_procurement_shortcode');
 
+if (!function_exists('cleg_procurement_mobile_touch_styles')) {
+    function cleg_procurement_mobile_touch_styles($content) {
+        if (strpos((string) $content, 'class="cleg-procurement"') === false) return $content;
+        return '<style>@media(max-width:720px){.cleg-procurement .cleg-proc-btn,.cleg-procurement .cleg-proc-open,.cleg-procurement .cleg-proc-detail-tabs a,.cleg-procurement .cleg-proc-quick-filters a,.cleg-procurement .cleg-proc-mini-action,.cleg-procurement .cleg-proc-quote-intake>summary,.cleg-procurement .cleg-proc-quote-edit>summary,.cleg-procurement .cleg-proc-quote-advanced>summary,.cleg-procurement .cleg-proc-select-quote-form .cleg-proc-btn,.cleg-procurement .cleg-proc-detail-actions .cleg-proc-btn,.cleg-procurement .cleg-proc-client-operation-card>summary,.cleg-procurement .cleg-proc-column-picker>summary,.cleg-procurement .cleg-proc-basic-edit>summary,.cleg-procurement .cleg-proc-danger-details>summary{min-height:44px!important}}</style>' . $content;
+    }
+    add_filter('the_content', 'cleg_procurement_mobile_touch_styles', 99);
+}
+
 if (!function_exists('cleg_procurement_render_standalone_page')) {
     function cleg_procurement_render_standalone_page() {
         if (!cleg_procurement_is_page_request()) {
@@ -43053,6 +43061,14 @@ if (!function_exists('cleg_admin_receipts_styles')) {
 
 add_action('init', 'cleg_admin_handle_receipt_action');
 add_shortcode('cleg_admin_recibos', 'cleg_admin_recibos_shortcode');
+
+if (!function_exists('cleg_receipts_mobile_touch_styles')) {
+    function cleg_receipts_mobile_touch_styles($content) {
+        if (strpos((string) $content, 'class="cleg-proc-receipts-screen"') === false) return $content;
+        return '<style>@media(max-width:720px){.cleg-proc-receipts-screen .cleg-receipt-filters input,.cleg-proc-receipts-screen .cleg-receipt-filters select,.cleg-proc-receipts-screen .cleg-receipt-filters button,.cleg-proc-receipts-screen .cleg-receipt-filters a,.cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary,.cleg-proc-receipts-screen .cleg-receipt-toolbar button{min-height:44px!important}}</style>' . $content;
+    }
+    add_filter('the_content', 'cleg_receipts_mobile_touch_styles', 99);
+}
 /**
  * END modulos/12-procurement-quotes/23-cleg-21-admin-recibos-v1.php
  */
