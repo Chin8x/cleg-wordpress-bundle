@@ -6750,7 +6750,7 @@ if (!function_exists('cleg_admin_nav')) {
             'requests' => array('Solicitudes', home_url('/admin-solicitudes/'), 'forms_requests'),
             'procurement' => array('Compras', home_url('/admin-procurement/'), 'procurement_quotes'),
         );
-        $mobile = '<details class="cleg-admin-mobile-menu cleg-admin-task-menu"><summary><span>Tareas</span><b>Menu</b></summary><div>';
+        $mobile = '<details class="cleg-admin-mobile-menu cleg-admin-task-menu" style="display:block!important"><summary><span>Tareas</span><b>Menu</b></summary><div>';
         foreach ($task_items as $key => $task) {
             if (!cleg_admin_nav_module_enabled($task[2])) {
                 continue;
