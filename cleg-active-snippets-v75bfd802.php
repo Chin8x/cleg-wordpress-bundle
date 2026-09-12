@@ -3712,6 +3712,7 @@ if (!function_exists('cleg_app_render_worker')) {
                         <input type="file" name="receipt_file" accept="image/*,application/pdf" capture="environment" required>
                         <small>Recibo claro, completo y legible.</small>
                         <small data-worker-receipt-file-status aria-live="polite">Ningún archivo seleccionado.</small>
+                        <div class="cleg-receipt-preview" data-worker-receipt-preview hidden aria-live="polite"></div>
                     </label>
 
                     <div class="cleg-absence-range">
@@ -5003,6 +5004,8 @@ if (!function_exists('cleg_app_script')) {
                     const receiptJob = receiptForm.querySelector('select[name="purchase_job_site"]');
                     const receiptCategory = receiptForm.querySelector('select[name="purchase_category"]');
                     const receiptFileStatus = receiptForm.querySelector('[data-worker-receipt-file-status]');
+                    const receiptPreview = receiptForm.querySelector('[data-worker-receipt-preview]');
+                    let receiptPreviewUrl = '';
                     const updateReceiptSummary = function () {
                         const file = receiptFile && receiptFile.files && receiptFile.files[0];
                         if (receiptFileStatus) {
@@ -5017,6 +5020,24 @@ if (!function_exists('cleg_app_script')) {
                                 receiptCategory && receiptCategory.value ? receiptCategory.value : 'sin categoría'
                             ];
                             receiptSummary.textContent = 'Revisión: ' + values.join(' · ');
+                        }
+                        if (receiptPreview) {
+                            if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+                            receiptPreviewUrl = '';
+                            receiptPreview.replaceChildren();
+                            receiptPreview.hidden = !file;
+                            if (file) {
+                                const label = document.createElement('span');
+                                label.textContent = file.type === 'application/pdf' ? 'PDF seleccionado: ' + file.name : 'Vista previa: ' + file.name;
+                                receiptPreview.appendChild(label);
+                                if (file.type.indexOf('image/') === 0) {
+                                    const image = document.createElement('img');
+                                    image.alt = 'Vista previa del recibo seleccionado';
+                                    receiptPreviewUrl = URL.createObjectURL(file);
+                                    image.src = receiptPreviewUrl;
+                                    receiptPreview.appendChild(image);
+                                }
+                            }
                         }
                     };
                     [receiptFile, receiptDate, receiptTotal, receiptJob, receiptCategory].forEach(function (control) {
@@ -5049,6 +5070,13 @@ if (!function_exists('cleg_app_script')) {
 
                             receiptForm.reset();
                             if (receiptDate) receiptDate.value = localDateValue(new Date());
+                            if (receiptPreview) {
+                                if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+                                receiptPreviewUrl = '';
+                                receiptPreview.replaceChildren();
+                                receiptPreview.hidden = true;
+                            }
+                            updateReceiptSummary();
                             if (receiptMessage) {
                                 receiptMessage.textContent = payload.data.message || 'Recibo enviado para revision.';
                                 receiptMessage.classList.remove('is-warning');
@@ -5454,10 +5482,30 @@ if (!function_exists('cleg_app_styles')) {
                 font-weight: 700;
                 padding: 12px 14px;
             }
-            .cleg-file-field small {
+                    .cleg-file-field small {
                 color: var(--cleg-muted);
                 font-size: 12px;
                 font-weight: 800;
+            }
+            .cleg-receipt-preview {
+                display: grid;
+                gap: 6px;
+                margin-top: 6px;
+                padding: 8px;
+                border: 1px solid var(--cleg-line);
+                border-radius: 10px;
+                background: #f8fafc;
+                color: var(--cleg-muted);
+                font-size: 12px;
+                font-weight: 800;
+            }
+            .cleg-receipt-preview img {
+                display: block;
+                width: min(100%, 220px);
+                max-height: 180px;
+                object-fit: contain;
+                border-radius: 8px;
+                background: #fff;
             }
             .cleg-field input[type="datetime-local"] {
                 width: 100%;
