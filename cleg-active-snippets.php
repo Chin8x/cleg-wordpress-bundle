@@ -10399,6 +10399,10 @@ body .cleg-admin-ui .cleg-desktop-table{
         display:none!important;
     }
 }
+/* The mobile cards live inside the review panel; keep the parent visible. */
+body .cleg-admin-ui .cleg-review-panel{
+    display:block!important;
+}
 </style>
 HTML;
     }
