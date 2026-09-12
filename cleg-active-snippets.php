@@ -3798,7 +3798,7 @@ if (!function_exists('cleg_app_render_worker')) {
                     <input type="hidden" name="request_type" value="Ausencia">
                     <div class="cleg-absence-range">
                         <label class="cleg-field"><span>Desde</span><input type="date" name="absence_date" data-absence-start required></label>
-                        <label class="cleg-field"><span>Hasta</span><input type="date" data-absence-end></label>
+                        <label class="cleg-field"><span>Hasta</span><input type="date" name="absence_end_date" data-absence-end></label>
                     </div>
                     <label class="cleg-field"><span>Nota opcional</span><textarea name="request_detail" rows="2" placeholder="Ej. cita medica o asunto familiar"></textarea></label>
                     <p class="cleg-clock-message cleg-absence-preview" data-absence-preview role="status" aria-live="polite">Selecciona el dia o rango que vas a reportar.</p>
@@ -4284,6 +4284,7 @@ if (!function_exists('cleg_app_worker_request_submit')) {
         $type = isset($_POST['request_type']) ? sanitize_text_field(wp_unslash($_POST['request_type'])) : 'Ausencia';
         $detail = isset($_POST['request_detail']) ? sanitize_textarea_field(wp_unslash($_POST['request_detail'])) : '';
         $absence_date = isset($_POST['absence_date']) ? sanitize_text_field(wp_unslash($_POST['absence_date'])) : '';
+        $absence_end_date = isset($_POST['absence_end_date']) ? sanitize_text_field(wp_unslash($_POST['absence_end_date'])) : $absence_date;
 
         $allowed_types = array('Ausencia', 'Incidente', 'CorrecciÃ³n de hora', 'Permiso', 'Otro');
         if (!in_array($type, $allowed_types, true)) {
@@ -4295,7 +4296,14 @@ if (!function_exists('cleg_app_worker_request_submit')) {
                 wp_send_json_error(array('message' => 'Escoge el dia que faltaste.'), 400);
             }
 
-            $detail = trim('Dia que faltaste: ' . $absence_date . ($detail !== '' ? "\nNota: " . $detail : ''));
+            if ($absence_end_date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $absence_end_date)) $absence_end_date = $absence_date;
+            $start_date = DateTimeImmutable::createFromFormat('!Y-m-d', $absence_date, wp_timezone());
+            $end_date = DateTimeImmutable::createFromFormat('!Y-m-d', $absence_end_date, wp_timezone());
+            if (!$start_date || !$end_date || $end_date < $start_date || (int) $start_date->diff($end_date)->days > 30) {
+                wp_send_json_error(array('message' => 'El rango debe ser valido y no puede superar 31 dias.'), 400);
+            }
+            $range_label = $absence_date === $absence_end_date ? 'Dia que faltaste: ' . $absence_date : 'Rango solicitado: ' . $absence_date . ' al ' . $absence_end_date;
+            $detail = trim($range_label . ($detail !== '' ? "\nNota: " . $detail : ''));
         } elseif ($detail === '') {
             wp_send_json_error(array('message' => 'Escribe una nota corta.'), 400);
         }
@@ -5205,51 +5213,27 @@ if (!function_exists('cleg_app_script')) {
                         }
                         if (requestMessage) requestMessage.textContent = 'Enviando...';
                         let requestedDays = [];
-                        let sentDays = 0;
-                        const requestCodes = [];
                         try {
                             requestedDays = dateList(absenceStart ? absenceStart.value : '', absenceEnd ? absenceEnd.value : '');
                             const days = requestedDays;
                             const originalDetail = detailInput ? detailInput.value.trim() : '';
 
-                            for (let index = 0; index < days.length; index++) {
-                                if (requestMessage) {
-                                    requestMessage.textContent = days.length > 1 ? 'Enviando ' + (index + 1) + ' de ' + days.length + '...' : 'Enviando...';
-                                }
-
-                                const formData = new FormData(requestForm);
-                                formData.set('absence_date', days[index]);
-
-                                if (days.length > 1) {
-                                    formData.set('request_detail', 'Rango solicitado: ' + days[0] + ' al ' + days[days.length - 1] + (originalDetail ? "\n" + originalDetail : ''));
-                                }
-
-                                const response = await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>', {
-                                    method: 'POST',
-                                    credentials: 'same-origin',
-                                    body: formData
-                                });
-                                const payload = await response.json();
-                                if (!payload || !payload.success) {
-                                    throw new Error('Se enviaron ' + sentDays + ' de ' + days.length + ' dias. ' + (payload && payload.data && payload.data.message ? payload.data.message : 'No se pudo completar el rango. Revisa los dias enviados antes de reintentar.'));
-                                }
-                                sentDays++;
-                                if (payload.data && payload.data.code) requestCodes.push(payload.data.code);
-                            }
+                            if (requestMessage) requestMessage.textContent = days.length > 1 ? 'Enviando solicitud para ' + days.length + ' dias...' : 'Enviando...';
+                            const formData = new FormData(requestForm);
+                            formData.set('absence_date', days[0]);
+                            formData.set('absence_end_date', days[days.length - 1]);
+                            if (days.length > 1) formData.set('request_detail', originalDetail);
+                            const response = await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>', {method: 'POST', credentials: 'same-origin', body: formData});
+                            const payload = await response.json();
+                            if (!payload || !payload.success) throw new Error(payload && payload.data && payload.data.message ? payload.data.message : 'No se pudo completar la solicitud. Intenta de nuevo.');
 
                             requestForm.reset();
                             if (requestMessage) {
-                                const codeText = requestCodes.length ? ' Codigos: ' + requestCodes.join(', ') + '.' : '';
+                                const codeText = payload.data && payload.data.code ? ' Codigo: ' + payload.data.code + '.' : '';
                                 requestMessage.textContent = (days.length > 1 ? 'Ausencia enviada por ' + days.length + ' dias.' : 'Ausencia enviada.') + codeText;
                             }
                         } catch (error) {
-                            if (sentDays > 0 && requestedDays[sentDays]) {
-                                if (absenceStart) absenceStart.value = requestedDays[sentDays];
-                                if (absenceEnd) absenceEnd.value = requestedDays[requestedDays.length - 1] || requestedDays[sentDays];
-                                if (requestMessage) requestMessage.textContent = (error.message || 'No se pudo completar el rango.') + ' El formulario quedó desde ' + requestedDays[sentDays] + ' para evitar duplicar los días enviados.';
-                            } else if (requestMessage) {
-                                requestMessage.textContent = error.message || 'No se pudo enviar. Intenta de nuevo.';
-                            }
+                            if (requestMessage) requestMessage.textContent = error.message || 'No se pudo enviar. Intenta de nuevo.';
                         } finally {
                             if (submit) {
                                 submit.disabled = false;
