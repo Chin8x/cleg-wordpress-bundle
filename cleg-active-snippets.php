@@ -20908,11 +20908,11 @@ if (!function_exists('cleg_emp_payroll_styles')) {
 
 if (!function_exists('cleg_emp_payroll_page_guard_styles')) {
     function cleg_emp_payroll_page_guard_styles() {
-        if (!is_page(493)) {
+        if (!is_page(259)) {
             return;
         }
 
-        echo '<style id="cleg-employee-payroll-page-guard">body.page-id-493,body.page-id-493 .site,body.page-id-493 .site-content,body.page-id-493 .site-main,body.page-id-493 .entry-content{width:100%!important;max-width:100%!important;overflow-x:hidden!important}body.page-id-493 :where(.entry-title,.page-title){display:none!important}</style>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+        echo '<style id="cleg-employee-payroll-page-guard">body.page-id-259,body.page-id-259 .site,body.page-id-259 .site-content,body.page-id-259 .site-main,body.page-id-259 .entry-content{width:100%!important;max-width:100%!important;overflow-x:hidden!important}body.page-id-259 :where(.entry-title,.page-title){display:none!important}</style>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
     }
     add_action('wp_head', 'cleg_emp_payroll_page_guard_styles', 1000);
 }
