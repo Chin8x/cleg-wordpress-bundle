@@ -15330,6 +15330,14 @@ if (!function_exists('cleg_tenant_admin_center_shortcode')) {
 
 add_shortcode('cleg_tenant_admin_center', 'cleg_tenant_admin_center_shortcode');
 add_shortcode('cleg_admin_empresa', 'cleg_tenant_admin_center_shortcode');
+
+if (!function_exists('cleg_tenant_mobile_touch_styles')) {
+    function cleg_tenant_mobile_touch_styles($content) {
+        if (strpos((string) $content, 'class="cleg-module-admin-root"') === false) return $content;
+        return '<style>@media(max-width:760px){.cleg-module-admin-root .cleg-admin-mobile-menu a,.cleg-module-admin-root .cleg-admin-nav a,.cleg-module-admin-root .cleg-tenant-tabs a,.cleg-module-admin-root .cleg-row-action,.cleg-module-admin-root .cleg-tenant-primary,.cleg-module-admin-root .cleg-tenant-hero a,.cleg-module-admin-root .cleg-tenant-user-form input,.cleg-module-admin-root .cleg-tenant-user-form select,.cleg-module-admin-root .cleg-tenant-user-form button,.cleg-module-admin-root .cleg-tenant-user-row input,.cleg-module-admin-root .cleg-tenant-user-row select,.cleg-module-admin-root .cleg-tenant-user-actions button,.cleg-module-admin-root .cleg-tenant-pin-actions button,.cleg-module-admin-root .cleg-tenant-pin-notice button,.cleg-module-admin-root .cleg-tenant-module-actions button{min-height:44px!important}}</style>' . $content;
+    }
+    add_filter('the_content', 'cleg_tenant_mobile_touch_styles', 99);
+}
 /**
  * END modulos/02-tenant-admin/07h-cleg-05h-tenant-admin-center.php
  */
