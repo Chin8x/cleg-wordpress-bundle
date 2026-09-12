@@ -7295,6 +7295,12 @@ if (!function_exists('cleg_admin_desktop_menu_lock_styles')) {
     body .cleg-admin-ui > .cleg-admin-shell > .cleg-admin-mobile-menu{
         display:block!important;
     }
+    body .cleg-admin-ui .cleg-mobile-card a.cleg-row-action,
+    body .cleg-admin-ui .cleg-mobile-card button,
+    body .cleg-admin-ui .cleg-mobile-actions a,
+    body .cleg-admin-ui .cleg-mobile-actions button{
+        min-height:44px!important;
+    }
 }
 </style>
 HTML;
