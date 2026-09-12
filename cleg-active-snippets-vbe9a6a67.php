@@ -1773,127 +1773,30 @@ function cleg01_login_styles() {
  * Target: 01-Snippets-Activos/04-cleg-02-portal-formularios-hub.php
  * Source path: modulos/07-forms-requests/04-cleg-02-portal-formularios-hub.php
  */
+<?php
 /**
- * CLEG 02 - Portal Formularios Hub
+ * CLEG 02 - Compatibilidad de ruta legacy.
+ *
+ * Las solicitudes vigentes se gestionan en sus módulos propios. Esta ruta
+ * conserva únicamente una redirección para evitar mostrar el hub antiguo.
  */
-// ===== HUB DE FORMULARIOS Y VISTAS =====
-add_shortcode('cleg_form_hub', function () {
-  if (!is_user_logged_in()) {
-    // Redirige a /acceso/ si no estÃ¡ logueado
-    wp_safe_redirect( home_url('/acceso/?redirect_to=' . urlencode(home_url('/formularios/'))) );
+
+if (!defined('ABSPATH')) {
     exit;
-  }
+}
 
-  // Permitir solo Trabajador o Administrador (ajusta si usas otro rol)
-  $u = wp_get_current_user();
-  $roles = (array) $u->roles;
-  $allowed = array('administrator', 'trabajador');
-  if (count(array_intersect($roles, $allowed)) === 0) {
-    return '<div class="cleg-hub cleg-hub-error">No tienes permisos para ver esta pÃ¡gina.</div>';
-  }
+add_shortcode('cleg_form_hub', function () {
+    if (!is_user_logged_in()) {
+        wp_safe_redirect(home_url('/acceso/'));
+        exit;
+    }
 
-  // Esta ruta pertenece al portal antiguo. Las acciones vigentes viven en
-  // Solicitudes para administración y en el panel personal para trabajadores.
-  $legacy_destination = in_array('administrator', $roles, true)
-    ? home_url('/admin-solicitudes/')
-    : home_url('/panel/');
-  wp_safe_redirect($legacy_destination);
-  exit;
+    $destination = current_user_can('manage_options')
+        ? home_url('/admin-solicitudes/')
+        : home_url('/panel/');
 
-  // Prefill
-  $display_name = $u->display_name ?: '';
-  $user_email   = $u->user_email ?: '';
-  $pf_name  = rawurlencode($display_name);
-  $pf_email = rawurlencode($user_email);
-
-  // Define tus formularios y vistas:
-  // type: form  -> abre iframe (Airtable)
-  // type: link  -> enlace normal a una pÃ¡gina/vista de informaciÃ³n
-  $items = array(
-    'solicitud' => array(
-      'type' => 'form',
-      'title' => 'Solicitud de Trabajo',
-      'desc'  => 'EnvÃ­o de solicitudes y requerimientos.',
-      // TU URL de embed SIN prefill; el shortcode aÃ±ade ?prefill_... automÃ¡ticamente
-      'embed' => 'https://airtable.com/embed/appXXXXXXXXXXXXXX/pagYYYYYYYYYYYY/form'
-    ),
-    'mantenimiento' => array(
-      'type' => 'form',
-      'title' => 'Orden de Mantenimiento',
-      'desc'  => 'Reporte de fallas y mantenimiento.',
-      'embed' => 'https://airtable.com/embed/appXXXXXXXXXXXXXX/pagZZZZZZZZZZZZ/form'
-    ),
-    'inventario' => array(
-      'type' => 'link',
-      'title' => 'Inventario VFDs',
-      'desc'  => 'Consulta de existencias locales y modelos.',
-      'href'  => home_url('/inventario-vfds/')
-    ),
-    'manual-seguridad' => array(
-      'type' => 'link',
-      'title' => 'Manual de Seguridad',
-      'desc'  => 'Procedimientos y EPP obligatorios.',
-      'href'  => home_url('/manual-de-seguridad/')
-    ),
-    'mi-perfil' => array(
-      'type' => 'link',
-      'title' => 'Mi Perfil',
-      'desc'  => 'Actualiza tus datos de usuario.',
-      'href'  => admin_url('profile.php')
-    ),
-  );
-
-  // Â¿Se pidiÃ³ abrir un form concreto?
-  $open = isset($_GET['form']) ? sanitize_key($_GET['form']) : '';
-
-  ob_start(); ?>
-
-  <div class="cleg-hub">
-    <h2 class="cleg-hub-title">Formularios y Vistas</h2>
-    <div class="cleg-hub-grid">
-      <?php foreach ($items as $slug => $it):
-        $is_form = ($it['type'] === 'form');
-        $url = $is_form
-          ? add_query_arg('form', $slug, home_url('/formularios/'))
-          : $it['href'];
-      ?>
-        <a class="cleg-card <?php echo $is_form ? 'is-form' : 'is-link'; ?>" href="<?php echo esc_url($url); ?>">
-          <div class="cleg-card-title"><?php echo esc_html($it['title']); ?></div>
-          <div class="cleg-card-desc"><?php echo esc_html($it['desc']); ?></div>
-          <div class="cleg-card-cta"><?php echo $is_form ? 'Abrir formulario' : 'Abrir vista'; ?></div>
-        </a>
-      <?php endforeach; ?>
-    </div>
-
-    <?php
-    // Render del iframe si hay form seleccionado
-    if ($open && isset($items[$open]) && $items[$open]['type'] === 'form'):
-      $src = $items[$open]['embed'];
-      // Ajusta los nombres de los campos de prefill a los que tengas en Airtable
-      $src = add_query_arg(array(
-        'prefill_Nombre' => $pf_name,
-        'prefill_Email'  => $pf_email
-      ), $src);
-    ?>
-      <div class="cleg-form-wrap">
-        <div class="cleg-form-head">
-          <a class="cleg-back" href="<?php echo esc_url(home_url('/formularios/')); ?>">â† Volver</a>
-          <h3><?php echo esc_html($items[$open]['title']); ?></h3>
-        </div>
-        <iframe
-          class="airtable-embed"
-          src="<?php echo esc_url($src); ?>"
-          frameborder="0"
-          width="100%"
-          height="900"
-          style="background: transparent; border: 1px solid #ddd; border-radius: 12px;"></iframe>
-        <script src="https://static.airtable.com/js/embed/embed_snippet_v1.js"></script>
-      </div>
-    <?php endif; ?>
-  </div>
-
-  <?php
-  return ob_get_clean();
+    wp_safe_redirect($destination);
+    exit;
 });
 /**
  * END modulos/07-forms-requests/04-cleg-02-portal-formularios-hub.php
