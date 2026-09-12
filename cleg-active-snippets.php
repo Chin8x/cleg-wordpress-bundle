@@ -14987,8 +14987,9 @@ if (!function_exists('cleg_tenant_admin_modules_panel')) {
 
 if (!function_exists('cleg_tenant_admin_invites_panel')) {
     function cleg_tenant_admin_invites_panel(array $tenant, array $users): string {
+        $mobile = '<div class="cleg-tenant-mobile-list" aria-label="Invitaciones">';
         $html = '<section class="cleg-panel cleg-tenant-invites-panel"><div class="cleg-panel-head"><div><h2>Invitaciones</h2></div>' . cleg_tenant_admin_help('Ultimas invitaciones detectadas para esta empresa.') . '</div>';
-        $html .= '<div class="cleg-table-wrap"><table><thead><tr><th>Usuario</th><th>Email</th><th>Invitado</th><th>Estado</th></tr></thead><tbody>';
+        $html .= '<div class="cleg-table-wrap cleg-tenant-desktop-table"><table><thead><tr><th>Usuario</th><th>Email</th><th>Invitado</th><th>Estado</th></tr></thead><tbody>';
         $rows = 0;
         foreach ($users as $user) {
             if (!$user instanceof WP_User) {
@@ -15000,30 +15001,35 @@ if (!function_exists('cleg_tenant_admin_invites_panel')) {
             }
             $rows++;
             $status = (string) get_user_meta($user->ID, 'cleg_tenant_status', true);
+            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>Invitación</span><strong>' . esc_html($user->display_name ?: $user->user_login) . '</strong></div><span class="cleg-pill is-ok">' . esc_html($status === 'inactive' ? 'Inactivo' : 'Activo') . '</span></div><div class="cleg-mobile-facts"><div><small>Email</small><b>' . esc_html($user->user_email) . '</b></div><div><small>Invitado</small><b>' . esc_html($invited_at) . '</b></div></div></article>';
             $html .= '<tr><td><strong>' . esc_html($user->display_name ?: $user->user_login) . '</strong></td><td>' . esc_html($user->user_email) . '</td><td>' . esc_html($invited_at) . '</td><td><span class="cleg-pill is-ok">' . esc_html($status === 'inactive' ? 'Inactivo' : 'Activo') . '</span></td></tr>';
         }
         if ($rows === 0) {
+            $mobile .= '<article class="cleg-mobile-card"><strong>No hay invitaciones registradas.</strong></article>';
             $html .= '<tr><td colspan="4">Todavia no hay invitaciones registradas para esta empresa.</td></tr>';
         }
 
-        return $html . '</tbody></table></div></section>';
+        return $mobile . '</div>' . $html . '</tbody></table></div></section>';
     }
 }
 
 if (!function_exists('cleg_tenant_admin_audit_panel')) {
     function cleg_tenant_admin_audit_panel(array $tenant): string {
+        $mobile = '<div class="cleg-tenant-mobile-list" aria-label="Auditoria">';
         $html = '<section class="cleg-panel cleg-tenant-audit-panel"><div class="cleg-panel-head"><div><h2>Auditoria</h2></div>' . cleg_tenant_admin_help('Registro breve de acciones realizadas desde Administracion.') . '</div>';
-        $html .= '<div class="cleg-table-wrap"><table><thead><tr><th>Evento</th><th>Detalle</th><th>Actor</th><th>Fecha</th></tr></thead><tbody>';
+        $html .= '<div class="cleg-table-wrap cleg-tenant-desktop-table"><table><thead><tr><th>Evento</th><th>Detalle</th><th>Actor</th><th>Fecha</th></tr></thead><tbody>';
         $events = cleg_tenant_admin_audit_events($tenant);
         if (empty($events)) {
+            $mobile .= '<article class="cleg-mobile-card"><strong>No hay eventos registrados.</strong></article>';
             $html .= '<tr><td colspan="4">Todavia no hay eventos registrados por esta pantalla.</td></tr>';
         }
         foreach ($events as $event) {
             $actor = !empty($event['actor']) ? get_userdata((int) $event['actor']) : false;
+            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>Evento</span><strong>' . esc_html((string) ($event['event'] ?? 'Evento')) . '</strong></div><span class="cleg-pill ' . esc_attr(($event['status'] ?? '') === 'ok' ? 'is-ok' : 'is-warn') . '">' . esc_html(($event['status'] ?? '') === 'ok' ? 'Correcto' : 'Revisar') . '</span></div><p class="cleg-mobile-muted">' . esc_html((string) ($event['detail'] ?? '')) . '</p><div class="cleg-mobile-facts"><div><small>Actor</small><b>' . esc_html($actor ? $actor->display_name : 'Sistema') . '</b></div><div><small>Fecha</small><b>' . esc_html((string) ($event['at'] ?? '')) . '</b></div></div></article>';
             $html .= '<tr><td><span class="cleg-pill ' . esc_attr(($event['status'] ?? '') === 'ok' ? 'is-ok' : 'is-warn') . '">' . esc_html((string) ($event['event'] ?? 'Evento')) . '</span></td><td>' . esc_html((string) ($event['detail'] ?? '')) . '</td><td>' . esc_html($actor ? $actor->display_name : 'Sistema') . '</td><td>' . esc_html((string) ($event['at'] ?? '')) . '</td></tr>';
         }
 
-        return $html . '</tbody></table></div></section>';
+        return $mobile . '</div>' . $html . '</tbody></table></div></section>';
     }
 }
 
@@ -15161,6 +15167,8 @@ if (!function_exists('cleg_tenant_admin_styles')) {
 .cleg-tenant-pin-notice div{display:grid;gap:3px}.cleg-tenant-pin-notice div span{color:#0f6b3c;font-size:12px;font-weight:950;text-transform:uppercase}.cleg-tenant-pin-notice div strong{font-size:18px}.cleg-tenant-pin-notice div small{color:#516579;font-weight:750}
 .cleg-tenant-pin-notice code{border:1px solid #b7e2c8;border-radius:10px;background:#fff;padding:12px;color:#06182d;font-size:15px;font-weight:850;white-space:nowrap}.cleg-tenant-pin-notice code b{font-size:22px;letter-spacing:3px}
 .cleg-tenant-pin-notice button{min-height:42px;border:0;border-radius:8px;background:#107344;color:#fff;padding:10px 14px;font-weight:950;cursor:pointer}
+.cleg-tenant-mobile-list{display:none}
+.cleg-tenant-mobile-list .cleg-mobile-card{margin:0 auto 10px;width:min(1320px,calc(100% - 24px))}
 @media(min-width:901px){
     .cleg-module-admin-root .cleg-admin-mobile-menu{display:none!important}
 }
@@ -15172,6 +15180,8 @@ if (!function_exists('cleg_tenant_admin_styles')) {
     .cleg-tenant-hero{align-items:stretch;flex-direction:column}
     .cleg-tenant-primary,.cleg-tenant-hero a{width:100%}
     .cleg-module-admin-root .cleg-admin-nav{display:none!important}
+    .cleg-tenant-mobile-list{display:block!important}
+    .cleg-tenant-desktop-table{display:none!important}
     .cleg-tenant-tabs{padding-bottom:12px}
     .cleg-tenant-metrics,.cleg-tenant-overview-grid,.cleg-tenant-role-grid{grid-template-columns:1fr!important}
     .cleg-tenant-user-form{grid-template-columns:1fr!important}
