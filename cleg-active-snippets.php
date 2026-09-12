@@ -1264,6 +1264,27 @@ if (!function_exists('cleg00_guard_portal_routes')) {
         $path = cleg00_current_path();
         $group = cleg00_route_group_for_path($path);
 
+        if ($path === '/formularios/') {
+            if (!is_user_logged_in()) {
+                wp_safe_redirect(add_query_arg('cleg_redirect', rawurlencode($path), cleg00_login_url()));
+                exit;
+            }
+
+            $current_user = wp_get_current_user();
+            if (cleg00_login_user_is_procurement_only($current_user)) {
+                wp_safe_redirect(home_url('/admin-procurement/'));
+                exit;
+            }
+
+            if (cleg00_login_user_can_admin($current_user)) {
+                wp_safe_redirect(home_url('/admin-solicitudes/'));
+                exit;
+            }
+
+            wp_safe_redirect(cleg00_default_portal_url());
+            exit;
+        }
+
         if ($path === '/acceso/' && is_user_logged_in()) {
             $current_user = wp_get_current_user();
             $redirect = cleg00_route_redirect_for_user('/acceso/', $current_user);
