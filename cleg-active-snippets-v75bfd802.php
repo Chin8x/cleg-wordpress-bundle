@@ -8910,6 +8910,28 @@ if (!function_exists('cleg_admin_mobile_missing_job_site')) {
     }
 }
 
+if (!function_exists('cleg_admin_mobile_review_blocked')) {
+    function cleg_admin_mobile_review_blocked($record, $project, $clock_out) {
+        if ($clock_out === '' || cleg_admin_mobile_missing_job_site($project)) {
+            return true;
+        }
+
+        $flags = (string) cleg_admin_field($record, 'Audit Flags');
+        $reason = (string) cleg_admin_field($record, 'GPS Review Reason');
+        $gps_required = cleg_admin_field($record, 'GPS Review Required');
+        $outside_in = cleg_admin_field($record, 'Clock In Outside Geofence');
+        $outside_out = cleg_admin_field($record, 'Clock Out Outside Geofence');
+
+        return $gps_required !== '' && $gps_required !== '0' && strtolower($gps_required) !== 'false'
+            || $outside_in !== ''
+            || $outside_out !== ''
+            || stripos($flags, 'Outside Geofence') !== false
+            || stripos($flags, 'Missing GPS') !== false
+            || stripos($reason, 'Outside Geofence') !== false
+            || stripos($reason, 'Missing GPS') !== false;
+    }
+}
+
 if (!function_exists('cleg_admin_mobile_review_time_editor')) {
     function cleg_admin_mobile_review_time_editor($record_id, $field_name, $value, $label, $display_value, $kind = 'Original') {
         if ($record_id === '') {
@@ -8971,7 +8993,9 @@ if (!function_exists('cleg_admin_mobile_review_panel')) {
             $clock_in = $adjusted_in ?: cleg_admin_field($record, 'Clock In Time');
             $clock_out = $adjusted_out ?: cleg_admin_field($record, 'Worker Reported Clock Out Time') ?: cleg_admin_field($record, 'Clock Out Time');
             $hours = (float) cleg_admin_field($record, 'Payroll Hours Calc', cleg_admin_field($record, 'Total Hours', 0));
-            $can_approve = $clock_out !== '' && !cleg_admin_mobile_missing_job_site($project);
+            $can_approve = function_exists('cleg_admin_current_user_can_approve_hours')
+                ? cleg_admin_current_user_can_approve_hours() && !cleg_admin_mobile_review_blocked($record, $project, $clock_out)
+                : !cleg_admin_mobile_review_blocked($record, $project, $clock_out);
 
             $html .= '<article class="cleg-field-review-row">'
                 . '<button type="button" class="cleg-field-review-main" aria-expanded="false">'
@@ -8990,6 +9014,10 @@ if (!function_exists('cleg_admin_mobile_review_panel')) {
                 . cleg_admin_field_incident_form($id, 'Revisar viernes', 'Mantener revision')
                 . '</div>'
                 . '</article>';
+        }
+
+        if (count($records) > 10) {
+            $html .= '<a class="cleg-field-review-all" href="' . esc_url(home_url('/admin-horas/')) . '">Ver las ' . esc_html(count($records)) . ' jornadas en Revision de horas</a>';
         }
 
         return $html . '</details>';
@@ -20810,6 +20838,17 @@ if (!function_exists('cleg_emp_payroll_styles')) {
     }
 }
 
+if (!function_exists('cleg_emp_payroll_page_guard_styles')) {
+    function cleg_emp_payroll_page_guard_styles() {
+        if (!is_page(493)) {
+            return;
+        }
+
+        echo '<style id="cleg-employee-payroll-page-guard">body.page-id-493,body.page-id-493 .site,body.page-id-493 .site-content,body.page-id-493 .site-main,body.page-id-493 .entry-content{width:100%!important;max-width:100%!important;overflow-x:hidden!important}body.page-id-493 :where(.entry-title,.page-title){display:none!important}</style>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+    }
+    add_action('wp_head', 'cleg_emp_payroll_page_guard_styles', 1000);
+}
+
 add_action('admin_post_cleg_employee_payroll_pdf', 'cleg_emp_payroll_pdf_download');
 add_shortcode('cleg_employee_payroll', 'cleg_emp_payroll_shortcode');
 /**
@@ -25004,6 +25043,7 @@ body .cleg-admin-ui .cleg-field-review-action,body .cleg-admin-ui .cleg-field-re
 body .cleg-admin-ui .cleg-field-review-action button,body .cleg-admin-ui .cleg-field-review-actions .cleg-field-incident-form button{width:100%!important;min-height:42px!important;border:0!important;border-radius:8px!important;padding:9px 11px!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important;background:#edf1f6!important;font-weight:950!important}
 body .cleg-admin-ui .cleg-field-review-action.is-approve button{background:#107344!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
 body .cleg-admin-ui .cleg-field-review-action.is-delete button{background:#5f1f1f!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
+body .cleg-admin-ui .cleg-field-review-all{display:block!important;border:1px solid rgba(6,24,45,.14)!important;border-radius:8px!important;background:#edf1f6!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important;padding:11px!important;text-align:center!important;font-size:12px!important;font-weight:950!important;text-decoration:none!important}
 body .cleg-admin-ui .cleg-field-primary-actions,body .cleg-admin-ui .cleg-field-menu div{grid-template-columns:1fr 1fr!important}
 body .cleg-admin-ui .cleg-field-mini-panel{gap:12px!important}
 body .cleg-admin-ui .cleg-field-workers-block{display:grid!important;gap:9px!important}
