@@ -10317,7 +10317,7 @@ body .cleg-admin-ui .cleg-review-compact-table td :where(strong,small,span,a,sum
     margin-left:auto;
     margin-right:auto;
 }
-body .cleg-admin-ui .cleg-review-compact-table td:nth-child(2) :where(strong,small){
+.cleg-review-compact-table td:nth-child(2) :where(strong,small){
     display:block!important;
     line-height:1.25!important;
 }
