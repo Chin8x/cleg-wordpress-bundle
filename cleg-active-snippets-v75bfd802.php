@@ -20917,6 +20917,17 @@ if (!function_exists('cleg_emp_payroll_page_guard_styles')) {
     add_action('wp_head', 'cleg_emp_payroll_page_guard_styles', 1000);
 }
 
+if (!function_exists('cleg_emp_payroll_page_guard_script')) {
+    function cleg_emp_payroll_page_guard_script() {
+        if (!is_page(259)) {
+            return;
+        }
+
+        echo '<script id="cleg-employee-payroll-page-guard-script">document.addEventListener("DOMContentLoaded",function(){document.querySelectorAll("body.page-id-259 h1,body.page-id-259 h2").forEach(function(heading){if(!heading.closest(".cleg-emp-payroll")){heading.style.display="none";}});});</script>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+    }
+    add_action('wp_footer', 'cleg_emp_payroll_page_guard_script', 1000);
+}
+
 add_action('admin_post_cleg_employee_payroll_pdf', 'cleg_emp_payroll_pdf_download');
 add_shortcode('cleg_employee_payroll', 'cleg_emp_payroll_shortcode');
 /**
