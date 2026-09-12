@@ -17782,7 +17782,14 @@ if (!function_exists('cleg_payroll_month_summary_merge')) {
 
 if (!function_exists('cleg_payroll_month_summary_table')) {
     function cleg_payroll_month_summary_table($summary, $empty_message = 'Sin datos para este mes.') {
-        $html = '<div class="cleg-payroll-month-table"><table><thead><tr><th>Trabajador</th><th>Horas</th><th>Regular</th><th>Extra</th><th>Bruto</th><th>Total pagado</th><th>Periodos</th></tr></thead><tbody>';
+        $html = '<div class="cleg-payroll-month-table"><div class="cleg-payroll-month-cards" aria-label="Resumen mensual por trabajador">';
+        foreach ((array) $summary as $row) {
+            $html .= '<article class="cleg-payroll-month-card"><div class="cleg-payroll-month-card-head"><strong>' . esc_html($row['name'] ?? '') . '</strong><b>$' . esc_html(number_format((float) ($row['net_pay'] ?? 0), 2)) . '</b></div><div class="cleg-payroll-month-card-facts"><div><small>Horas</small><strong>' . esc_html(cleg_payroll_format_hours((float) ($row['hours'] ?? 0))) . '</strong></div><div><small>Regular / extra</small><strong>' . esc_html(cleg_payroll_format_hours((float) ($row['regular_hours'] ?? 0))) . ' / ' . esc_html(cleg_payroll_format_hours((float) ($row['extra_hours'] ?? 0))) . '</strong></div><div><small>Bruto</small><strong>$' . esc_html(number_format((float) ($row['gross_pay'] ?? 0), 2)) . '</strong></div><div><small>Periodos</small><strong>' . esc_html((string) absint($row['periods'] ?? 0)) . '</strong></div></div></article>';
+        }
+        if (empty($summary)) {
+            $html .= '<article class="cleg-payroll-month-card is-empty"><strong>' . esc_html($empty_message) . '</strong></article>';
+        }
+        $html .= '</div><table><thead><tr><th>Trabajador</th><th>Horas</th><th>Regular</th><th>Extra</th><th>Bruto</th><th>Total pagado</th><th>Periodos</th></tr></thead><tbody>';
         foreach ((array) $summary as $row) {
             $html .= '<tr><td><strong>' . esc_html($row['name'] ?? '') . '</strong></td>'
                 . '<td>' . esc_html(cleg_payroll_format_hours((float) ($row['hours'] ?? 0))) . '</td>'
@@ -19269,6 +19276,18 @@ if (!function_exists('cleg_payroll_styles')) {
 .cleg-payroll-month-grid article{border:1px solid rgba(6,24,45,.12);border-radius:14px;background:#fff;padding:16px;box-shadow:0 14px 34px rgba(6,24,45,.06);overflow:auto}
 .cleg-payroll-month-grid h2{margin:0 0 6px;font-size:22px;color:#06182d}
 .cleg-payroll-month-grid p{margin:0 0 12px;color:#516579;font-weight:750}
+.cleg-payroll-month-cards{display:none}
+.cleg-payroll-month-card{display:grid;gap:10px;padding:13px;border:1px solid rgba(6,24,45,.12);border-radius:12px;background:#fff}
+.cleg-payroll-month-card+.cleg-payroll-month-card{margin-top:10px}
+.cleg-payroll-month-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.cleg-payroll-month-card-head strong{color:#06182d;font-size:15px}
+.cleg-payroll-month-card-head b{color:#107344;font-size:18px;white-space:nowrap}
+.cleg-payroll-month-card-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.cleg-payroll-month-card-facts>div{padding:8px;border-radius:9px;background:#f7f9fc}
+.cleg-payroll-month-card-facts small,.cleg-payroll-month-card-facts strong{display:block}
+.cleg-payroll-month-card-facts small{color:#64748b;font-size:10px;font-weight:950;text-transform:uppercase}
+.cleg-payroll-month-card-facts strong{margin-top:3px;color:#06182d;font-size:12px}
+.cleg-payroll-month-card.is-empty{text-align:center;color:#516579}
 .cleg-payroll-month-table table{width:100%;min-width:760px;border-collapse:separate;border-spacing:0}
 .cleg-payroll-month-table th,.cleg-payroll-month-table td{padding:10px;border-bottom:1px solid rgba(6,24,45,.1);text-align:left}
 .cleg-payroll-month-table th{color:#516579;font-size:12px;text-transform:uppercase}
@@ -19351,7 +19370,9 @@ if (!function_exists('cleg_payroll_styles')) {
 	    .cleg-payroll-rollback-form{grid-template-columns:1fr}
         .cleg-payroll-rollback summary{align-items:flex-start;flex-direction:column}
 	    .cleg-payroll-metrics{display:grid}
-        .cleg-payroll-month-grid{grid-template-columns:1fr}
+    .cleg-payroll-month-grid{grid-template-columns:1fr}
+    .cleg-payroll-month-table table{display:none}
+    .cleg-payroll-month-cards{display:block}
     .cleg-payroll{padding:16px}
     .cleg-payroll table{min-width:1040px}
     .cleg-payroll .hours-detail{position:fixed;left:16px;right:16px;top:96px;width:auto;max-height:70svh;overflow:auto}
