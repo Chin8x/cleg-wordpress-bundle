@@ -1773,7 +1773,6 @@ function cleg01_login_styles() {
  * Target: 01-Snippets-Activos/04-cleg-02-portal-formularios-hub.php
  * Source path: modulos/07-forms-requests/04-cleg-02-portal-formularios-hub.php
  */
-<?php
 /**
  * CLEG 02 - Compatibilidad de ruta legacy.
  *
