@@ -19400,6 +19400,23 @@ if (!function_exists('cleg_payroll_styles')) {
     .cleg-payroll-month-cards{display:block}
     .cleg-payroll{padding:16px}
     .cleg-payroll table{min-width:1040px}
+    .cleg-payroll-table{overflow:visible!important}
+    .cleg-payroll-table table{display:block;min-width:0!important}
+    .cleg-payroll-table thead{display:none}
+    .cleg-payroll-table tbody{display:grid;gap:12px}
+    .cleg-payroll-table tbody tr{display:block;border:1px solid rgba(6,24,45,.12);border-radius:14px;background:#fff;box-shadow:0 12px 28px rgba(6,24,45,.07);padding:12px}
+    .cleg-payroll-table tbody td{display:block;width:100%;min-width:0!important;padding:8px 0;border-bottom:1px solid rgba(6,24,45,.08);text-align:left!important}
+    .cleg-payroll-table tbody td:last-child{border-bottom:0}
+    .cleg-payroll-table tbody td:not(.worker-cell):before{display:block;margin-bottom:4px;color:#516579;font-size:10px;font-weight:950;text-transform:uppercase}
+    .cleg-payroll-table tbody td:nth-child(2):before{content:'Horas'}
+    .cleg-payroll-table tbody td:nth-child(3):before{content:'Horas regulares'}
+    .cleg-payroll-table tbody td:nth-child(4):before{content:'Horas extra'}
+    .cleg-payroll-table tbody td:nth-child(5):before{content:'Bruto'}
+    .cleg-payroll-table tbody td:nth-child(6):before{content:'Ajustes'}
+    .cleg-payroll-table tbody td:nth-child(7):before{content:'Deducción'}
+    .cleg-payroll-table tbody td:nth-child(8):before{content:'Neto'}
+    .cleg-payroll-table tbody td.worker-cell{padding-top:0}
+    .cleg-payroll-table .hours-detail{position:relative;left:auto;right:auto;top:auto;width:100%;max-height:none}
     .cleg-payroll .hours-detail{position:fixed;left:16px;right:16px;top:96px;width:auto;max-height:70svh;overflow:auto}
 }
 </style>
