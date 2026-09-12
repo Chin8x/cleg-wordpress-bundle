@@ -37890,6 +37890,7 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                         <a href="#proc-step-3" data-proc-step-link="3">3. Detalles</a>
                                     </nav>
                                     <p class="cleg-proc-step-status" data-proc-step-status aria-live="polite">Paso 1 de 3: describe lo que necesitas.</p>
+                                    <p class="cleg-proc-wizard-error" data-proc-wizard-error role="alert" aria-live="assertive" hidden style="margin:8px 0;color:#9b1c1c;font-weight:800;">Completa los campos obligatorios para continuar.</p>
                                     <div class="cleg-proc-form-step is-active" data-proc-form-step="1">
                                     <label>Proyecto
                                         <select name="project" required>
@@ -39599,7 +39600,15 @@ if (!function_exists('cleg_procurement_upload_preview_script')) {
                         event.preventDefault();
                         var active = form.querySelector('[data-proc-form-step].is-active');
                         var current = active ? active.getAttribute('data-proc-form-step') : '1';
-                        if (active && Number(target) > Number(current) && !form.reportValidity()) return;
+                        if (active && Number(target) > Number(current)) {
+                            var valid = form.reportValidity();
+                            var error = form.querySelector('[data-proc-wizard-error]');
+                            if (!valid) {
+                                if (error) error.hidden = false;
+                                return;
+                            }
+                            if (error) error.hidden = true;
+                        }
                         syncRequestStep(form, target);
                         var heading = form.querySelector('[data-proc-form-step="' + target + '"]');
                         if (heading) heading.scrollIntoView({behavior:"smooth",block:"start"});
