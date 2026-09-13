@@ -18728,7 +18728,7 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
         }
 
         $filtered = cleg_payroll_report_worker_filter(cleg_payroll_report_filtered_lines($lines, $type), $worker_id);
-        $summary = cleg_payroll_report_summary($filtered);
+        $summary = cleg_payroll_apply_export_layout(cleg_payroll_report_summary($filtered));
         $totals = cleg_payroll_report_totals($summary);
         $month_options = cleg_payroll_month_options($month);
         $year_options = cleg_payroll_report_year_options($year);
@@ -18782,8 +18782,9 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
                     <a href="<?php echo esc_url(home_url('/payroll-rrhh/')); ?>">Volver a Payroll semanal</a>
                 </form>
                 <?php $export_layout = cleg_payroll_export_layout(); ?>
-                <section class="cleg-payroll-export-layout" aria-labelledby="cleg-payroll-export-layout-title">
-                    <div class="cleg-payroll-export-layout-head"><div><h2 id="cleg-payroll-export-layout-title">Orden del PDF</h2><p>Arrastra cada trabajador desde el asa izquierda. El orden se conserva para futuras descargas.</p></div></div>
+                <details class="cleg-payroll-export-layout">
+                    <summary><span><strong>Orden del PDF</strong><small>Arrastra cada trabajador para cambiar el orden.</small></span><b>Configurar</b></summary>
+                    <div class="cleg-payroll-export-layout-head"><div><h2 id="cleg-payroll-export-layout-title">Orden del PDF</h2><p>El orden se conserva para Payroll y Reportes payroll.</p></div></div>
                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                         <input type="hidden" name="action" value="cleg_payroll_save_export_layout">
                         <?php wp_nonce_field('cleg_payroll_save_export_layout'); ?>
@@ -18798,11 +18799,22 @@ if (!function_exists('cleg_admin_payroll_reports_shortcode')) {
                         <button class="cleg-payroll-save-layout" type="submit">Guardar orden</button>
                     </form>
                     <script>(function(){var list=document.querySelector('[data-payroll-sortable]');if(!list)return;var picked=null;list.addEventListener('dragstart',function(e){picked=e.target.closest('.cleg-payroll-export-worker');if(picked)picked.classList.add('is-dragging');});list.addEventListener('dragend',function(){if(picked)picked.classList.remove('is-dragging');picked=null;});list.addEventListener('dragover',function(e){e.preventDefault();var target=e.target.closest('.cleg-payroll-export-worker');if(!picked||!target||target===picked)return;var box=target.getBoundingClientRect();list.insertBefore(picked,e.clientY<box.top+box.height/2?target:target.nextSibling);});})();</script>
-                </section>
+                </details>
                 <section class="cleg-payroll-report-hero">
-                    <div><span><?php echo esc_html($period_label); ?></span><h2 style="color:#fff!important;-webkit-text-fill-color:#fff!important">Resumen para contabilidad</h2><p>El PDF respeta los filtros seleccionados: periodo, tipo de trabajador y trabajador individual.</p></div>
+                    <details class="cleg-payroll-pdf-settings">
+                        <summary aria-label="Configurar columnas del PDF" title="Configurar columnas del PDF">⚙<span class="screen-reader-text">Configurar columnas del PDF</span></summary>
+                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                            <input type="hidden" name="action" value="cleg_payroll_save_export_layout">
+                            <?php wp_nonce_field('cleg_payroll_save_export_layout'); ?>
+                            <fieldset><legend>Columnas visibles en el PDF</legend>
+                                <?php foreach (cleg_payroll_export_columns() as $key => $label) : ?><label><input type="checkbox" name="export_columns[]" value="<?php echo esc_attr($key); ?>" <?php checked(in_array($key, $export_layout['columns'], true)); ?>> <?php echo esc_html($label); ?></label><?php endforeach; ?>
+                            </fieldset>
+                            <button type="submit">Guardar columnas</button>
+                        </form>
+                    </details>
+                    <div><span><?php echo esc_html($period_label); ?></span><h2 style="color:#fff!important;-webkit-text-fill-color:#fff!important">Resumen para contabilidad</h2><p>El PDF respeta los filtros y las columnas visibles seleccionadas.</p></div>
                     <div class="cleg-payroll-report-actions">
-                        <a class="is-primary cleg-payroll-single-download" download href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('action' => 'cleg_payroll_reports_pdf', 'report_file' => 'ach_pdf')), admin_url('admin-post.php')), 'cleg_payroll_reports_pdf')); ?>">Descargar PDF ACH</a>
+                        <a class="is-primary cleg-payroll-single-download" download href="<?php echo esc_url(wp_nonce_url(add_query_arg(array_merge($export_base, array('action' => 'cleg_payroll_reports_pdf', 'report_file' => 'ach_pdf')), admin_url('admin-post.php')), 'cleg_payroll_reports_pdf')); ?>">Descargar PDF</a>
                     </div>
                 </section>
                 <section class="cleg-payroll-report-kpis">
@@ -18829,6 +18841,7 @@ if (!function_exists('cleg_payroll_report_styles')) {
         return <<<'HTML'
 <style>
 body .cleg-payroll .cleg-payroll-export-layout{width:min(1320px,calc(100% - 24px));margin:0 auto 16px;border:1px solid rgba(6,24,45,.12);border-radius:18px;background:#fff;padding:16px;box-sizing:border-box;box-shadow:0 14px 34px rgba(6,24,45,.06)}
+body .cleg-payroll .cleg-payroll-export-layout>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;color:#06182d}body .cleg-payroll .cleg-payroll-export-layout>summary::-webkit-details-marker{display:none}body .cleg-payroll .cleg-payroll-export-layout>summary span{display:grid;gap:3px}body .cleg-payroll .cleg-payroll-export-layout>summary strong{font-size:16px}body .cleg-payroll .cleg-payroll-export-layout>summary small{color:#516579;font-size:12px;font-weight:750}body .cleg-payroll .cleg-payroll-export-layout>summary b{border-radius:999px;background:#06182d;color:#fff;padding:8px 13px;font-size:11px;text-transform:uppercase}
 body .cleg-payroll .cleg-payroll-export-layout h2{margin:0;color:#06182d;font-size:20px}body .cleg-payroll .cleg-payroll-export-layout p{margin:4px 0 12px;color:#516579;font-size:13px}
 body .cleg-payroll .cleg-payroll-export-columns{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;padding:10px;border:1px solid #d8e0e7;border-radius:10px}body .cleg-payroll .cleg-payroll-export-columns legend{font-size:11px;font-weight:950;text-transform:uppercase;color:#516579}body .cleg-payroll .cleg-payroll-export-columns label{display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:6px 9px;border-radius:999px;background:#f4f7fa;color:#06182d;font-size:12px;font-weight:850}
 body .cleg-payroll .cleg-payroll-export-workers{display:grid;gap:8px}.cleg-payroll-export-worker{display:grid;grid-template-columns:28px minmax(120px,1fr) minmax(140px,1fr) minmax(140px,1fr);gap:8px;align-items:center;padding:9px;border:1px solid #d8e0e7;border-radius:10px;background:#f8fafc}.cleg-payroll-export-worker.is-dragging{opacity:.5}.cleg-payroll-drag-handle{cursor:grab;font-size:22px;line-height:1;text-align:center;color:#c75000}.cleg-payroll-export-worker strong{color:#06182d;font-size:14px}.cleg-payroll-export-worker label{display:grid;gap:4px;color:#516579;font-size:10px;font-weight:900;text-transform:uppercase}.cleg-payroll-export-worker input[type=text]{min-height:36px;min-width:0;border:1px solid #cbd5df;border-radius:7px;padding:7px 8px;background:#fff;color:#06182d;font:inherit;font-size:12px;text-transform:none}.cleg-payroll-save-layout{min-height:42px;margin-top:12px;border:0;border-radius:999px;background:#c75000;color:#fff;padding:10px 16px;font-weight:950;cursor:pointer}
@@ -18837,7 +18850,8 @@ body .cleg-payroll .cleg-payroll-report-filters{width:min(1320px,calc(100% - 24p
 body .cleg-payroll .cleg-payroll-report-filters label{display:grid;gap:6px;color:#516579;font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.04em}
 body .cleg-payroll .cleg-payroll-report-filters label.is-hidden{display:none}
 body .cleg-payroll .cleg-payroll-report-filters a,body .cleg-payroll .cleg-payroll-report-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border-radius:999px;background:#06182d;color:#fff!important;-webkit-text-fill-color:#fff!important;padding:10px 14px;font-weight:950;text-decoration:none!important;text-align:center}
-body .cleg-payroll .cleg-payroll-report-hero{width:min(1320px,calc(100% - 24px));margin:0 auto 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;border:1px solid rgba(6,24,45,.12);border-radius:24px;background:linear-gradient(135deg,#06182d,#123454);color:#fff;padding:22px;box-shadow:0 18px 44px rgba(6,24,45,.16);box-sizing:border-box}
+body .cleg-payroll .cleg-payroll-report-hero{width:min(1320px,calc(100% - 24px));margin:0 auto 16px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:18px;align-items:center;border:1px solid rgba(6,24,45,.12);border-radius:24px;background:linear-gradient(135deg,#06182d,#123454);color:#fff;padding:22px;box-shadow:0 18px 44px rgba(6,24,45,.16);box-sizing:border-box}
+body .cleg-payroll .cleg-payroll-pdf-settings{position:relative;align-self:start}body .cleg-payroll .cleg-payroll-pdf-settings>summary{display:grid;place-items:center;width:38px;height:38px;border:1px solid rgba(255,255,255,.35);border-radius:50%;background:#fff;color:#06182d;font-size:21px;font-weight:900;cursor:pointer;list-style:none}body .cleg-payroll .cleg-payroll-pdf-settings>summary::-webkit-details-marker{display:none}body .cleg-payroll .cleg-payroll-pdf-settings form{position:absolute;z-index:4;top:48px;left:0;width:270px;padding:12px;border:1px solid rgba(6,24,45,.16);border-radius:14px;background:#fff;color:#06182d;box-shadow:0 14px 32px rgba(0,0,0,.22)}body .cleg-payroll .cleg-payroll-pdf-settings fieldset{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:0;padding:0;border:0}body .cleg-payroll .cleg-payroll-pdf-settings legend{grid-column:1/-1;margin-bottom:3px;font-size:11px;font-weight:950;text-transform:uppercase}body .cleg-payroll .cleg-payroll-pdf-settings label{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:800}body .cleg-payroll .cleg-payroll-pdf-settings input{width:16px;height:16px;min-width:16px}body .cleg-payroll .cleg-payroll-pdf-settings button{width:100%;min-height:36px;margin-top:10px;border:0;border-radius:999px;background:#c75000;color:#fff;font-weight:900;cursor:pointer}
 body .cleg-payroll .cleg-payroll-report-hero span{display:block;color:#f5a35c;font-size:12px;font-weight:1000;text-transform:uppercase;letter-spacing:.08em}
 body .cleg-payroll .cleg-payroll-report-hero h2{margin:4px 0 6px;color:#fff!important;-webkit-text-fill-color:#fff!important;font-size:30px;line-height:1.05}
 body .cleg-payroll .cleg-payroll-report-hero p{margin:0;color:#dce8f4;font-weight:750}
@@ -18882,7 +18896,7 @@ body .cleg-payroll .cleg-payroll-report-breakdown p{margin:0 0 7px;font-size:13p
 body .cleg-payroll .cleg-payroll-report-empty{padding:26px;text-align:center;box-sizing:border-box}
 body .cleg-payroll .cleg-payroll-report-empty h2{margin:0 0 8px;color:#06182d}
 body .cleg-payroll .cleg-payroll-report-empty p{margin:0;color:#516579;font-weight:750}
-@media(max-width:1200px){body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:repeat(3,1fr)}body .cleg-payroll .cleg-payroll-report-hero{grid-template-columns:1fr}}
+@media(max-width:1200px){body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:repeat(3,1fr)}body .cleg-payroll .cleg-payroll-report-hero{grid-template-columns:auto 1fr}.cleg-payroll .cleg-payroll-report-actions{grid-column:1/-1}}
 @media(max-width:760px){body .cleg-payroll .cleg-payroll-report-filters{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-kpis{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-actions{grid-template-columns:1fr}body .cleg-payroll .cleg-payroll-report-table{overflow:visible}body .cleg-payroll .cleg-payroll-report-table table{display:none}body .cleg-payroll .cleg-payroll-report-cards{display:block}body .cleg-payroll .cleg-payroll-report-filters select,body .cleg-payroll .cleg-payroll-report-filters input,body .cleg-payroll .cleg-payroll-report-filters>a,body .cleg-payroll .cleg-payroll-report-actions a{min-height:44px}}
 </style>
 HTML;
