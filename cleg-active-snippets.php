@@ -7266,6 +7266,12 @@ if (!function_exists('cleg_admin_desktop_menu_lock_styles')) {
     }
     body .cleg-admin-ui > .cleg-admin-shell > .cleg-admin-mobile-menu summary b{
         flex:0 0 auto!important;
+        display:inline-flex!important;
+        align-items:center!important;
+        justify-content:center!important;
+        max-width:none!important;
+        min-width:max-content!important;
+        white-space:nowrap!important;
         border-radius:999px!important;
         background:#20252b!important;
         color:#fff!important;
