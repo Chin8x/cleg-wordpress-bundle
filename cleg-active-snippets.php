@@ -13753,6 +13753,7 @@ if (!function_exists('cleg_admin_absence_calendar')) {
             $html .= '</section>';
         }
 
+        $html .= '<style>@media(max-width:760px){body .cleg-admin-ui .cleg-admin-task-menu,body .cleg-admin-ui .cleg-admin-task-menu>summary{width:100%!important;max-width:100%!important;box-sizing:border-box!important}body .cleg-admin-ui .cleg-calendar-grid{width:100%!important;max-width:100%!important;box-sizing:border-box!important}body .cleg-admin-ui .cleg-calendar-month>span{min-width:0!important;overflow-wrap:anywhere!important}body .cleg-admin-ui .cleg-calendar-month>span small{font-size:9px!important;line-height:1.1!important}}</style>';
         return $html . '</div></div>';
     }
 }
