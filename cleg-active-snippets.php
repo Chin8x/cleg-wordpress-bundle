@@ -29479,7 +29479,8 @@ if (!function_exists('cleg_command_center_styles')) {
                 background: #fff;
                 border-color: rgba(255, 255, 255, .78);
                 transform: translateY(-1px);
-                outline: none;
+                outline: 3px solid #ffd9bd;
+                outline-offset: 3px;
             }
             .cleg-command-grid {
                 display: grid;
@@ -29524,7 +29525,8 @@ if (!function_exists('cleg_command_center_styles')) {
                 transform: translateY(-3px);
                 border-color: rgba(255, 255, 255, .36);
                 background: rgba(255, 255, 255, .10);
-                outline: none;
+                outline: 3px solid #ffd9bd;
+                outline-offset: 3px;
             }
             .cleg-command-card small,
             .cleg-command-card strong,
