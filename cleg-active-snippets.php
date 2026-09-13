@@ -27279,7 +27279,10 @@ body .cleg-admin-ui .cleg-calendar-month>span small em{
     body .cleg12-wrap *::after,
     body .cleg17-gps-panel *,
     body .cleg17-gps-panel *::before,
-    body .cleg17-gps-panel *::after{
+    body .cleg17-gps-panel *::after,
+    body .cleg-command-wrap *,
+    body .cleg-command-wrap *::before,
+    body .cleg-command-wrap *::after{
         animation-duration:.01ms!important;
         animation-iteration-count:1!important;
         transition-duration:.01ms!important;
