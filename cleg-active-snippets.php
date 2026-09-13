@@ -25309,6 +25309,7 @@ body .cleg-admin-ui .cleg-field-mobile-accordion>summary{display:block!important
 body .cleg-admin-ui .cleg-field-mobile-accordion>summary::-webkit-details-marker{display:none!important}
 body .cleg-admin-ui .cleg-field-worker-head,body .cleg-admin-ui .cleg-field-request-head,body .cleg-admin-ui .cleg-field-review-head,body .cleg-admin-ui .cleg-field-gps-head{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;gap:12px!important;border-radius:8px!important;background:#fff!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important;border:1px solid rgba(6,24,45,.12)!important;padding:12px!important}
 body .cleg-admin-ui .cleg-field-request-head{background:#10243c!important}
+body .cleg-admin-ui .cleg-field-worker-head,body .cleg-admin-ui .cleg-field-review-head{background:#10243c!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
 body .cleg-admin-ui .cleg-field-gps-head{background:#123047!important}
 body .cleg-admin-ui .cleg-field-worker-head span,body .cleg-admin-ui .cleg-field-request-head span,body .cleg-admin-ui .cleg-field-review-head span,body .cleg-admin-ui .cleg-field-gps-head span{display:grid!important;gap:2px!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
 body .cleg-admin-ui .cleg-field-worker-head small,body .cleg-admin-ui .cleg-field-request-head small,body .cleg-admin-ui .cleg-field-review-head small,body .cleg-admin-ui .cleg-field-gps-head small{display:block!important;color:rgba(255,255,255,.72)!important;-webkit-text-fill-color:rgba(255,255,255,.72)!important;font-size:10px!important;font-weight:950!important;text-transform:uppercase!important}
@@ -26026,6 +26027,14 @@ body .cleg-admin-ui .cleg-field-gps-drawer .cleg17-gps-detail-grid-compact{
     }
 }
 @media(max-width:760px){
+    body .cleg-admin-ui .cleg-field-control-ops{
+        grid-template-columns:1fr!important;
+        min-height:0!important;
+    }
+    body .cleg-admin-ui .cleg-field-control-ops .cleg-field-control-main,
+    body .cleg-admin-ui .cleg-field-control-ops aside{
+        grid-column:1 / -1!important;
+    }
     body .cleg-admin-ui .cleg-field-control-head,
     body .cleg-procurement .cleg-proc-request-form .cleg-proc-panel-head,
     body .cleg-procurement .cleg-proc-board .cleg-proc-panel-head,
