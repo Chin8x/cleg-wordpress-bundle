@@ -38368,6 +38368,14 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
         return ob_get_clean();
     }
 }
+if (!function_exists('cleg_procurement_mobile_quick_filter_styles')) {
+    function cleg_procurement_mobile_quick_filter_styles($content) {
+        if (strpos((string) $content, 'class="cleg-procurement') === false) return $content;
+        return '<style>@media(max-width:720px){.cleg-procurement .cleg-proc-quick-filters{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px!important;overflow:visible!important}.cleg-procurement .cleg-proc-quick-filters a{min-width:0!important;width:100%!important;white-space:normal!important;text-align:center!important;line-height:1.15!important;min-height:42px!important;padding:8px 6px!important}}</style>' . $content;
+    }
+    add_filter('the_content', 'cleg_procurement_mobile_quick_filter_styles', 100);
+}
+
 add_shortcode('cleg_admin_procurement', 'cleg_admin_procurement_shortcode');
 
 if (!function_exists('cleg_procurement_mobile_touch_styles')) {
@@ -43183,6 +43191,14 @@ if (!function_exists('cleg_admin_receipts_styles')) {
             @media(max-width:900px){body .cleg-proc-receipts-screen .cleg-receipt-kpis{flex-wrap:nowrap!important;overflow-x:auto!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis a{flex:0 0 152px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary{align-items:flex-start!important;flex-direction:column!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary small{margin-left:0!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary:after{position:absolute!important;right:12px!important;top:10px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer{position:relative!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{grid-template-columns:1fr!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters input,body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters select{min-height:44px!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters button,body .cleg-procurement.cleg-proc-receipts-screen .cleg-clear-filter{width:100%;min-height:44px!important}body .cleg-proc-receipts-screen .cleg-receipt-panel .cleg-receipt-desktop-table{display:none!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-list{display:block!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions{min-width:0;width:100%}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions button{flex:1 1 140px!important}body .cleg-proc-receipts-screen .cleg-receipt-panel th,body .cleg-proc-receipts-screen .cleg-receipt-panel td{white-space:nowrap!important}body .cleg-proc-receipts-screen .cleg-receipt-pagination{align-items:stretch;flex-direction:column}body .cleg-proc-receipts-screen .cleg-receipt-pagination div,body .cleg-proc-receipts-screen .cleg-receipt-pagination a{width:100%}}
         </style><script>(function(){function setZoom(detail,zoom){zoom=Math.max(.6,Math.min(3,zoom));detail.dataset.zoom=String(zoom);var img=detail.querySelector(".cleg-receipt-stage img");var label=detail.querySelector("[data-receipt-zoom-label]");if(img)img.style.setProperty("--receipt-zoom",zoom);if(label)label.textContent=Math.round(zoom*100)+"%";}document.addEventListener("toggle",function(event){var detail=event.target;if(detail.matches&&detail.matches(".cleg-receipt-preview")&&detail.open){setZoom(detail,1);}} ,true);document.addEventListener("click",function(event){var detail=event.target.closest(".cleg-receipt-preview");if(!detail)return;if(event.target.closest("[data-receipt-close]")){detail.open=false;return;}if(event.target.closest("[data-receipt-zoom-in]")){setZoom(detail,parseFloat(detail.dataset.zoom||"1")+.25);return;}if(event.target.closest("[data-receipt-zoom-out]")){setZoom(detail,parseFloat(detail.dataset.zoom||"1")-.25);}});document.addEventListener("submit",function(event){var form=event.target;if(!form.matches||!form.matches(".cleg-receipt-actions"))return;form.classList.add("is-submitting");var clicked=event.submitter||(document.activeElement&&document.activeElement.tagName==="BUTTON"?document.activeElement:null);form.querySelectorAll("button").forEach(function(button){if(button===clicked){button.classList.add("is-loading");button.dataset.originalText=button.textContent;button.textContent="Guardando...";}else{button.disabled=true;}});});})();</script>';
     }
+}
+
+if (!function_exists('cleg_receipts_mobile_kpi_grid_styles')) {
+    function cleg_receipts_mobile_kpi_grid_styles($content) {
+        if (strpos((string) $content, 'class="cleg-proc-receipts-screen"') === false) return $content;
+        return '<style>@media(max-width:720px){.cleg-proc-receipts-screen .cleg-receipt-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow:visible!important;gap:8px!important}.cleg-proc-receipts-screen .cleg-receipt-kpis a{min-width:0!important;min-height:76px!important;padding:11px 12px!important;border-radius:14px!important}.cleg-proc-receipts-screen .cleg-receipt-kpis strong{font-size:23px!important;overflow-wrap:anywhere!important}}</style>' . $content;
+    }
+    add_filter('the_content', 'cleg_receipts_mobile_kpi_grid_styles', 100);
 }
 
 add_action('init', 'cleg_admin_handle_receipt_action');
