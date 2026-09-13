@@ -13361,35 +13361,30 @@ if (!function_exists('cleg_admin_geofence_assets')) {
 
   var leafletPromise = null;
 
-  function loadAsset(kind, url){
+  function loadAsset(url){
     return new Promise(function(resolve, reject){
-      var selector = kind === 'css' ? 'link[href="' + url + '"]' : 'script[src="' + url + '"]';
+      var selector = 'script[src="' + url + '"]';
       var existing = document.querySelector(selector);
       if (existing) {
-        if (kind === 'css' || existing.dataset.loaded === '1' || window.L) resolve();
+        if (existing.dataset.loaded === '1' || window.L) resolve();
         else {
           existing.addEventListener('load', resolve, {once:true});
           existing.addEventListener('error', function(){
             existing.remove();
-            loadAsset(kind, url).then(resolve).catch(reject);
+            loadAsset(url).then(resolve).catch(reject);
           }, {once:true});
           setTimeout(function(){
             if (!window.L && document.contains(existing)) {
               existing.remove();
-              loadAsset(kind, url).then(resolve).catch(reject);
+              loadAsset(url).then(resolve).catch(reject);
             }
           }, 900);
         }
         return;
       }
-      var el = kind === 'css' ? document.createElement('link') : document.createElement('script');
-      if (kind === 'css') {
-        el.rel = 'stylesheet';
-        el.href = url;
-      } else {
-        el.src = url;
-        el.async = true;
-      }
+      var el = document.createElement('script');
+      el.src = url;
+      el.async = true;
       el.addEventListener('load', function(){ el.dataset.loaded = '1'; resolve(); }, {once:true});
       el.addEventListener('error', reject, {once:true});
       document.head.appendChild(el);
@@ -13399,7 +13394,7 @@ if (!function_exists('cleg_admin_geofence_assets')) {
   function ensureLeaflet(){
     if (window.L) return Promise.resolve();
     if (!leafletPromise) {
-      leafletPromise = loadAsset('js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
+      leafletPromise = loadAsset('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
     }
     return leafletPromise;
   }
@@ -28398,21 +28393,8 @@ function cleg17_admin_gps_tracking_shortcode() {
         var generatedEl = root.querySelector('.cleg17-gps-generated');
         var togglePointsEl = root.querySelector('.cleg17-gps-toggle-points');
 
-        function loadAsset(type, url) {
+        function loadAsset(url) {
             return new Promise(function (resolve, reject) {
-                if (type === 'css') {
-                    if ([].slice.call(document.styleSheets).some(function (sheet) { return sheet.href && sheet.href.indexOf(url) !== -1; })) {
-                        resolve();
-                        return;
-                    }
-                    var link = document.createElement('link');
-                    link.rel = 'stylesheet';
-                    link.href = url;
-                    link.onload = resolve;
-                    link.onerror = reject;
-                    document.head.appendChild(link);
-                    return;
-                }
                 var script = document.createElement('script');
                 script.src = url;
                 script.onload = resolve;
@@ -28425,7 +28407,7 @@ function cleg17_admin_gps_tracking_shortcode() {
             if (window.L) {
                 return Promise.resolve();
             }
-            return loadAsset('js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
+            return loadAsset('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
         }
 
         function statusLabel(status) {
