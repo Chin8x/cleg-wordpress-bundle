@@ -42823,7 +42823,8 @@ if (!function_exists('cleg_admin_receipt_action_form')) {
 }
 
 if (!function_exists('cleg_admin_receipts_table')) {
-    function cleg_admin_receipts_table($records) {
+    function cleg_admin_receipts_table($records, $display_records = null) {
+        $display_records = is_array($display_records) ? $display_records : (array) $records;
         $total = 0;
         $review_count = 0;
         $resolved_count = 0;
@@ -42859,12 +42860,13 @@ if (!function_exists('cleg_admin_receipts_table')) {
         $mobile = '<div class="cleg-receipt-mobile-list" aria-label="Recibos en tarjetas">';
         $table = '<div class="cleg-table-wrap cleg-receipt-desktop-table"><table><thead><tr><th>Recibo</th><th>Fecha</th><th>Persona</th><th>Proyecto</th><th>Compra</th><th>Total</th><th>Estado</th><th>Acciones</th><th>Archivo</th></tr></thead><tbody>';
 
-        if (empty($records)) {
-            $table .= '<tr><td colspan="9">No hay recibos con esos filtros.</td></tr>';
-            $mobile .= '<div class="cleg-receipt-mobile-empty">No hay recibos con esos filtros.</div>';
+        if (empty($display_records)) {
+            $empty_message = empty($records) ? 'No hay recibos con esos filtros.' : 'No hay recibos en esta pagina.';
+            $table .= '<tr><td colspan="9">' . esc_html($empty_message) . '</td></tr>';
+            $mobile .= '<div class="cleg-receipt-mobile-empty">' . esc_html($empty_message) . '</div>';
         }
 
-        foreach ((array) $records as $record) {
+        foreach ($display_records as $record) {
             $code = cleg_admin_field($record, 'Receipt Code', $record['id'] ?? '');
             $employee = cleg_admin_field($record, 'Employee Name', cleg_admin_field($record, 'Portal Username', 'Sin persona'));
             $username = cleg_admin_field($record, 'Portal Username');
@@ -42888,7 +42890,36 @@ if (!function_exists('cleg_admin_receipts_table')) {
         }
 
         $mobile .= '</div>';
-        return $html . $mobile . $table . '</tbody></table></div></div>' . cleg_admin_receipts_styles();
+        return $html . $mobile . $table . '</tbody></table></div></div>' . cleg_admin_receipts_pagination(count((array) $records)) . cleg_admin_receipts_styles();
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_pagination')) {
+    function cleg_admin_receipts_pagination($total, $per_page = 25) {
+        $total = max(0, (int) $total);
+        $per_page = max(1, (int) $per_page);
+        $pages = (int) ceil($total / $per_page);
+        if ($pages <= 1) {
+            return '';
+        }
+
+        $page = isset($_GET['receipt_page']) ? max(1, absint($_GET['receipt_page'])) : 1;
+        $page = min($page, $pages);
+        $args = array();
+        foreach (array('receipt_date', 'receipt_job', 'receipt_employee', 'receipt_status', 'receipt_amount') as $key) {
+            if (isset($_GET[$key]) && sanitize_text_field(wp_unslash($_GET[$key])) !== '') {
+                $args[$key] = sanitize_text_field(wp_unslash($_GET[$key]));
+            }
+        }
+        $base = add_query_arg($args, home_url('/admin-recibos/'));
+        $html = '<nav class="cleg-receipt-pagination" aria-label="Paginacion de recibos"><span>Pagina ' . esc_html($page) . ' de ' . esc_html($pages) . ' · ' . esc_html($total) . ' recibos</span><div>';
+        if ($page > 1) {
+            $html .= '<a href="' . esc_url(add_query_arg('receipt_page', $page - 1, $base)) . '">Anterior</a>';
+        }
+        if ($page < $pages) {
+            $html .= '<a href="' . esc_url(add_query_arg('receipt_page', $page + 1, $base)) . '">Siguiente</a>';
+        }
+        return $html . '</div></nav>';
     }
 }
 
@@ -42994,8 +43025,11 @@ if (!function_exists('cleg_admin_recibos_shortcode')) {
         $html .= '<details class="cleg-receipt-filter-drawer"><summary><span>Filtros</span><small>Dia, proyecto, persona, monto o estado</small></summary>'
             . cleg_admin_receipts_filters($date, $job_site, $employee, $status, $amount, $job_sites)
             . '</details>';
+        $page = isset($_GET['receipt_page']) ? max(1, absint($_GET['receipt_page'])) : 1;
+        $per_page = 25;
+        $display_records = array_slice((array) $records, ($page - 1) * $per_page, $per_page);
         $html .= '<div class="cleg-receipt-workspace">';
-        $html .= '<section class="cleg-receipt-table-zone">' . cleg_admin_receipts_table($records) . '</section>';
+        $html .= '<section class="cleg-receipt-table-zone">' . cleg_admin_receipts_table($records, $display_records) . '</section>';
         $html .= '</div>';
 
         return $html . cleg_admin_receipts_procurement_shell_close();
@@ -43078,8 +43112,11 @@ if (!function_exists('cleg_admin_receipts_styles')) {
             body .cleg-proc-receipts-screen .cleg-receipt-mobile-description{color:var(--cleg-app-muted);font-size:12px;line-height:1.35;overflow-wrap:anywhere}
             body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
             body .cleg-proc-receipts-screen .cleg-receipt-mobile-empty{padding:18px;border:1px dashed var(--cleg-app-line);border-radius:10px;color:var(--cleg-app-muted);text-align:center;font-weight:850}
+            body .cleg-proc-receipts-screen .cleg-receipt-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;width:100%;max-width:min(1320px,calc(100vw - 24px));margin:14px auto 0;color:var(--cleg-app-muted);font-size:13px;font-weight:850}
+            body .cleg-proc-receipts-screen .cleg-receipt-pagination div{display:flex;gap:8px;flex-wrap:wrap}
+            body .cleg-proc-receipts-screen .cleg-receipt-pagination a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;border:1px solid var(--cleg-app-line);border-radius:999px;background:#fff;color:var(--cleg-app-ink);padding:8px 14px;text-decoration:none;font-weight:950}
             @media(max-width:1180px){body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
-            @media(max-width:900px){body .cleg-proc-receipts-screen .cleg-receipt-kpis{flex-wrap:nowrap!important;overflow-x:auto!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis a{flex:0 0 152px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary{align-items:flex-start!important;flex-direction:column!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary small{margin-left:0!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary:after{position:absolute!important;right:12px!important;top:10px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer{position:relative!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{grid-template-columns:1fr!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters input,body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters select{min-height:44px!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters button,body .cleg-procurement.cleg-proc-receipts-screen .cleg-clear-filter{width:100%;min-height:44px!important}body .cleg-proc-receipts-screen .cleg-receipt-panel .cleg-receipt-desktop-table{display:none!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-list{display:block!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions{min-width:0;width:100%}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions button{flex:1 1 140px!important}body .cleg-proc-receipts-screen .cleg-receipt-panel th,body .cleg-proc-receipts-screen .cleg-receipt-panel td{white-space:nowrap!important}}
+            @media(max-width:900px){body .cleg-proc-receipts-screen .cleg-receipt-kpis{flex-wrap:nowrap!important;overflow-x:auto!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis a{flex:0 0 152px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary{align-items:flex-start!important;flex-direction:column!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary small{margin-left:0!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary:after{position:absolute!important;right:12px!important;top:10px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer{position:relative!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{grid-template-columns:1fr!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters input,body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters select{min-height:44px!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters button,body .cleg-procurement.cleg-proc-receipts-screen .cleg-clear-filter{width:100%;min-height:44px!important}body .cleg-proc-receipts-screen .cleg-receipt-panel .cleg-receipt-desktop-table{display:none!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-list{display:block!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions{min-width:0;width:100%}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions button{flex:1 1 140px!important}body .cleg-proc-receipts-screen .cleg-receipt-panel th,body .cleg-proc-receipts-screen .cleg-receipt-panel td{white-space:nowrap!important}body .cleg-proc-receipts-screen .cleg-receipt-pagination{align-items:stretch;flex-direction:column}body .cleg-proc-receipts-screen .cleg-receipt-pagination div,body .cleg-proc-receipts-screen .cleg-receipt-pagination a{width:100%}}
         </style><script>(function(){function setZoom(detail,zoom){zoom=Math.max(.6,Math.min(3,zoom));detail.dataset.zoom=String(zoom);var img=detail.querySelector(".cleg-receipt-stage img");var label=detail.querySelector("[data-receipt-zoom-label]");if(img)img.style.setProperty("--receipt-zoom",zoom);if(label)label.textContent=Math.round(zoom*100)+"%";}document.addEventListener("toggle",function(event){var detail=event.target;if(detail.matches&&detail.matches(".cleg-receipt-preview")&&detail.open){setZoom(detail,1);}} ,true);document.addEventListener("click",function(event){var detail=event.target.closest(".cleg-receipt-preview");if(!detail)return;if(event.target.closest("[data-receipt-close]")){detail.open=false;return;}if(event.target.closest("[data-receipt-zoom-in]")){setZoom(detail,parseFloat(detail.dataset.zoom||"1")+.25);return;}if(event.target.closest("[data-receipt-zoom-out]")){setZoom(detail,parseFloat(detail.dataset.zoom||"1")-.25);}});document.addEventListener("submit",function(event){var form=event.target;if(!form.matches||!form.matches(".cleg-receipt-actions"))return;form.classList.add("is-submitting");var clicked=event.submitter||(document.activeElement&&document.activeElement.tagName==="BUTTON"?document.activeElement:null);form.querySelectorAll("button").forEach(function(button){if(button===clicked){button.classList.add("is-loading");button.dataset.originalText=button.textContent;button.textContent="Guardando...";}else{button.disabled=true;}});});})();</script>';
     }
 }
