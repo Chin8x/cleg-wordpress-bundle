@@ -1,2 +1,2 @@
-cleg-active-snippets.php	 89adfa3bf3f3071bc8df5a5fcd3fe44df67c67892e9f3a3c9d96e71c7be5b63c
-Para-WordPress/cleg-active-snippets.php	 89adfa3bf3f3071bc8df5a5fcd3fe44df67c67892e9f3a3c9d96e71c7be5b63c
+cleg-active-snippets.php	 aa27132d16fc32d173ce9299f10bd4716a521c338cceba2c096e08e2943115bb
+Para-WordPress/cleg-active-snippets.php	 aa27132d16fc32d173ce9299f10bd4716a521c338cceba2c096e08e2943115bb
