@@ -1165,6 +1165,7 @@ if (!function_exists('cleg00_routes')) {
                 '/mis-documentos/',
             ),
             'admin' => array(
+                '/administracion/',
                 '/admin-rrhh/',
                 '/admin-horas/',
                 '/admin-tiempo-real/',
