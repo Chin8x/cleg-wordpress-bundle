@@ -1178,6 +1178,7 @@ if (!function_exists('cleg00_routes')) {
             ),
             'procurement' => array(
                 '/admin-procurement/',
+                '/admin-recibos/',
             ),
         );
     }
