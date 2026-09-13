@@ -25823,6 +25823,10 @@ body :where(.cleg-admin-form button,.cleg-admin-mini-form button,.cleg-row-actio
     box-shadow:none!important;
     cursor:pointer;
 }
+body :where(.cleg-admin-ui a,.cleg-admin-ui button,.cleg-admin-ui summary,.cleg-app-wrap a,.cleg-app-wrap button,.cleg-app-wrap summary,.cleg-command-wrap a,.cleg-command-wrap button,.cleg-command-wrap summary,.cleg-procurement a,.cleg-procurement button,.cleg-procurement summary,.cleg-payroll a,.cleg-payroll button,.cleg-payroll summary):focus-visible{
+    outline:3px solid #ffd9bd!important;
+    outline-offset:3px!important;
+}
 body :where(.cleg-context-head a,.cleg-command-strip a,.cleg-action-secondary,.cleg-procurement-secondary,.cleg-payroll-secondary,.cleg-center-secondary,.cleg-doc-secondary,.cleg-employee-edit summary,.cleg-row-drawer summary){
     display:inline-flex!important;
     align-items:center!important;
