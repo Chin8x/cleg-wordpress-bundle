@@ -29482,6 +29482,14 @@ if (!function_exists('cleg_command_center_render')) {
                     </div>
                 </header>
 
+                <?php if (cleg_command_center_module_enabled('procurement_quotes') && (current_user_can('cleg_access_procurement') || current_user_can('cleg_manage_procurement') || current_user_can('manage_options'))) : ?>
+                    <a class="cleg-command-quick-purchase" href="<?php echo esc_url(home_url('/admin-procurement/?proc_view=solicitar')); ?>">
+                        <span class="cleg-command-quick-purchase-icon" aria-hidden="true">+</span>
+                        <span><small>COMPRAS</small><strong>Nueva nota de compra</strong><em>Captura una necesidad con foto, audio o nota</em></span>
+                        <b aria-hidden="true">→</b>
+                    </a>
+                <?php endif; ?>
+
                 <div class="cleg-command-grid" aria-label="Modulos disponibles">
                     <?php foreach ($modules as $module) : ?>
                         <a class="cleg-command-card <?php echo !empty($module['locked']) ? 'is-locked' : ''; ?>" href="<?php echo !empty($module['locked']) ? '#cleg-command-coming-soon' : esc_url($module['url']); ?>" data-cleg-command-module="<?php echo esc_attr($module['title']); ?>" <?php echo !empty($module['locked']) ? 'data-cleg-command-locked="1" role="button" aria-haspopup="dialog" aria-controls="cleg-command-coming-soon"' : ''; ?>>
@@ -30070,6 +30078,28 @@ if (!function_exists('cleg_command_center_styles')) {
             body .cleg-command-center-v2 .cleg-command-card p {
                 display: none !important;
             }
+            .cleg-command-quick-purchase {
+                display: grid;
+                grid-template-columns: auto minmax(0,1fr) auto;
+                align-items: center;
+                gap: 16px;
+                width: 100%;
+                min-height: 82px;
+                padding: 16px 20px;
+                border: 1px solid rgba(255,255,255,.18);
+                border-radius: 14px;
+                background: linear-gradient(115deg,#c75000,#e36b12 45%,#f09a44);
+                color: #fff;
+                text-decoration: none;
+                box-shadow: 0 14px 28px rgba(199,80,0,.18);
+            }
+            .cleg-command-quick-purchase:hover,.cleg-command-quick-purchase:focus-visible{color:#fff;transform:translateY(-1px);box-shadow:0 18px 34px rgba(199,80,0,.28)}
+            .cleg-command-quick-purchase-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:#fff;color:#c75000;font-size:32px;line-height:1;font-weight:500}
+            .cleg-command-quick-purchase small,.cleg-command-quick-purchase strong,.cleg-command-quick-purchase em{display:block;color:#fff;-webkit-text-fill-color:#fff}
+            .cleg-command-quick-purchase small{font-size:10px;font-weight:950;letter-spacing:.12em;opacity:.82}
+            .cleg-command-quick-purchase strong{font-size:clamp(19px,2vw,27px);line-height:1.05}
+            .cleg-command-quick-purchase em{font-style:normal;font-size:12px;opacity:.9;margin-top:4px}
+            .cleg-command-quick-purchase>b{font-size:30px;font-weight:400}
             body.cleg-command-is-transitioning {
                 overflow: hidden !important;
             }
@@ -30209,6 +30239,10 @@ if (!function_exists('cleg_command_center_styles')) {
                     min-width: 0 !important;
                     overflow: hidden !important;
                 }
+                .cleg-command-quick-purchase{grid-template-columns:auto minmax(0,1fr) auto;min-height:72px;padding:13px 14px;gap:11px;border-radius:12px}
+                .cleg-command-quick-purchase-icon{width:40px;height:40px;font-size:27px}
+                .cleg-command-quick-purchase strong{font-size:20px}
+                .cleg-command-quick-purchase em{font-size:11px}
             }
             @media (min-width: 761px) and (max-height: 760px) {
                 .cleg-command-wrap {
@@ -33891,6 +33925,56 @@ if (!function_exists('cleg_procurement_date_input_value')) {
     }
 }
 
+if (!function_exists('cleg_procurement_default_deadlines')) {
+    function cleg_procurement_default_deadlines($priority = 'Normal', $now = null) {
+        $now = $now ?: current_time('timestamp');
+        $urgent = in_array((string) $priority, array('Urgente', 'Detiene trabajo hoy'), true);
+        return array(
+            'quote_due_date' => wp_date('Y-m-d', strtotime($urgent ? '+1 day' : '+7 days', $now)),
+            'required_delivery_date' => wp_date('Y-m-d', strtotime($urgent ? '+5 weekdays' : '+1 month', $now)),
+        );
+    }
+}
+
+if (!function_exists('cleg_procurement_notify_new_request')) {
+    function cleg_procurement_notify_new_request($request, $attachments = array()) {
+        $recipients = array();
+        foreach (array('Alejandro', 'Carlos', 'Luis') as $name) {
+            $users = get_users(array('search' => '*' . $name . '*', 'search_columns' => array('display_name', 'user_login', 'user_email'), 'number' => 5));
+            foreach ($users as $user) {
+                if (!empty($user->user_email) && is_email($user->user_email)) {
+                    $recipients[$user->user_email] = true;
+                }
+            }
+        }
+        if (!$recipients) {
+            return false;
+        }
+        $recipient_emails = array_keys($recipients);
+        $to = array_shift($recipient_emails);
+        $cc = $recipient_emails;
+        $subject = 'Nueva requisicion ' . ($request['id'] ?? 'CLEG');
+        $body = "Nueva requisicion de Compras\n\n"
+            . 'ID: ' . ($request['id'] ?? '') . "\n"
+            . 'Proyecto: ' . ($request['project'] ?? '') . "\n"
+            . 'Articulo/servicio: ' . ($request['item'] ?? '') . "\n"
+            . 'Cantidad: ' . ($request['quantity'] ?? '') . ' ' . ($request['unit'] ?? '') . "\n"
+            . 'Prioridad: ' . ($request['priority'] ?? 'Normal') . "\n"
+            . 'Cotizacion requerida: ' . ($request['quote_due_date'] ?? '') . "\n"
+            . 'Entrega requerida: ' . ($request['required_delivery_date'] ?? '') . "\n"
+            . 'Ubicacion: ' . ($request['delivery_location'] ?? 'Puerto Rico') . "\n"
+            . 'Solicitante: ' . ($request['requester'] ?? '') . "\n\n"
+            . 'Notas: ' . ($request['conditions'] ?? 'Sin notas') . "\n"
+            . 'Adjuntos: ' . count((array) $attachments) . "\n"
+            . implode("\n", array_map(function ($attachment) {
+                return is_array($attachment) && !empty($attachment['url']) ? ' - ' . $attachment['url'] : '';
+            }, (array) $attachments)) . "\n"
+            . 'Abrir en Compras: ' . home_url('/admin-procurement/?proc_view=detalle&proc_request=' . rawurlencode((string) ($request['id'] ?? '')));
+        $headers = $cc ? array('Cc: ' . implode(',', $cc)) : array();
+        return wp_mail($to, $subject, $body, $headers);
+    }
+}
+
 if (!function_exists('cleg_procurement_po_status_options')) {
     function cleg_procurement_po_status_options() {
         return array(
@@ -34991,8 +35075,10 @@ if (!function_exists('cleg_procurement_handle_create_request')) {
         $user = wp_get_current_user();
         $requester = sanitize_text_field(wp_unslash($_POST['requester'] ?? ''));
         $is_luis = strtolower($requester) === 'luis coll';
-        $quote_due_date = cleg_procurement_airtable_date(wp_unslash($_POST['quote_due_date'] ?? ''));
-        $required_delivery_date = cleg_procurement_airtable_date(wp_unslash($_POST['required_delivery_date'] ?? ''));
+        $priority = sanitize_text_field(wp_unslash($_POST['priority'] ?? 'Normal'));
+        $deadlines = cleg_procurement_default_deadlines($priority);
+        $quote_due_date = cleg_procurement_airtable_date(wp_unslash($_POST['quote_due_date'] ?? '')) ?: $deadlines['quote_due_date'];
+        $required_delivery_date = cleg_procurement_airtable_date(wp_unslash($_POST['required_delivery_date'] ?? '')) ?: $deadlines['required_delivery_date'];
         $conditions = sanitize_textarea_field(wp_unslash($_POST['conditions'] ?? ''));
         $reference = esc_url_raw(wp_unslash($_POST['reference'] ?? ''));
         $reference_images = cleg_procurement_collect_reference_uploads('reference_images');
@@ -35019,7 +35105,7 @@ if (!function_exists('cleg_procurement_handle_create_request')) {
             'required_delivery_date' => $required_delivery_date,
             'due_date' => $required_delivery_date ?: $quote_due_date,
             'delivery_location' => $delivery_location,
-            'priority' => sanitize_text_field(wp_unslash($_POST['priority'] ?? 'Normal')),
+            'priority' => $priority,
             'substitute' => $substitute,
             'conditions' => $conditions,
             'reference' => $reference,
@@ -35071,6 +35157,7 @@ if (!function_exists('cleg_procurement_handle_create_request')) {
         $data['next_request'] = $next + 1;
         cleg_procurement_add_audit($data, 'Solicitud creada', $id, $data['requests'][$id]['item']);
         cleg_procurement_save_data($data);
+        cleg_procurement_notify_new_request($data['requests'][$id], $reference_images);
 
         wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => 'created'), home_url('/admin-procurement/')));
         exit;
@@ -38261,18 +38348,19 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                     </div>
                                     <button type="button" class="cleg-proc-step-next cleg-proc-btn" data-proc-step-next="2">Continuar</button>
                                     </div>
+                                    <?php $form_deadlines = cleg_procurement_default_deadlines('Normal'); ?>
                                     <div class="cleg-proc-form-step" data-proc-form-step="2" hidden>
                                     <div class="cleg-proc-two">
                                         <label>Cotizacion lista para
-                                            <input type="date" name="quote_due_date" required>
+                                            <input type="date" name="quote_due_date" value="<?php echo esc_attr($form_deadlines['quote_due_date']); ?>" required>
                                         </label>
                                         <label>Entrega requerida
-                                            <input type="date" name="required_delivery_date">
+                                            <input type="date" name="required_delivery_date" value="<?php echo esc_attr($form_deadlines['required_delivery_date']); ?>">
                                         </label>
                                     </div>
                                     <div class="cleg-proc-two">
                                         <label>Prioridad
-                                            <select name="priority">
+                                            <select name="priority" data-proc-priority>
                                                 <option>Normal</option>
                                                 <option>Alta</option>
                                                 <option>Urgente</option>
@@ -38294,8 +38382,8 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                     </div>
                                     <fieldset class="cleg-proc-toggle cleg-proc-toggle-wide">
                                         <legend>Se acepta sustituto</legend>
-                                        <label><input type="radio" name="substitute" value="Si" checked><span>Si</span></label>
-                                        <label><input type="radio" name="substitute" value="No"><span>No</span></label>
+                                        <label><input type="radio" name="substitute" value="No" checked><span>No</span></label>
+                                        <label><input type="radio" name="substitute" value="Si"><span>Si, con aprobacion</span></label>
                                     </fieldset>
                                     <div class="cleg-proc-step-actions"><button type="button" class="cleg-proc-step-back cleg-proc-btn is-secondary" data-proc-step-back="1">Atrás</button><button type="button" class="cleg-proc-step-next cleg-proc-btn" data-proc-step-next="3">Continuar</button></div>
                                     </div>
@@ -38307,14 +38395,14 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                         <textarea name="conditions" rows="3" placeholder="Problema que resuelve, compatibilidad, marca/modelo, voltaje, medidas, restricciones"></textarea>
                                     </label>
                                     <div class="cleg-proc-request-audio" aria-label="Nota de voz de la solicitud">
-                                        <input type="file" name="reference_images[]" accept="audio/*" data-cleg-request-audio-input hidden>
+                                        <input type="file" name="reference_images[]" accept="audio/*" multiple data-cleg-request-audio-input hidden>
                                         <input type="hidden" name="cleg_recorded_audio_data" data-cleg-request-audio-data>
                                         <input type="hidden" name="cleg_recorded_audio_name" data-cleg-request-audio-name>
                                         <input type="hidden" name="cleg_recorded_audio_type" data-cleg-request-audio-type>
                                         <button class="cleg-proc-audio-record-btn" type="button" data-cleg-record-request-audio aria-pressed="false" aria-label="Grabar nota de voz">
                                             <span aria-hidden="true"></span>
                                         </button>
-                                        <small data-cleg-request-recording-status>Nota de voz</small>
+                                        <small data-cleg-request-recording-status>Notas de voz: puedes agregar varias</small>
                                         <div class="cleg-proc-request-audio-preview" data-cleg-request-audio-preview hidden></div>
                                     </div>
                                     <div class="cleg-proc-attach-grid" aria-label="Adjuntos">
@@ -39942,6 +40030,29 @@ if (!function_exists('cleg_procurement_upload_preview_script')) {
                     if (form.getAttribute("data-proc-wizard-ready") === "1") return;
                     form.setAttribute("data-proc-wizard-ready", "1");
                     syncRequestStep(form, 1);
+                    var priorityInput = form.querySelector("[data-proc-priority]");
+                    var quoteDate = form.querySelector("[name=quote_due_date]");
+                    var deliveryDate = form.querySelector("[name=required_delivery_date]");
+                    function isoDate(offset){
+                        var date = new Date();
+                        date.setHours(12,0,0,0);
+                        date.setDate(date.getDate() + offset);
+                        return date.toISOString().slice(0,10);
+                    }
+                    function nextBusinessDate(days){
+                        var date = new Date();
+                        date.setHours(12,0,0,0);
+                        while (days > 0) {
+                            date.setDate(date.getDate() + 1);
+                            if (date.getDay() !== 0 && date.getDay() !== 6) days--;
+                        }
+                        return date.toISOString().slice(0,10);
+                    }
+                    if (priorityInput) priorityInput.addEventListener("change", function(){
+                        var urgent = ["Urgente","Detiene trabajo hoy"].indexOf(priorityInput.value) !== -1;
+                        if (quoteDate) quoteDate.value = urgent ? nextBusinessDate(1) : isoDate(7);
+                        if (deliveryDate) deliveryDate.value = urgent ? nextBusinessDate(5) : isoDate(30);
+                    });
                     form.addEventListener("click", function(event){
                         var next = event.target.closest("[data-proc-step-next]");
                         var back = event.target.closest("[data-proc-step-back]");
@@ -40105,15 +40216,17 @@ if (!function_exists('cleg_procurement_upload_preview_script')) {
             function renderRequestAudioPreview(input){
                 var preview = requestAudioPreview(input);
                 if (!preview) return;
-                var file = input && input.files && input.files.length ? input.files[0] : null;
-                if (!file) {
+                var files = input && input.files ? Array.prototype.slice.call(input.files) : [];
+                if (!files.length) {
                     preview.hidden = true;
                     preview.innerHTML = "";
                     return;
                 }
-                var url = URL.createObjectURL(file);
                 preview.hidden = false;
-                preview.innerHTML = "<strong>" + escapeHtml(file.name || "Nota de voz") + "</strong><audio controls preload=\"metadata\" src=\"" + escapeHtml(url) + "\"></audio><button class=\"cleg-proc-audio-remove\" type=\"button\" data-cleg-remove-request-audio aria-label=\"Borrar audio\">x</button>";
+                preview.innerHTML = files.map(function(file, index){
+                    var url = URL.createObjectURL(file);
+                    return "<div class=\"cleg-proc-audio-item\" data-audio-index=\"" + index + "\"><strong>" + escapeHtml(file.name || "Nota de voz") + "</strong><audio controls preload=\"metadata\" src=\"" + escapeHtml(url) + "\"></audio></div>";
+                }).join("") + "<button class=\"cleg-proc-audio-remove\" type=\"button\" data-cleg-remove-request-audio aria-label=\"Borrar notas de voz\">Borrar audios</button>";
             }
             function showMicHelp(){
                 var modal = document.querySelector(".cleg-proc-mic-help");
@@ -40331,7 +40444,8 @@ if (!function_exists('cleg_procurement_upload_preview_script')) {
                             var file = new File([blob], "solicitud-audio-" + Date.now() + "." + extension, {type:type});
                             setRequestAudioFallback(recordRequestAudio, file, blob, statusForAudio);
                             if (inputForAudio) {
-                                syncInputFiles(inputForAudio, [file]);
+                                var existingAudio = Array.prototype.slice.call(inputForAudio.files || []);
+                                syncInputFiles(inputForAudio, existingAudio.concat([file]));
                                 renderRequestAudioPreview(inputForAudio);
                             }
                             stream.getTracks().forEach(function(track){ track.stop(); });
