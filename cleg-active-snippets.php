@@ -19005,16 +19005,16 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                                             <label>Income Tax PR calculado
                                                 <input class="money-input" type="number" step="0.01" min="0" value="<?php echo esc_attr(number_format($calculated_pr_amount, 2, '.', '')); ?>" readonly>
                                             </label>
-                                            <input class="note-input" type="text" value="<?php echo esc_attr($row['period_pr_note'] !== '' ? $row['period_pr_note'] : 'Automatico por tax profile'); ?>" readonly title="<?php echo esc_attr($row['period_pr_note'] ?? 'Automatico por tax profile'); ?>">
+                                            <input class="note-input" type="text" value="<?php echo esc_attr($row['period_pr_note'] !== '' ? $row['period_pr_note'] : 'Automatico por tax profile'); ?>" readonly aria-label="Nota de Income Tax PR calculado" title="<?php echo esc_attr($row['period_pr_note'] ?? 'Automatico por tax profile'); ?>">
                                         <?php endif; ?>
                                         <label>Pago extra
                                             <input class="money-input" type="number" step="0.01" min="0" name="manual_extra[<?php echo esc_attr($row['id']); ?>]" value="<?php echo esc_attr(number_format($manual_extra_amount, 2, '.', '')); ?>" placeholder="0.00" <?php disabled(!$can_edit_payroll); ?>>
                                         </label>
-                                        <input class="note-input" type="text" name="manual_extra_note[<?php echo esc_attr($row['id']); ?>]" value="<?php echo esc_attr($row['manual_extra_note'] ?? ''); ?>" placeholder="Nota de extra" title="<?php echo esc_attr($row['manual_extra_note'] ?? ''); ?>" <?php disabled(!$can_edit_payroll); ?>>
+                                        <input class="note-input" type="text" name="manual_extra_note[<?php echo esc_attr($row['id']); ?>]" value="<?php echo esc_attr($row['manual_extra_note'] ?? ''); ?>" placeholder="Nota de extra" aria-label="Nota de pago extra" title="<?php echo esc_attr($row['manual_extra_note'] ?? ''); ?>" <?php disabled(!$can_edit_payroll); ?>>
                                         <label>Deduccion al neto
                                             <input class="money-input" type="number" step="0.01" min="0" name="manual_deduction[<?php echo esc_attr($row['id']); ?>]" value="<?php echo esc_attr(number_format($manual_deduction_amount, 2, '.', '')); ?>" placeholder="0.00" <?php disabled(!$can_edit_payroll); ?>>
                                         </label>
-                                        <input class="note-input" type="text" name="manual_deduction_note[<?php echo esc_attr($row['id']); ?>]" value="<?php echo esc_attr($row['manual_deduction_note'] ?? ''); ?>" placeholder="Nota de deduccion" title="<?php echo esc_attr($row['manual_deduction_note'] ?? ''); ?>" <?php disabled(!$can_edit_payroll); ?>>
+                                        <input class="note-input" type="text" name="manual_deduction_note[<?php echo esc_attr($row['id']); ?>]" value="<?php echo esc_attr($row['manual_deduction_note'] ?? ''); ?>" placeholder="Nota de deduccion" aria-label="Nota de deduccion" title="<?php echo esc_attr($row['manual_deduction_note'] ?? ''); ?>" <?php disabled(!$can_edit_payroll); ?>>
                                         <?php if (!empty($row['manual_extra_note'])) : ?>
                                             <small class="floating-note" title="<?php echo esc_attr($row['manual_extra_note']); ?>">Nota extra guardada</small>
                                         <?php endif; ?>
