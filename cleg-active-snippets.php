@@ -10160,6 +10160,15 @@ body .cleg-admin-ui > .cleg-admin-shell > .cleg-mobile-summary span{
 }
 @media(max-width:760px){
     body .cleg-admin-ui > .cleg-admin-shell > .cleg-mobile-summary{grid-template-columns:1fr!important}
+    body .cleg-admin-ui .cleg-review-filters select{
+        min-width:0!important;
+        max-width:100%!important;
+        overflow:hidden!important;
+        text-overflow:ellipsis!important;
+        white-space:nowrap!important;
+        font-size:12px!important;
+        padding-right:28px!important;
+    }
 }
 body .cleg-admin-ui .cleg-review-panel > .cleg-manual-entry{
     width:100%!important;
