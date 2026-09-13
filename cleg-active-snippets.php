@@ -17356,6 +17356,19 @@ if (!function_exists('cleg_payroll_update_rates')) {
             ));
         }
 
+        if (isset($_POST['worker_order']) && is_array($_POST['worker_order'])) {
+            update_option('cleg_payroll_worker_order', array_values(array_filter(array_map('sanitize_text_field', wp_unslash($_POST['worker_order'])))), false);
+        }
+        if (isset($_POST['export_note']) && is_array($_POST['export_note'])) {
+            $export_notes = array();
+            foreach (wp_unslash($_POST['export_note']) as $id => $value) $export_notes[sanitize_text_field($id)] = sanitize_text_field($value);
+            update_option('cleg_payroll_export_notes', $export_notes, false);
+        }
+        if (isset($_POST['export_columns']) && is_array($_POST['export_columns'])) {
+            $export_columns = array_values(array_intersect(array_map('sanitize_key', wp_unslash($_POST['export_columns'])), array_keys(cleg_payroll_export_columns())));
+            update_option('cleg_payroll_export_columns', empty($export_columns) ? array('name', 'ach', 'gross', 'deductions', 'net') : $export_columns, false);
+        }
+
         wp_safe_redirect(add_query_arg('payroll_saved', '1', wp_get_referer() ?: home_url('/payroll-rrhh/')));
         exit;
     }
@@ -18292,7 +18305,19 @@ if (!function_exists('cleg_payroll_export_layout')) {
         $order = array_values(array_filter(array_map('sanitize_text_field', (array) get_option('cleg_payroll_worker_order', array()))));
         $ach = (array) get_option('cleg_payroll_ach_numbers', array());
         $notes = (array) get_option('cleg_payroll_export_notes', array());
-        return array('columns' => $columns, 'order' => $order, 'ach' => $ach, 'notes' => $notes);
+        return array('columns' => $columns, 'order' => $order, 'ach' => $ach, 'notes' => $notes, 'global_ach' => sanitize_text_field((string) get_option('cleg_payroll_ach_number', '')));
+    }
+}
+
+if (!function_exists('cleg_payroll_apply_worker_order')) {
+    function cleg_payroll_apply_worker_order($data) {
+        $rank = array_flip(cleg_payroll_export_layout()['order']);
+        usort($data, function ($a, $b) use ($rank) {
+            $ai = $rank[(string) ($a['id'] ?? '')] ?? 999999;
+            $bi = $rank[(string) ($b['id'] ?? '')] ?? 999999;
+            return $ai === $bi ? strcasecmp((string) ($a['name'] ?? ''), (string) ($b['name'] ?? '')) : ($ai <=> $bi);
+        });
+        return $data;
     }
 }
 
@@ -18323,11 +18348,14 @@ if (!function_exists('cleg_payroll_save_export_layout')) {
         foreach ((array) ($_POST['ach_number'] ?? array()) as $id => $value) $ach[sanitize_text_field($id)] = sanitize_text_field($value);
         $notes = array();
         foreach ((array) ($_POST['export_note'] ?? array()) as $id => $value) $notes[sanitize_text_field($id)] = sanitize_text_field($value);
-        $columns = array_values(array_intersect(array_map('sanitize_key', (array) ($_POST['export_columns'] ?? array())), array_keys(cleg_payroll_export_columns())));
-        update_option('cleg_payroll_worker_order', $order, false);
-        update_option('cleg_payroll_ach_numbers', $ach, false);
-        update_option('cleg_payroll_export_notes', $notes, false);
-        update_option('cleg_payroll_export_columns', empty($columns) ? array('name', 'ach', 'gross', 'deductions', 'net') : $columns, false);
+        if (isset($_POST['export_columns'])) {
+            $columns = array_values(array_intersect(array_map('sanitize_key', (array) $_POST['export_columns']), array_keys(cleg_payroll_export_columns())));
+            update_option('cleg_payroll_export_columns', empty($columns) ? array('name', 'ach', 'gross', 'deductions', 'net') : $columns, false);
+        }
+        if (isset($_POST['worker_order'])) update_option('cleg_payroll_worker_order', $order, false);
+        if (isset($_POST['ach_number'])) update_option('cleg_payroll_ach_numbers', $ach, false);
+        if (isset($_POST['export_note'])) update_option('cleg_payroll_export_notes', $notes, false);
+        if (isset($_POST['global_ach'])) update_option('cleg_payroll_ach_number', sanitize_text_field(wp_unslash($_POST['global_ach'])), false);
         $redirect = wp_get_referer() ?: home_url('/payroll-reportes/');
         wp_safe_redirect(add_query_arg('cleg_payroll_status', 'Configuracion guardada', $redirect));
         exit;
@@ -18869,6 +18897,7 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
 
         list($start, $end) = cleg_payroll_period();
         $data = cleg_payroll_data($start, $end);
+        if (is_array($data)) $data = cleg_payroll_apply_worker_order($data);
         $pending_entries = cleg_payroll_pending_entries($start, $end);
         $closed_entries = cleg_payroll_closed_entries($start, $end);
         $period_lines = cleg_payroll_period_lines($start, $end);
@@ -18938,6 +18967,15 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                 }
                 ?>
 
+                <?php $payroll_export_layout = cleg_payroll_export_layout(); $payroll_export_columns = cleg_payroll_export_columns(); ?>
+                <form class="cleg-payroll-ach-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <input type="hidden" name="action" value="cleg_payroll_save_export_layout">
+                    <?php wp_nonce_field('cleg_payroll_save_export_layout'); ?>
+                    <label>Número ACH de la nómina
+                        <input type="text" name="global_ach" value="<?php echo esc_attr($payroll_export_layout['global_ach']); ?>" placeholder="Referencia ACH">
+                    </label>
+                    <button type="submit">Guardar ACH</button>
+                </form>
                 <form class="cleg-payroll-filters" method="get">
                     <label>Semana cerrada
                         <select name="payroll_week" onchange="this.form.submit()">
@@ -19023,8 +19061,15 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                     <?php wp_nonce_field('cleg_payroll_save_rates', 'cleg_payroll_nonce'); ?>
                     <input type="hidden" name="cleg_payroll_action" value="save_rates">
                     <input type="hidden" name="payroll_week" value="<?php echo esc_attr($end); ?>">
+                    <section class="cleg-payroll-export-controls" aria-labelledby="cleg-payroll-columns-title">
+                        <div><strong id="cleg-payroll-columns-title">Columnas del PDF</strong><small>Marca las que quieres imprimir. El orden de los trabajadores se guarda al pulsar Guardar ajustes.</small></div>
+                        <fieldset>
+                            <legend class="screen-reader-text">Columnas a imprimir</legend>
+                            <?php foreach ($payroll_export_columns as $key => $label) : ?><label><input type="checkbox" name="export_columns[]" value="<?php echo esc_attr($key); ?>" <?php checked(in_array($key, $payroll_export_layout['columns'], true)); ?>> <?php echo esc_html($label); ?></label><?php endforeach; ?>
+                        </fieldset>
+                    </section>
                     <div class="cleg-payroll-table"><table>
-                        <thead><tr><th>Trabajador</th><th>Horas</th><th class="regular-hours-col">H regular</th><th class="extra-hours-col">H extra</th><th>Bruto</th><th>Ajustes</th><th>Deduccion</th><th>Neto</th></tr></thead>
+                        <thead><tr><th class="payroll-order-col">Orden</th><th>Trabajador</th><th>Horas</th><th class="regular-hours-col">H regular</th><th class="extra-hours-col">H extra</th><th>Bruto</th><th>Notas</th><th>Ajustes</th><th>Deduccion</th><th>Neto</th></tr></thead>
                         <tbody>
                         <?php foreach ($data as $row) : ?>
                             <?php $needs_review = ($row['calculation_status'] ?? '') === 'Needs Review'; ?>
@@ -19054,7 +19099,8 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                                 $site_summary[$site_name]['entries']++;
                             }
                             ?>
-                            <tr class="<?php echo esc_attr($needs_review ? 'needs-review' : 'ready-pay'); ?>">
+                            <tr class="<?php echo esc_attr($needs_review ? 'needs-review' : 'ready-pay'); ?>" draggable="true">
+                                <td class="payroll-order-col"><span class="cleg-payroll-row-drag" title="Arrastrar para reordenar" aria-label="Arrastrar <?php echo esc_attr($row['name']); ?>">☷</span><input type="hidden" name="worker_order[]" value="<?php echo esc_attr($row['id']); ?>"></td>
                                 <td class="worker-cell">
                                     <strong><?php echo esc_html($row['name']); ?></strong>
                                     <small><?php echo esc_html(cleg_payroll_employee_display_type($row['tax_type'])); ?> · <?php echo esc_html(cleg_payroll_label($row['period'])); ?> · $<?php echo esc_html(number_format($row['amount'], 2)); ?></small>
@@ -19133,6 +19179,7 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                                         <small class="gross-note">Incluye extra +$<?php echo esc_html(number_format($manual_extra_amount, 2)); ?></small>
                                     <?php endif; ?>
                                 </td>
+                                <td class="payroll-note-cell"><label class="screen-reader-text" for="payroll-note-<?php echo esc_attr($row['id']); ?>">Nota para <?php echo esc_html($row['name']); ?></label><input id="payroll-note-<?php echo esc_attr($row['id']); ?>" type="text" name="export_note[<?php echo esc_attr($row['id']); ?>]" value="<?php echo esc_attr($payroll_export_layout['notes'][$row['id']] ?? ''); ?>" placeholder="Nota opcional"></td>
                                 <td class="adjustments-cell <?php echo esc_attr($has_manual_adjustment ? 'has-adjustment' : ''); ?>">
                                     <?php if ($manual_extra_amount > 0) : ?>
                                         <span class="adjustment-badge adjustment-plus" title="<?php echo esc_attr($row['manual_extra_note'] ?? ''); ?>">+ Extra $<?php echo esc_html(number_format($manual_extra_amount, 2)); ?></span>
@@ -19186,9 +19233,10 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                         </tbody>
                     </table></div>
                     <?php if ($can_edit_payroll) : ?>
-                        <button class="cleg-payroll-save" type="submit">Guardar ajustes</button>
+                        <button class="cleg-payroll-save" type="submit">Guardar ajustes</button><span class="cleg-payroll-save-status" role="status" aria-live="polite" hidden>Guardando cambios…</span>
                     <?php endif; ?>
                 </form>
+                <script>(function(){var form=document.querySelector('form input[name="cleg_payroll_action"][value="save_rates"]');form=form?form.closest('form'):null;if(!form)return;var body=form.querySelector('tbody'),picked=null;if(body){body.addEventListener('dragstart',function(e){var row=e.target.closest('tr[draggable]');if(!row)return;picked=row;row.classList.add('is-dragging');e.dataTransfer.effectAllowed='move';});body.addEventListener('dragend',function(){if(picked)picked.classList.remove('is-dragging');body.querySelectorAll('.drag-over').forEach(function(x){x.classList.remove('drag-over');});picked=null;});body.addEventListener('dragover',function(e){e.preventDefault();var target=e.target.closest('tr[draggable]');if(!picked||!target||target===picked)return;body.querySelectorAll('.drag-over').forEach(function(x){x.classList.remove('drag-over');});target.classList.add('drag-over');var rect=target.getBoundingClientRect();body.insertBefore(picked,e.clientY<rect.top+rect.height/2?target:target.nextSibling);});}form.addEventListener('submit',function(){var btn=form.querySelector('.cleg-payroll-save'),status=form.querySelector('.cleg-payroll-save-status');if(btn){btn.disabled=true;btn.setAttribute('aria-busy','true');}if(status)status.hidden=false;});})();</script>
             </main>
             <?php echo cleg_payroll_styles(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
             <?php echo function_exists('cleg_admin_desktop_menu_lock_styles') ? cleg_admin_desktop_menu_lock_styles() : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
@@ -19610,6 +19658,14 @@ if (!function_exists('cleg_payroll_styles')) {
 .cleg-payroll .leave-vacation-toggle{display:flex;align-items:center;gap:8px;margin-top:6px;border:1px solid rgba(199,80,0,.22);border-radius:8px;background:#fff7ed;padding:8px 9px;color:#7a3a00;font-size:12px;font-weight:950}
 .cleg-payroll .leave-vacation-toggle input{width:auto!important;min-width:16px}
 .cleg-payroll-save{margin-top:14px}
+.cleg-payroll-ach-form{display:flex;align-items:end;gap:10px;width:min(1320px,calc(100% - 24px));max-width:min(1320px,calc(100% - 24px));margin:0 auto 12px;background:#fff;border:1px solid rgba(6,24,45,.12);border-radius:14px;padding:12px}
+.cleg-payroll-ach-form label{display:grid;gap:5px;color:#516579;font-size:12px;font-weight:950;text-transform:uppercase}
+.cleg-payroll-ach-form input{min-width:240px}
+.cleg-payroll-ach-form button{background:#182537}
+.cleg-payroll-export-controls{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;margin:0 auto 12px;padding:12px 14px;border:1px solid rgba(6,24,45,.12);border-radius:12px;background:#fff}
+.cleg-payroll-export-controls>div{display:grid;gap:3px}.cleg-payroll-export-controls strong{color:#06182d}.cleg-payroll-export-controls small{color:#516579;font-weight:750}
+.cleg-payroll-export-controls fieldset{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;border:0}.cleg-payroll-export-controls label{display:inline-flex;align-items:center;gap:5px;min-height:36px;padding:7px 10px;border:1px solid rgba(6,24,45,.14);border-radius:8px;background:#f8fafc;color:#06182d;font-size:12px;font-weight:850}.cleg-payroll-export-controls input{min-height:auto}
+.cleg-payroll .payroll-order-col{width:58px;min-width:58px;text-align:center!important}.cleg-payroll-row-drag{display:inline-grid;place-items:center;width:36px;height:36px;border:1px solid rgba(6,24,45,.15);border-radius:8px;background:#f1f5f9;color:#516579;font-size:22px;line-height:1;cursor:grab}.cleg-payroll tr.is-dragging{opacity:.45}.cleg-payroll tr.drag-over{outline:2px solid #c75000;outline-offset:-2px}.cleg-payroll .payroll-note-cell{min-width:180px}.cleg-payroll .payroll-note-cell input{width:170px;min-width:0}
 .cleg-payroll-empty{background:#fff;border-radius:14px;padding:24px;width:min(100%,680px);margin:0 auto}
 @media(max-width:720px){
 	    .cleg-payroll-filters{display:grid}
@@ -19630,13 +19686,17 @@ if (!function_exists('cleg_payroll_styles')) {
     .cleg-payroll-table tbody td{display:block;width:100%;min-width:0!important;padding:8px 0;border-bottom:1px solid rgba(6,24,45,.08);text-align:left!important}
     .cleg-payroll-table tbody td:last-child{border-bottom:0}
     .cleg-payroll-table tbody td:not(.worker-cell):before{display:block;margin-bottom:4px;color:#516579;font-size:10px;font-weight:950;text-transform:uppercase}
-    .cleg-payroll-table tbody td:nth-child(2):before{content:'Horas'}
-    .cleg-payroll-table tbody td:nth-child(3):before{content:'Horas regulares'}
-    .cleg-payroll-table tbody td:nth-child(4):before{content:'Horas extra'}
-    .cleg-payroll-table tbody td:nth-child(5):before{content:'Bruto'}
-    .cleg-payroll-table tbody td:nth-child(6):before{content:'Ajustes'}
-    .cleg-payroll-table tbody td:nth-child(7):before{content:'Deducción'}
-    .cleg-payroll-table tbody td:nth-child(8):before{content:'Neto'}
+    .cleg-payroll-ach-form,.cleg-payroll-export-controls{display:grid;align-items:stretch;width:100%;max-width:100%;margin-left:0;margin-right:0}.cleg-payroll-ach-form input,.cleg-payroll-ach-form button{width:100%;min-width:0}.cleg-payroll-export-controls fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.cleg-payroll-export-controls label{min-height:44px}.cleg-payroll-table tbody td:nth-child(2):before{content:'Trabajador'}
+    .cleg-payroll-table tbody td:nth-child(3):before{content:'Horas'}
+    .cleg-payroll-table tbody td:nth-child(4):before{content:'Horas regulares'}
+    .cleg-payroll-table tbody td:nth-child(5):before{content:'Horas extra'}
+    .cleg-payroll-table tbody td:nth-child(6):before{content:'Bruto'}
+    .cleg-payroll-table tbody td:nth-child(7):before{content:'Notas'}
+    .cleg-payroll-table tbody td:nth-child(8):before{content:'Ajustes'}
+    .cleg-payroll-table tbody td:nth-child(9):before{content:'Deducción'}
+    .cleg-payroll-table tbody td:nth-child(10):before{content:'Neto'}
+    .cleg-payroll-table tbody td.payroll-order-col{display:flex;align-items:center;gap:8px;border-bottom:0}.cleg-payroll-table tbody td.payroll-order-col:before{content:'Orden'}
+    .cleg-payroll .payroll-note-cell input{width:100%;min-height:44px}
     .cleg-payroll-table tbody td.worker-cell{padding-top:0}
     .cleg-payroll-table .hours-detail{position:relative;left:auto;right:auto;top:auto;width:100%;max-height:none}
     .cleg-payroll .hours-detail{position:fixed;left:16px;right:16px;top:96px;width:auto;max-height:70svh;overflow:auto}
