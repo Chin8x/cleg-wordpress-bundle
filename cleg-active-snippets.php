@@ -42969,6 +42969,13 @@ if (!function_exists('cleg_admin_recibos_shortcode')) {
             return '<section class="cleg-admin-ui"><div class="cleg-admin-empty"><h2>Modulo desactivado</h2><p>Compras no esta activo para esta empresa.</p></div></section>';
         }
 
+        $can_access = function_exists('cleg_procurement_user_can_access')
+            ? cleg_procurement_user_can_access()
+            : (current_user_can('manage_options') || current_user_can('cleg_access_procurement') || current_user_can('cleg_manage_procurement'));
+        if (!$can_access) {
+            return '<section class="cleg-admin-ui"><div class="cleg-admin-empty"><h2>Acceso restringido</h2><p>Esta pantalla esta disponible solo para usuarios autorizados de Compras.</p></div></section>';
+        }
+
         $date = isset($_GET['receipt_date']) ? sanitize_text_field(wp_unslash($_GET['receipt_date'])) : '';
         $job_site = isset($_GET['receipt_job']) ? sanitize_text_field(wp_unslash($_GET['receipt_job'])) : '';
         $employee = isset($_GET['receipt_employee']) ? sanitize_text_field(wp_unslash($_GET['receipt_employee'])) : '';
