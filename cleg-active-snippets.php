@@ -27261,7 +27261,25 @@ body .cleg-admin-ui .cleg-calendar-month>span small em{
 @media (prefers-reduced-motion: reduce){
     body .cleg-admin-ui *,
     body .cleg-admin-ui *::before,
-    body .cleg-admin-ui *::after{
+    body .cleg-admin-ui *::after,
+    body .cleg-app-wrap *,
+    body .cleg-app-wrap *::before,
+    body .cleg-app-wrap *::after,
+    body .cleg-center *,
+    body .cleg-center *::before,
+    body .cleg-center *::after,
+    body .cleg-procurement *,
+    body .cleg-procurement *::before,
+    body .cleg-procurement *::after,
+    body .cleg-payroll *,
+    body .cleg-payroll *::before,
+    body .cleg-payroll *::after,
+    body .cleg12-wrap *,
+    body .cleg12-wrap *::before,
+    body .cleg12-wrap *::after,
+    body .cleg17-gps-panel *,
+    body .cleg17-gps-panel *::before,
+    body .cleg17-gps-panel *::after{
         animation-duration:.01ms!important;
         animation-iteration-count:1!important;
         transition-duration:.01ms!important;
