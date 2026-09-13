@@ -18851,6 +18851,7 @@ body .cleg-payroll .cleg-payroll-report-filters label{display:grid;gap:6px;color
 body .cleg-payroll .cleg-payroll-report-filters label.is-hidden{display:none}
 body .cleg-payroll .cleg-payroll-report-filters a,body .cleg-payroll .cleg-payroll-report-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border-radius:999px;background:#06182d;color:#fff!important;-webkit-text-fill-color:#fff!important;padding:10px 14px;font-weight:950;text-decoration:none!important;text-align:center}
 body .cleg-payroll .cleg-payroll-report-hero{width:min(1320px,calc(100% - 24px));margin:0 auto 16px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:18px;align-items:center;border:1px solid rgba(6,24,45,.12);border-radius:24px;background:linear-gradient(135deg,#06182d,#123454);color:#fff;padding:22px;box-shadow:0 18px 44px rgba(6,24,45,.16);box-sizing:border-box}
+body .cleg-payroll .cleg-payroll-pdf-settings>summary{background:#fff!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important}
 body .cleg-payroll .cleg-payroll-pdf-settings{position:relative;align-self:start}body .cleg-payroll .cleg-payroll-pdf-settings>summary{display:grid;place-items:center;width:38px;height:38px;border:1px solid rgba(255,255,255,.35);border-radius:50%;background:#fff;color:#06182d;font-size:21px;font-weight:900;cursor:pointer;list-style:none}body .cleg-payroll .cleg-payroll-pdf-settings>summary::-webkit-details-marker{display:none}body .cleg-payroll .cleg-payroll-pdf-settings form{position:absolute;z-index:4;top:48px;left:0;width:270px;padding:12px;border:1px solid rgba(6,24,45,.16);border-radius:14px;background:#fff;color:#06182d;box-shadow:0 14px 32px rgba(0,0,0,.22)}body .cleg-payroll .cleg-payroll-pdf-settings fieldset{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:0;padding:0;border:0}body .cleg-payroll .cleg-payroll-pdf-settings legend{grid-column:1/-1;margin-bottom:3px;font-size:11px;font-weight:950;text-transform:uppercase}body .cleg-payroll .cleg-payroll-pdf-settings label{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:800}body .cleg-payroll .cleg-payroll-pdf-settings input{width:16px;height:16px;min-width:16px}body .cleg-payroll .cleg-payroll-pdf-settings button{width:100%;min-height:36px;margin-top:10px;border:0;border-radius:999px;background:#c75000;color:#fff;font-weight:900;cursor:pointer}
 body .cleg-payroll .cleg-payroll-report-hero span{display:block;color:#f5a35c;font-size:12px;font-weight:1000;text-transform:uppercase;letter-spacing:.08em}
 body .cleg-payroll .cleg-payroll-report-hero h2{margin:4px 0 6px;color:#fff!important;-webkit-text-fill-color:#fff!important;font-size:30px;line-height:1.05}
@@ -19067,7 +19068,7 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                     <input type="hidden" name="cleg_payroll_action" value="save_rates">
                     <input type="hidden" name="payroll_week" value="<?php echo esc_attr($end); ?>">
                     <div class="cleg-payroll-table"><table>
-                        <thead><tr><th class="payroll-order-col">Orden</th><th>Trabajador</th><th>Horas</th><th class="regular-hours-col">H regular</th><th class="extra-hours-col">H extra</th><th>Bruto</th><th>Notas</th><th>Ajustes</th><th>Deduccion</th><th>Neto</th></tr></thead>
+                        <thead><tr><th class="payroll-order-col">Orden</th><th>Trabajador</th><th>Horas</th><th class="regular-hours-col">H regular</th><th class="extra-hours-col">H extra</th><th>Bruto</th><th>Ajustes</th><th>Deduccion</th><th>Neto</th><th>Notas</th></tr></thead>
                         <tbody>
                         <?php foreach ($data as $row) : ?>
                             <?php $needs_review = ($row['calculation_status'] ?? '') === 'Needs Review'; ?>
@@ -19177,7 +19178,6 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                                         <small class="gross-note">Incluye extra +$<?php echo esc_html(number_format($manual_extra_amount, 2)); ?></small>
                                     <?php endif; ?>
                                 </td>
-                                <td class="payroll-note-cell"><label class="screen-reader-text" for="payroll-note-<?php echo esc_attr($row['id']); ?>">Nota para <?php echo esc_html($row['name']); ?></label><input id="payroll-note-<?php echo esc_attr($row['id']); ?>" type="text" name="export_note[<?php echo esc_attr($row['id']); ?>]" value="<?php echo esc_attr($payroll_export_layout['notes'][$row['id']] ?? ''); ?>" placeholder="Nota opcional"></td>
                                 <td class="adjustments-cell <?php echo esc_attr($has_manual_adjustment ? 'has-adjustment' : ''); ?>">
                                     <?php if ($manual_extra_amount > 0) : ?>
                                         <span class="adjustment-badge adjustment-plus" title="<?php echo esc_attr($row['manual_extra_note'] ?? ''); ?>">+ Extra $<?php echo esc_html(number_format($manual_extra_amount, 2)); ?></span>
@@ -19226,6 +19226,8 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                                     <?php if ($manual_deduction_amount > 0) : ?><small>Manual $<?php echo esc_html(number_format($manual_deduction_amount, 2)); ?></small><?php endif; ?>
                                 </td>
                                 <td><strong>$<?php echo esc_html(number_format($row['net_pay'], 2)); ?></strong><small>Neto a pagar</small></td>
+                                <?php $payroll_note = (string) ($payroll_export_layout['notes'][$row['id']] ?? ''); ?>
+                                <td class="payroll-note-cell <?php echo $payroll_note !== '' ? 'has-note' : 'is-empty'; ?>"><label class="screen-reader-text" for="payroll-note-<?php echo esc_attr($row['id']); ?>">Nota para <?php echo esc_html($row['name']); ?></label><input id="payroll-note-<?php echo esc_attr($row['id']); ?>" type="text" name="export_note[<?php echo esc_attr($row['id']); ?>]" value="<?php echo esc_attr($payroll_note); ?>" placeholder="<?php echo esc_attr($payroll_note !== '' ? 'Nota' : '+'); ?>"></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
@@ -19663,7 +19665,7 @@ if (!function_exists('cleg_payroll_styles')) {
 .cleg-payroll-export-controls{display:grid;grid-template-columns:minmax(260px,.8fr) minmax(0,2.2fr);align-items:center;gap:16px;width:100%;margin:0 auto 12px;padding:12px 14px;border:1px solid rgba(6,24,45,.12);border-radius:12px;background:#fff}
 .cleg-payroll-export-controls>div{display:grid;gap:3px}.cleg-payroll-export-controls strong{color:#06182d}.cleg-payroll-export-controls small{color:#516579;font-weight:750}
 .cleg-payroll-export-controls fieldset{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin:0;padding:0;border:0;overflow:hidden}.cleg-payroll-export-controls label{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:0;min-height:36px;padding:7px 8px;border:1px solid rgba(6,24,45,.14);border-radius:8px;background:#f8fafc;color:#06182d;font-size:12px;font-weight:850;white-space:nowrap}.cleg-payroll-export-controls input[type=checkbox]{appearance:none!important;width:16px!important;height:16px!important;min-width:16px!important;min-height:16px!important;margin:0!important;border:1px solid #64748b!important;border-radius:4px!important;background:#fff!important;accent-color:#c75000}.cleg-payroll-export-controls input[type=checkbox]:checked{background:#c75000!important;box-shadow:inset 0 0 0 3px #fff!important}
-.cleg-payroll .payroll-order-col{width:58px;min-width:58px;text-align:center!important}.cleg-payroll-row-drag{display:inline-grid;place-items:center;width:36px;height:36px;border:1px solid rgba(6,24,45,.15);border-radius:8px;background:#f1f5f9;color:#516579;font-size:22px;line-height:1;cursor:grab}.cleg-payroll tr.is-dragging{opacity:.45}.cleg-payroll tr.drag-over{outline:2px solid #c75000;outline-offset:-2px}.cleg-payroll .payroll-note-cell{min-width:180px}.cleg-payroll .payroll-note-cell input{width:170px;min-width:0}
+.cleg-payroll .payroll-order-col{width:58px;min-width:58px;text-align:center!important}.cleg-payroll-row-drag{display:inline-grid;place-items:center;width:36px;height:36px;border:1px solid rgba(6,24,45,.15);border-radius:8px;background:#f1f5f9;color:#516579;font-size:22px;line-height:1;cursor:grab}.cleg-payroll tr.is-dragging{opacity:.45}.cleg-payroll tr.drag-over{outline:2px solid #c75000;outline-offset:-2px}.cleg-payroll .payroll-note-cell{min-width:42px;width:42px}.cleg-payroll .payroll-note-cell input{width:32px;min-width:0;padding-left:7px;padding-right:7px}.cleg-payroll .payroll-note-cell.has-note{min-width:150px;width:150px}.cleg-payroll .payroll-note-cell.has-note input{width:140px}.cleg-payroll .payroll-note-cell input:focus{width:100%;min-width:140px}.cleg-payroll-table{overflow:hidden}.cleg-payroll-table table{width:100%;min-width:0;table-layout:fixed}
 .cleg-payroll-empty{background:#fff;border-radius:14px;padding:24px;width:min(100%,680px);margin:0 auto}
 @media(max-width:720px){
 	    .cleg-payroll-filters{display:grid}
@@ -19676,7 +19678,7 @@ if (!function_exists('cleg_payroll_styles')) {
     .cleg-payroll-month-cards{display:block}
     .cleg-payroll{padding:16px}
     .cleg-payroll table{min-width:1040px}
-    .cleg-payroll-table{overflow:visible!important}
+    .cleg-payroll-table{overflow:hidden!important}
     .cleg-payroll-table table{display:block;min-width:0!important}
     .cleg-payroll-table thead{display:none}
     .cleg-payroll-table tbody{display:grid;gap:12px}
@@ -19689,12 +19691,12 @@ if (!function_exists('cleg_payroll_styles')) {
     .cleg-payroll-table tbody td:nth-child(4):before{content:'Horas regulares'}
     .cleg-payroll-table tbody td:nth-child(5):before{content:'Horas extra'}
     .cleg-payroll-table tbody td:nth-child(6):before{content:'Bruto'}
-    .cleg-payroll-table tbody td:nth-child(7):before{content:'Notas'}
-    .cleg-payroll-table tbody td:nth-child(8):before{content:'Ajustes'}
-    .cleg-payroll-table tbody td:nth-child(9):before{content:'Deducción'}
-    .cleg-payroll-table tbody td:nth-child(10):before{content:'Neto'}
+    .cleg-payroll-table tbody td:nth-child(7):before{content:'Ajustes'}
+    .cleg-payroll-table tbody td:nth-child(8):before{content:'Deducción'}
+    .cleg-payroll-table tbody td:nth-child(9):before{content:'Neto'}
+    .cleg-payroll-table tbody td:nth-child(10):before{content:'Notas'}
     .cleg-payroll-table tbody td.payroll-order-col{display:flex;align-items:center;gap:8px;border-bottom:0}.cleg-payroll-table tbody td.payroll-order-col:before{content:'Orden'}
-    .cleg-payroll .payroll-note-cell input{width:100%;min-height:44px}
+    .cleg-payroll .payroll-note-cell{width:100%;min-width:0}.cleg-payroll .payroll-note-cell input,.cleg-payroll .payroll-note-cell.has-note input{width:100%;min-width:0;min-height:44px}
     .cleg-payroll-table tbody td.worker-cell{padding-top:0}
     .cleg-payroll-table .hours-detail{position:relative;left:auto;right:auto;top:auto;width:100%;max-height:none}
     .cleg-payroll .hours-detail{position:fixed;left:16px;right:16px;top:96px;width:auto;max-height:70svh;overflow:auto}
