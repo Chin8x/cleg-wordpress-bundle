@@ -27251,15 +27251,27 @@ body .cleg-admin-ui .cleg-calendar-month>span small em{
 }
 @media(max-width:760px){
     body .cleg-admin-ui .cleg-calendar-week{
-        display:none!important;
+        display:grid!important;
+        gap:4px!important;
     }
     body .cleg-admin-ui .cleg-calendar-month{
-        display:block!important;
+        display:grid!important;
+        grid-template-columns:repeat(7,minmax(0,1fr))!important;
+        gap:4px!important;
     }
     body .cleg-admin-ui .cleg-calendar-month>span{
-        display:block!important;
-        min-height:auto!important;
-        margin-bottom:8px!important;
+        display:grid!important;
+        align-content:start!important;
+        min-height:72px!important;
+        margin-bottom:0!important;
+        padding:6px!important;
+        font-size:12px!important;
+    }
+    body .cleg-admin-ui .cleg-calendar-week>span{
+        min-height:28px!important;
+        padding:4px 2px!important;
+        text-align:center!important;
+        font-size:11px!important;
     }
 }
 @media (prefers-reduced-motion: reduce){
