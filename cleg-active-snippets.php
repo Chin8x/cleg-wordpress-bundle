@@ -8460,6 +8460,7 @@ if (!function_exists('cleg_admin_project_overview_panel')) {
             }
         }
 
+        $mobile = '<div class="cleg-mobile-only cleg-mobile-card-stack" aria-label="Hora hombre por proyecto">';
         $html = '<div class="cleg-panel cleg-project-panel"><div class="cleg-panel-head"><div><h2>Hora hombre por proyecto</h2><p>Horas y costo estimado conectados a Time Entries, Employees y Job Sites.</p></div><a class="cleg-row-action" href="' . esc_url(home_url('/admin-job-sites/')) . '">Ver proyectos</a></div><div class="cleg-table-wrap"><table><thead><tr><th>Proyecto</th><th>Horas hombre</th><th>Costo estimado</th><th>Trabajadores</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>';
 
         foreach (array_slice($summary, 0, 12, true) as $project => $data) {
@@ -8468,14 +8469,16 @@ if (!function_exists('cleg_admin_project_overview_panel')) {
                 $status .= '<span class="cleg-pill is-warn">' . esc_html($data['open']) . ' abierta(s)</span>';
             }
             $project_url = cleg_admin_context_url('/admin-job-sites/', array('cleg_project' => $project));
+            $mobile .= '<article class="cleg-mobile-card"><div class="cleg-mobile-card-top"><div><span>Proyecto</span><strong>' . esc_html($project) . '</strong></div>' . $status . '</div><div class="cleg-mobile-facts"><div><small>Horas</small><b>' . esc_html(cleg_admin_hours_label((float) $data['hours'])) . '</b></div><div><small>Costo estimado</small><b>' . esc_html(cleg_admin_money($data['cost'])) . '</b></div><div><small>Trabajadores</small><b>' . esc_html(count($data['employees'])) . '</b></div><div><small>Registros</small><b>' . esc_html((int) $data['entries']) . '</b></div></div><p class="cleg-mobile-muted">Ultimo movimiento: ' . esc_html($data['last'] !== '' ? cleg_admin_date($data['last']) : 'Sin horas') . '</p><a class="cleg-row-action" href="' . esc_url($project_url) . '">Abrir proyecto</a></article>';
             $html .= '<tr><td><a class="cleg-cell-link" href="' . esc_url($project_url) . '"><strong>' . esc_html($project) . '</strong><small>Ultimo movimiento: ' . esc_html($data['last'] !== '' ? cleg_admin_date($data['last']) : 'Sin horas') . '</small></a></td><td><a class="cleg-cell-link" href="' . esc_url($project_url) . '"><strong>' . esc_html(cleg_admin_hours_label((float) $data['hours'])) . '</strong><small>' . esc_html((int) $data['entries']) . ' registros</small></a></td><td><a class="cleg-cell-link" href="' . esc_url($project_url) . '"><strong>' . esc_html(cleg_admin_money($data['cost'])) . '</strong><small>Hora hombre estimada</small></a></td><td><a class="cleg-cell-link" href="' . esc_url($project_url) . '">' . esc_html(count($data['employees'])) . '</a></td><td>' . $status . '</td><td><a class="cleg-row-action" href="' . esc_url($project_url) . '">Abrir proyecto</a></td></tr>';
         }
 
         if (empty($summary)) {
+            $mobile .= '<article class="cleg-mobile-card"><strong>Todavía no hay horas por proyecto.</strong><p>Cuando existan registros cerrados aparecerán aquí.</p></article>';
             $html .= '<tr><td colspan="6">Todavia no hay horas por proyecto.</td></tr>';
         }
 
-        return $html . '</tbody></table></div></div>';
+        return $mobile . '</div>' . $html . '</tbody></table></div></div>';
     }
 }
 
