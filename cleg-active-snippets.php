@@ -27258,6 +27258,16 @@ body .cleg-admin-ui .cleg-calendar-month>span small em{
         margin-bottom:8px!important;
     }
 }
+@media (prefers-reduced-motion: reduce){
+    body .cleg-admin-ui *,
+    body .cleg-admin-ui *::before,
+    body .cleg-admin-ui *::after{
+        animation-duration:.01ms!important;
+        animation-iteration-count:1!important;
+        transition-duration:.01ms!important;
+        scroll-behavior:auto!important;
+    }
+}
 </style>
         <?php
     }
