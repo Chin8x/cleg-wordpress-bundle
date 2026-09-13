@@ -11345,8 +11345,9 @@ if (!function_exists('cleg_admin_inline_time_input')) {
         }
 
         $local_value = $value !== '' ? cleg_admin_datetime_input($value) : '';
+        $aria_label = $label !== '' ? $label : ($field_name === 'manual_clock_in' ? 'Entrada' : 'Salida');
         return ($label !== '' ? '<small class="cleg-inline-edit-label">' . esc_html($label) . '</small>' : '')
-            . '<input class="cleg-inline-edit-field" type="datetime-local" name="' . esc_attr($field_name) . '" value="' . esc_attr($local_value) . '" form="' . esc_attr($form_id) . '">';
+            . '<input class="cleg-inline-edit-field" type="datetime-local" name="' . esc_attr($field_name) . '" aria-label="' . esc_attr($aria_label) . '" value="' . esc_attr($local_value) . '" form="' . esc_attr($form_id) . '">';
     }
 }
 
