@@ -1,1 +1,1 @@
-b2d56e939918861f071006a50bd14d718f52fd2d377e79dda262ed83e0769ba3  cleg-active-snippets.php
+c4f897ed858667645143d7b78f3ba99c0a32f4a5b19c16e0f21c724d3be22a8c  cleg-active-snippets.php
