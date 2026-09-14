@@ -1,2 +1,1 @@
-cleg-active-snippets.php sha256:769338e9fc2bd2e13c95b70f48d8a29146e9e525c9379c63be93f2aa569bdf44
-cleg-active-snippets.php sha256:769338e9fc2bd2e13c95b70f48d8a29146e9e525c9379c63be93f2aa569bdf44
+c73caf3d123ae9a2e124edc00a55adedf9bc54bd95273b4efffc9a1ba9037eb3  cleg-active-snippets.php
