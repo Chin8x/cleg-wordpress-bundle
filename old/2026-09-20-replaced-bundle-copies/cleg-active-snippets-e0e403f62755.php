@@ -31015,22 +31015,6 @@ if (!function_exists('cleg_procurement_airtable_date')) {
     }
 }
 
-if (!function_exists('cleg_procurement_eta_date')) {
-    function cleg_procurement_eta_date($value, $base_timestamp = null) {
-        $value = trim((string) $value);
-        if ($value === '') return '';
-        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $date)) {
-            return checkdate((int) $date[2], (int) $date[3], (int) $date[1]) ? $value : '';
-        }
-        // Calendar lead times only; anchor retries to the operation start date.
-        if (!preg_match('/^([1-9][0-9]{0,2})\s+(d[ií]as?|days?|semanas?|weeks?)$/iu', $value, $lead)) return '';
-        $days = (int) $lead[1] * (preg_match('/^(semana|week)/i', $lead[2]) ? 7 : 1);
-        if ($days > 365) return '';
-        $base_timestamp = $base_timestamp === null ? time() : (int) $base_timestamp;
-        return gmdate('Y-m-d', $base_timestamp + $days * 86400);
-    }
-}
-
 if (!function_exists('cleg_procurement_airtable_datetime')) {
     function cleg_procurement_airtable_datetime($value) {
         $value = trim((string) $value);
@@ -34427,11 +34411,6 @@ if (!function_exists('cleg_procurement_request_decision_context')) {
             $label = $request_status === 'PO Created' ? 'PO creada' : ($request_status === 'Partially Received' ? 'Recibido parcial' : 'En camino');
             $tone = 'ok';
             $action = 'Actualizar recepcion';
-            if (in_array($request_status, array('Ordered', 'PO Created'), true) && trim((string) ($primary_po['tracking'] ?? '')) === '') {
-                $label = 'Ordenada · tracking pendiente';
-                $tone = 'warn';
-                $action = 'Registrar tracking';
-            }
         } elseif ($primary_po) {
             $po_status = strtolower((string) ($primary_po['status'] ?? ''));
             $eta = trim((string) ($primary_po['eta'] ?? ''));
@@ -34445,11 +34424,6 @@ if (!function_exists('cleg_procurement_request_decision_context')) {
                 $label = 'En camino';
                 $tone = 'ok';
                 $action = 'Actualizar recepcion';
-                if (preg_match('/ordered|po created|pending tracking|label created/', $po_status) && trim((string) ($primary_po['tracking'] ?? '')) === '') {
-                    $label = 'Ordenada · tracking pendiente';
-                    $tone = 'warn';
-                    $action = 'Registrar tracking';
-                }
             } elseif ($eta !== '') {
                 $state = 'ordered_eta';
                 $label = 'Ordenado con llegada';
@@ -35960,7 +35934,7 @@ if (!function_exists('cleg_procurement_po_lock')) {
             $identity = array($stable_id, $expected, $payload);
         }
         if ($operation === 'create' && (!is_numeric($payload['amount']) || (float) $payload['amount'] < 0)) wp_die('Importe no valido.', 'Compras', array('response' => 422));
-        if (isset($payload['eta']) && $payload['eta'] !== '' && !cleg_procurement_eta_date($payload['eta'])) wp_die('ETA no valida. Usa YYYY-MM-DD o un plazo como 10 dias / 3 semanas (maximo 365 dias naturales).', 'Compras', array('response' => 422));
+        if (!empty($payload['eta']) && !cleg_procurement_airtable_date($payload['eta'])) wp_die('ETA no valida.', 'Compras', array('response' => 422));
         $tenant = cleg_integrations_current_tenant_id();
         $key = 'cleg_proc_po_v2_' . hash('sha256', wp_json_encode(array($tenant, $operation, $identity)));
         $active_key = 'cleg_proc_po_active_' . hash('sha256', $tenant . ':' . $remote_request);
@@ -36027,21 +36001,21 @@ if (!function_exists('cleg_procurement_po_lock')) {
                 }
             }
             $fields = array('PO Number' => $payload['number'], 'PO Status' => 'Ordered', 'Vendor Name Snapshot' => $payload['vendor'], 'Total' => $payload['amount'], 'Subtotal' => $payload['amount'], 'Procurement Requests' => array($remote_request), 'PO Date' => gmdate('Y-m-d', $entry['started_at']), 'Ordered Date' => gmdate('Y-m-d', $entry['started_at']));
-            if ($payload['eta'] !== '') $fields['Estimated Arrival'] = cleg_procurement_eta_date($payload['eta'], $entry['started_at']);
+            if ($payload['eta'] !== '') $fields['Estimated Arrival'] = cleg_procurement_airtable_date($payload['eta']);
             $created = cleg_procurement_po_remote_step($key, $entry, 'create_po', CLEG_PROC_AIRTABLE_POS_TABLE, 'POST', $fields);
             $stable_id = $created['id'];
         } else {
             if ($operation === 'tracking' || ($operation === 'quick' && !empty($entry['needs_shipment']))) {
                 $shipping = array('Shipment Code' => 'SHIP-' . substr(hash('sha256', $key), 0, 20), 'Tracking Number' => $payload['tracking'], 'Shipment Status' => 'In Transit', 'Procurement POs' => array($stable_id));
-                if ($payload['eta'] !== '') $shipping['Estimated Arrival'] = cleg_procurement_eta_date($payload['eta'], $entry['started_at']);
+                if ($payload['eta'] !== '') $shipping['Estimated Arrival'] = cleg_procurement_airtable_date($payload['eta']);
                 cleg_procurement_po_remote_step($key, $entry, 'tracking', CLEG_PROC_AIRTABLE_SHIPMENTS_TABLE, 'POST', $shipping);
             }
             $fields = array('PO Status' => $operation === 'tracking' ? 'In Transit' : $payload['status']);
-            if ($operation === 'tracking' && $payload['eta'] !== '') $fields['Estimated Arrival'] = cleg_procurement_eta_date($payload['eta'], $entry['started_at']);
+            if ($operation === 'tracking' && $payload['eta'] !== '') $fields['Estimated Arrival'] = cleg_procurement_airtable_date($payload['eta']);
             if ($operation === 'quick') {
                 $fields['Total'] = $payload['amount'];
                 $fields['Subtotal'] = $payload['amount'];
-                $fields['Estimated Arrival'] = cleg_procurement_eta_date($payload['eta'], $entry['started_at']) ?: null;
+                $fields['Estimated Arrival'] = cleg_procurement_airtable_date($payload['eta']) ?: null;
                 if ($payload['ordered_date'] !== '') {
                     $fields['Ordered Date'] = cleg_procurement_airtable_date($payload['ordered_date']);
                     $fields['PO Date'] = $fields['Ordered Date'];
@@ -38389,33 +38363,6 @@ if (!function_exists('cleg_procurement_render_client_update')) {
         $status = cleg_procurement_normalize_status($request['status'] ?? '');
         $related_pos = cleg_procurement_related_pos($data, $request);
         $primary_po = cleg_procurement_primary_po($related_pos);
-        // Public copy is derived from status, never internal free-form notes.
-        $client_actions = array(
-            'Draft' => 'Completar requisición',
-            'Submitted by Vendor' => 'Revisar requisición',
-            'Researching' => 'Preparar cotización',
-            'Needs Luis Approval' => 'Confirmar aprobación',
-            'Approved by Luis' => 'Solicitar cotización',
-            'RFQ Sent' => 'Esperar cotización',
-            'Quotes Received' => 'Evaluar cotización',
-            'Selected / Ready for PO' => 'Confirmar orden de compra',
-            'PO Created' => 'Confirmar despacho y tracking',
-            'Ordered' => 'Confirmar despacho y tracking',
-            'In Transit' => 'Confirmar llegada',
-            'Partially Received' => 'Completar entrega pendiente',
-            'Received' => 'Confirmar recepción y cierre',
-            'Closed' => 'Sin acciones pendientes',
-            'Cancelled' => 'Sin acciones pendientes',
-        );
-        $client_next_action = $client_actions[$status] ?? 'Confirmar estado de la requisición';
-        if (in_array($status, array('Ordered', 'PO Created'), true) && trim((string) ($primary_po['tracking'] ?? '')) !== '') {
-            $client_next_action = 'Confirmar llegada';
-        }
-        $client_eta = trim((string) ($primary_po['eta'] ?? ''));
-        if ($client_eta === '') {
-            $client_eta = 'Pendiente';
-        }
-
         $timeline = array();
         foreach ((array) ($data['audit'] ?? array()) as $event) {
             if (is_array($event) && ($event['ref'] ?? '') === ($request['id'] ?? '')) {
@@ -38430,8 +38377,8 @@ if (!function_exists('cleg_procurement_render_client_update')) {
             <div class="cleg-proc-client-update-head"><small>UPDATE PARA CLIENTE</small><h2><?php echo esc_html($request['item'] ?? 'Compra'); ?></h2><p><?php echo esc_html($request['project'] ?? ''); ?> · <?php echo esc_html($request['id'] ?? ''); ?></p></div>
             <div class="cleg-proc-client-update-grid">
                 <div><small>ESTADO</small><strong><?php echo esc_html($status_map[$status] ?? $status); ?></strong></div>
-                <div><small>PROXIMA ACCION</small><strong><?php echo esc_html($client_next_action); ?></strong></div>
-                <div><small>ETA / ENTREGA</small><strong><?php echo esc_html($client_eta); ?></strong></div>
+                <div><small>PROXIMA ACCION</small><strong><?php echo esc_html('Seguimiento del estado y entrega'); ?></strong></div>
+                <div><small>ETA / ENTREGA</small><strong><?php echo esc_html($primary_po['eta'] ?? ($request['required_delivery_date'] ?? 'Pendiente')); ?></strong></div>
                 <div><small>RESPONSABLE</small><strong><?php echo esc_html('Equipo de Compras'); ?></strong></div>
             </div>
             <p class="cleg-proc-muted">Consulta con Compras para confirmar cambios en la entrega.</p>
@@ -39447,7 +39394,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                                         <input type="hidden" name="expected_version" value="<?php echo esc_attr((string) ($po['expected_version'] ?? '')); ?>">
                                         <?php wp_nonce_field('cleg_procurement_update_po_tracking'); ?>
                                         <label>Tracking number<input type="text" name="tracking" value="<?php echo esc_attr((string) ($po['tracking'] ?? '')); ?>" placeholder="Tracking number" required></label>
-                                        <label>ETA / llegada<input type="text" name="eta" value="<?php echo esc_attr((string) ($po['eta'] ?? '')); ?>" placeholder="YYYY-MM-DD o 3 semanas" maxlength="32"><small>Opcional: fecha ISO o plazo de hasta 365 días naturales desde el registro (ej. 10 días).</small></label>
+                                        <label>ETA / llegada<input type="text" name="eta" value="<?php echo esc_attr((string) ($po['eta'] ?? '')); ?>" placeholder="ETA opcional"></label>
                                         <button class="cleg-proc-btn is-secondary" type="submit">Guardar tracking</button>
                                     </form>
                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
@@ -39488,7 +39435,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                     <label>PO QuickBooks<input type="text" name="quickbooks_po" placeholder="Ej. QB-PO-12345" required></label>
                     <label>Proveedor seleccionado<input type="text" name="vendor" value="<?php echo esc_attr((string) ($selected_quote['vendor'] ?? '')); ?>" placeholder="Proveedor seleccionado" required></label>
                     <label>Monto PO<input type="number" step="0.01" name="amount" value="<?php echo esc_attr((string) ($selected_quote['amount'] ?? '')); ?>" placeholder="0.00" required></label>
-                    <label>ETA / llegada<input type="text" name="eta" value="<?php echo esc_attr($selected_quote_eta); ?>" placeholder="YYYY-MM-DD o 3 semanas" maxlength="32"><small>Fecha ISO o plazo: 10 días / 3 semanas; máximo 365 días naturales desde el registro. Se guarda como fecha estimada.</small></label>
+                    <label>ETA / llegada<input type="text" name="eta" value="<?php echo esc_attr($selected_quote_eta); ?>" placeholder="Fecha o lead time"></label>
                     <button class="cleg-proc-btn" type="submit">Asignar PO QuickBooks</button>
                 </form></details>
                 <?php endif; ?>
@@ -40444,7 +40391,7 @@ body .cleg-procurement .cleg-proc-pilot-facts>div{padding:12px;background:#f5f7f
 body .cleg-procurement .cleg-proc-pilot-facts dt{font-size:14px;color:#475462}
 body .cleg-procurement .cleg-proc-pilot-facts dd{margin:4px 0 0;font-weight:700}
 body .cleg-procurement :is(.cleg-proc-primary-nav,.cleg-proc-detail-tabs){flex-wrap:wrap!important;overflow:visible!important}
-@media(max-width:1000px){body .cleg-procurement .cleg-proc-request-summary{grid-template-columns:minmax(0,1fr)!important}body .cleg-procurement .cleg-proc-request-main{grid-column:1/-1!important}body .cleg-procurement .cleg-proc-summary-open{grid-column:1/-1!important}}
+@media(max-width:1000px){body .cleg-procurement .cleg-proc-request-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important}body .cleg-procurement .cleg-proc-request-main{grid-column:1/-1!important}body .cleg-procurement .cleg-proc-summary-open{grid-column:1/-1!important}}
 @media(max-width:720px){body .cleg-procurement :is(.cleg-proc-app,.cleg-proc-main,.cleg-proc-workspace,.cleg-proc-panel,.cleg-proc-panel-body){width:100%!important;min-width:0!important;max-width:100%!important}body .cleg-procurement :is(.cleg-proc-po form,.cleg-proc-pilot-facts,.cleg-proc-client-update-grid){display:grid!important;grid-template-columns:minmax(0,1fr)!important}body .cleg-procurement :is(.cleg-proc-primary-bar,.cleg-proc-panel-head){flex-wrap:wrap!important}body .cleg-procurement .cleg-proc-po{overflow-wrap:anywhere}}
         </style>
         <script id="cleg-procurement-upload-preview">

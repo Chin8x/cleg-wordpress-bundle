@@ -31015,22 +31015,6 @@ if (!function_exists('cleg_procurement_airtable_date')) {
     }
 }
 
-if (!function_exists('cleg_procurement_eta_date')) {
-    function cleg_procurement_eta_date($value, $base_timestamp = null) {
-        $value = trim((string) $value);
-        if ($value === '') return '';
-        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $date)) {
-            return checkdate((int) $date[2], (int) $date[3], (int) $date[1]) ? $value : '';
-        }
-        // Calendar lead times only; anchor retries to the operation start date.
-        if (!preg_match('/^([1-9][0-9]{0,2})\s+(d[ií]as?|days?|semanas?|weeks?)$/iu', $value, $lead)) return '';
-        $days = (int) $lead[1] * (preg_match('/^(semana|week)/i', $lead[2]) ? 7 : 1);
-        if ($days > 365) return '';
-        $base_timestamp = $base_timestamp === null ? time() : (int) $base_timestamp;
-        return gmdate('Y-m-d', $base_timestamp + $days * 86400);
-    }
-}
-
 if (!function_exists('cleg_procurement_airtable_datetime')) {
     function cleg_procurement_airtable_datetime($value) {
         $value = trim((string) $value);
@@ -35960,7 +35944,7 @@ if (!function_exists('cleg_procurement_po_lock')) {
             $identity = array($stable_id, $expected, $payload);
         }
         if ($operation === 'create' && (!is_numeric($payload['amount']) || (float) $payload['amount'] < 0)) wp_die('Importe no valido.', 'Compras', array('response' => 422));
-        if (isset($payload['eta']) && $payload['eta'] !== '' && !cleg_procurement_eta_date($payload['eta'])) wp_die('ETA no valida. Usa YYYY-MM-DD o un plazo como 10 dias / 3 semanas (maximo 365 dias naturales).', 'Compras', array('response' => 422));
+        if (!empty($payload['eta']) && !cleg_procurement_airtable_date($payload['eta'])) wp_die('ETA no valida.', 'Compras', array('response' => 422));
         $tenant = cleg_integrations_current_tenant_id();
         $key = 'cleg_proc_po_v2_' . hash('sha256', wp_json_encode(array($tenant, $operation, $identity)));
         $active_key = 'cleg_proc_po_active_' . hash('sha256', $tenant . ':' . $remote_request);
@@ -36027,21 +36011,21 @@ if (!function_exists('cleg_procurement_po_lock')) {
                 }
             }
             $fields = array('PO Number' => $payload['number'], 'PO Status' => 'Ordered', 'Vendor Name Snapshot' => $payload['vendor'], 'Total' => $payload['amount'], 'Subtotal' => $payload['amount'], 'Procurement Requests' => array($remote_request), 'PO Date' => gmdate('Y-m-d', $entry['started_at']), 'Ordered Date' => gmdate('Y-m-d', $entry['started_at']));
-            if ($payload['eta'] !== '') $fields['Estimated Arrival'] = cleg_procurement_eta_date($payload['eta'], $entry['started_at']);
+            if ($payload['eta'] !== '') $fields['Estimated Arrival'] = cleg_procurement_airtable_date($payload['eta']);
             $created = cleg_procurement_po_remote_step($key, $entry, 'create_po', CLEG_PROC_AIRTABLE_POS_TABLE, 'POST', $fields);
             $stable_id = $created['id'];
         } else {
             if ($operation === 'tracking' || ($operation === 'quick' && !empty($entry['needs_shipment']))) {
                 $shipping = array('Shipment Code' => 'SHIP-' . substr(hash('sha256', $key), 0, 20), 'Tracking Number' => $payload['tracking'], 'Shipment Status' => 'In Transit', 'Procurement POs' => array($stable_id));
-                if ($payload['eta'] !== '') $shipping['Estimated Arrival'] = cleg_procurement_eta_date($payload['eta'], $entry['started_at']);
+                if ($payload['eta'] !== '') $shipping['Estimated Arrival'] = cleg_procurement_airtable_date($payload['eta']);
                 cleg_procurement_po_remote_step($key, $entry, 'tracking', CLEG_PROC_AIRTABLE_SHIPMENTS_TABLE, 'POST', $shipping);
             }
             $fields = array('PO Status' => $operation === 'tracking' ? 'In Transit' : $payload['status']);
-            if ($operation === 'tracking' && $payload['eta'] !== '') $fields['Estimated Arrival'] = cleg_procurement_eta_date($payload['eta'], $entry['started_at']);
+            if ($operation === 'tracking' && $payload['eta'] !== '') $fields['Estimated Arrival'] = cleg_procurement_airtable_date($payload['eta']);
             if ($operation === 'quick') {
                 $fields['Total'] = $payload['amount'];
                 $fields['Subtotal'] = $payload['amount'];
-                $fields['Estimated Arrival'] = cleg_procurement_eta_date($payload['eta'], $entry['started_at']) ?: null;
+                $fields['Estimated Arrival'] = cleg_procurement_airtable_date($payload['eta']) ?: null;
                 if ($payload['ordered_date'] !== '') {
                     $fields['Ordered Date'] = cleg_procurement_airtable_date($payload['ordered_date']);
                     $fields['PO Date'] = $fields['Ordered Date'];
@@ -39447,7 +39431,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                                         <input type="hidden" name="expected_version" value="<?php echo esc_attr((string) ($po['expected_version'] ?? '')); ?>">
                                         <?php wp_nonce_field('cleg_procurement_update_po_tracking'); ?>
                                         <label>Tracking number<input type="text" name="tracking" value="<?php echo esc_attr((string) ($po['tracking'] ?? '')); ?>" placeholder="Tracking number" required></label>
-                                        <label>ETA / llegada<input type="text" name="eta" value="<?php echo esc_attr((string) ($po['eta'] ?? '')); ?>" placeholder="YYYY-MM-DD o 3 semanas" maxlength="32"><small>Opcional: fecha ISO o plazo de hasta 365 días naturales desde el registro (ej. 10 días).</small></label>
+                                        <label>ETA / llegada<input type="text" name="eta" value="<?php echo esc_attr((string) ($po['eta'] ?? '')); ?>" placeholder="ETA opcional"></label>
                                         <button class="cleg-proc-btn is-secondary" type="submit">Guardar tracking</button>
                                     </form>
                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
@@ -39488,7 +39472,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                     <label>PO QuickBooks<input type="text" name="quickbooks_po" placeholder="Ej. QB-PO-12345" required></label>
                     <label>Proveedor seleccionado<input type="text" name="vendor" value="<?php echo esc_attr((string) ($selected_quote['vendor'] ?? '')); ?>" placeholder="Proveedor seleccionado" required></label>
                     <label>Monto PO<input type="number" step="0.01" name="amount" value="<?php echo esc_attr((string) ($selected_quote['amount'] ?? '')); ?>" placeholder="0.00" required></label>
-                    <label>ETA / llegada<input type="text" name="eta" value="<?php echo esc_attr($selected_quote_eta); ?>" placeholder="YYYY-MM-DD o 3 semanas" maxlength="32"><small>Fecha ISO o plazo: 10 días / 3 semanas; máximo 365 días naturales desde el registro. Se guarda como fecha estimada.</small></label>
+                    <label>ETA / llegada<input type="text" name="eta" value="<?php echo esc_attr($selected_quote_eta); ?>" placeholder="Fecha o lead time"></label>
                     <button class="cleg-proc-btn" type="submit">Asignar PO QuickBooks</button>
                 </form></details>
                 <?php endif; ?>
