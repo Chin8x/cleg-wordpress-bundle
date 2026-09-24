@@ -38420,7 +38420,6 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                     <nav class="cleg-proc-nav">
                         <a class="<?php echo esc_attr($view === 'pendientes' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'all'), $base_url)); ?>">Bandeja de entrada</a>
             <a class="<?php echo esc_attr($view === 'solicitar' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg('proc_view', 'solicitar', $base_url)); ?>">Nueva solicitud</a>
-            <?php if ($detail_url && $view === 'detalle') : ?><a href="<?php echo esc_url(add_query_arg('proc_view', 'cliente', $detail_url)); ?>">Update cliente</a><?php endif; ?>
             <a href="<?php echo esc_url(home_url('/admin-recibos/')); ?>">Recibos</a>
                         <?php if ($show_history) : ?>
                             <a class="<?php echo esc_attr($view === 'historial' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg('proc_view', 'historial', $base_url)); ?>">Historico</a>
@@ -38714,7 +38713,7 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                     <?php $decision_context = cleg_procurement_request_decision_context($request, $data); ?>
                                     <?php $relevant_date = cleg_procurement_relevant_date_summary($request, $data); ?>
                                     <?php $requested_date = cleg_procurement_format_board_date($request['created_at'] ?? ($request['quote_due_date'] ?? '')); ?>
-                                    <details class="cleg-proc-request-row <?php echo esc_attr($selected_id === $request['id'] ? 'is-active' : ''); ?>">
+                                    <details class="cleg-proc-request-row cleg-proc-queue-<?php echo esc_attr(in_array($decision_context['state'], array('in_transit', 'ordered', 'received'), true) ? 'active-purchase' : 'quote'); ?> <?php echo esc_attr($selected_id === $request['id'] ? 'is-active' : ''); ?>">
                                         <summary style="<?php echo esc_attr('--cleg-proc-board-cols:' . $board_grid_template); ?>">
                                             <?php if (in_array('priority', $board_columns, true)) : ?>
                                                 <span class="cleg-proc-board-priority"><b><?php echo esc_html($request['priority']); ?></b><small>Prioridad</small></span>
@@ -38813,7 +38812,7 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                                 </form>
                                                 <?php echo cleg_procurement_render_quick_basics_form($request, $data, $stage); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                                             <?php endif; ?>
-                                            <a class="cleg-proc-open" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request['id'])), $base_url)); ?>">Gestionar</a>
+                                            <a class="cleg-proc-open" aria-label="Abrir y continuar: <?php echo esc_attr($request['item']); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request['id'])), $base_url)); ?>">Abrir y continuar</a>
                                         </div>
                                     </details>
                                 <?php endforeach; ?>
@@ -39547,6 +39546,10 @@ if (!function_exists('cleg_procurement_styles')) {
             .cleg-proc-view-canceladas .cleg-proc-filterbar{grid-template-columns:minmax(220px,1.4fr) minmax(150px,.7fr) auto auto}
             .cleg-proc-list{display:grid;max-height:760px;overflow:auto}
             .cleg-proc-request-row{display:block;border-bottom:1px solid var(--p-line);color:var(--p-ink);background:#fff;transition:background .16s ease}
+            .cleg-proc-request-row.cleg-proc-queue-quote{border-left:4px solid #1a6cff}
+            .cleg-proc-request-row.cleg-proc-queue-active-purchase{border-left:4px solid #16856b}
+            .cleg-proc-request-row.cleg-proc-queue-quote .cleg-proc-next-action:before{content:"Cotizacion";display:block;color:#1a6cff;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+            .cleg-proc-request-row.cleg-proc-queue-active-purchase .cleg-proc-next-action:before{content:"Compra activa";display:block;color:#16856b;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
             .cleg-proc-request-row:hover,.cleg-proc-request-row.is-active,.cleg-proc-request-row[open]{background:#fafbfc}
             .cleg-proc-request-row summary{cursor:pointer;display:grid;grid-template-columns:minmax(260px,1fr) minmax(150px,180px) minmax(130px,170px) 48px;gap:12px;align-items:center;padding:14px 18px;list-style:none;min-height:76px}
             .cleg-proc-request-row summary::-webkit-details-marker{display:none}
@@ -40203,6 +40206,24 @@ if (!function_exists('cleg_procurement_styles')) {
             @media(max-width:720px){body .cleg-procurement .cleg-proc-attach-chip button,body .cleg-procurement .cleg-proc-mini-danger,body .cleg-procurement .cleg-proc-audio-remove{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;display:inline-grid!important;place-items:center!important;padding:0!important}body .cleg-procurement .cleg-proc-audio-remove{top:4px!important;right:4px!important}.cleg-procurement .cleg-proc-attach-chip{grid-template-columns:30px minmax(0,1fr) 44px!important;min-height:48px!important}}
             @media(max-width:360px){body .cleg-procurement .cleg-proc-main{padding-left:6px!important;padding-right:6px!important}body .cleg-procurement .cleg-proc-panel-head{padding-left:8px!important;padding-right:8px!important}body .cleg-procurement .cleg-proc-mobile-menu{gap:5px!important;overflow-x:auto!important}body .cleg-procurement .cleg-proc-mobile-menu a{min-height:44px!important;padding:9px 10px!important;font-size:12px!important}body .cleg-procurement .cleg-proc-btn,body .cleg-procurement .cleg-proc-open{min-height:44px!important;max-width:100%!important;white-space:normal!important}body .cleg-procurement .cleg-proc-request-row summary{grid-template-columns:minmax(0,1fr) auto!important;gap:6px!important;padding:10px!important}body .cleg-procurement .cleg-proc-request-row summary .cleg-proc-request-meta{font-size:11px!important}body .cleg-procurement .cleg-proc-decision-snapshot{grid-template-columns:1fr!important}body .cleg-procurement .cleg-proc-quote-matrix .cleg-proc-quote-card dl{grid-template-columns:1fr!important}body .cleg-procurement input,body .cleg-procurement select,body .cleg-procurement textarea{max-width:100%!important}}
             @media(prefers-reduced-motion:reduce){body .cleg-procurement *,body .cleg-procurement *::before,body .cleg-procurement *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+            /* Responsive procurement contract: bounded shell, compact queues, one clear row CTA. */
+            body .cleg-procurement,
+            body .cleg-procurement .cleg-proc-app,
+            body .cleg-procurement .cleg-proc-main{min-width:0!important;max-width:100%!important;overflow-x:hidden!important}
+            body .cleg-procurement .cleg-proc-request-row,
+            body .cleg-procurement .cleg-proc-request-row summary,
+            body .cleg-procurement .cleg-proc-request-more{min-width:0!important;max-width:100%!important}
+            body .cleg-procurement .cleg-proc-request-row summary>*{min-width:0!important;overflow-wrap:anywhere!important}
+            body .cleg-procurement .cleg-proc-request-row .cleg-proc-open{width:100%!important;min-width:0!important;white-space:normal!important}
+            body .cleg-procurement .cleg-proc-board{border-top:4px solid var(--p-blue)!important}
+            body .cleg-procurement .cleg-proc-view-pendientes .cleg-proc-board{border-top-color:#c75000!important}
+            body .cleg-procurement .cleg-proc-control-strip,
+            body .cleg-procurement .cleg-proc-view-switcher,
+            body .cleg-procurement .cleg-proc-quick-filters{min-width:0!important;max-width:100%!important}
+            @media(min-width:1281px){body .cleg-procurement .cleg-proc-main{padding-left:clamp(24px,3vw,48px)!important;padding-right:clamp(24px,3vw,48px)!important}body .cleg-procurement .cleg-proc-board{max-width:1180px!important}}
+            @media(max-width:1024px){body .cleg-procurement .cleg-proc-main{padding:16px 20px 28px!important}body .cleg-procurement .cleg-proc-sidebar{padding:16px!important}body .cleg-procurement .cleg-proc-workspace{gap:12px!important}body .cleg-procurement .cleg-proc-request-row summary{grid-template-columns:1fr!important;gap:8px!important}body .cleg-procurement .cleg-proc-request-more{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+            @media(max-width:390px){body .cleg-procurement .cleg-proc-main{padding:0 8px 20px!important}body .cleg-procurement .cleg-proc-panel{border-radius:8px!important}body .cleg-procurement .cleg-proc-panel-body{padding:10px!important}body .cleg-procurement .cleg-proc-request-more{grid-template-columns:1fr!important}body .cleg-procurement .cleg-proc-request-row summary{padding:9px!important}body .cleg-procurement .cleg-proc-request-row .cleg-proc-open{grid-column:1/-1!important}body .cleg-procurement .cleg-proc-mobile-menu a{max-width:calc(100vw - 32px)!important;overflow:hidden!important;text-overflow:ellipsis!important}}
+            @media(max-width:360px){body .cleg-procurement .cleg-proc-main{padding-left:4px!important;padding-right:4px!important}body .cleg-procurement .cleg-proc-panel-head{padding-left:8px!important;padding-right:8px!important}body .cleg-procurement .cleg-proc-request-row summary{gap:6px!important}.cleg-procurement .cleg-proc-btn,.cleg-procurement .cleg-proc-open{font-size:13px!important;padding-inline:10px!important}}
             /* End CLEG procurement decision workspace v1.71 */
         </style>';
     }
