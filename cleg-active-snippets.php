@@ -33053,7 +33053,7 @@ if (!function_exists('cleg_procurement_update_airtable_request_info')) {
             ),
         ));
 
-        if (is_wp_error($request_response)) {
+        if (is_wp_error($request_response) || (int) wp_remote_retrieve_response_code($request_response) < 200 || (int) wp_remote_retrieve_response_code($request_response) >= 300) {
             return false;
         }
 
@@ -33070,7 +33070,9 @@ if (!function_exists('cleg_procurement_update_airtable_request_info')) {
                 ),
             ));
 
-            return !is_wp_error($item_response);
+            return !is_wp_error($item_response)
+                && (int) wp_remote_retrieve_response_code($item_response) >= 200
+                && (int) wp_remote_retrieve_response_code($item_response) < 300;
         }
 
         $item_fields['Procurement Requests'] = array($request['airtable_id']);
@@ -33081,7 +33083,9 @@ if (!function_exists('cleg_procurement_update_airtable_request_info')) {
             ),
         ));
 
-        return !is_wp_error($item_response);
+        return !is_wp_error($item_response)
+            && (int) wp_remote_retrieve_response_code($item_response) >= 200
+            && (int) wp_remote_retrieve_response_code($item_response) < 300;
     }
 }
 
@@ -33561,7 +33565,9 @@ if (!function_exists('cleg_procurement_update_airtable_po_details')) {
             ),
         ));
 
-        return !is_wp_error($response) && is_array($response);
+        return !is_wp_error($response)
+            && (int) wp_remote_retrieve_response_code($response) >= 200
+            && (int) wp_remote_retrieve_response_code($response) < 300;
     }
 }
 
@@ -38975,7 +38981,6 @@ if (!function_exists('cleg_procurement_render_detail')) {
                 <?php endif; ?>
             </nav>
             <div class="cleg-proc-detail-actions" aria-label="Ficha de requisicion">
-                <button class="cleg-proc-btn is-secondary" type="button" data-cleg-view-request>Ver ficha</button>
                 <button class="cleg-proc-btn is-ghost" type="button" data-cleg-print-request>Imprimir ficha</button>
                 <button class="cleg-proc-btn is-ghost" type="button" data-cleg-download-request>Descargar ficha</button>
             </div>
