@@ -39429,7 +39429,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
             <details class="cleg-proc-subsection" id="ordenes">
                 <summary>Ordenes, llegada y recepcion <span><?php echo esc_html((string) count($related_pos)); ?> PO</span></summary>
                 <?php if ($po_duplicate_total > 0) : ?>
-                    <div class="cleg-proc-notice" role="status">Se detectaron <?php echo esc_html((string) $po_duplicate_total); ?> copia(s) de PO. Se muestra una sola orden operativa y las copias se conservan para auditoria.</div>
+                    <div class="cleg-proc-notice" role="status" aria-live="polite">Se detectaron <?php echo esc_html((string) $po_duplicate_total); ?> copia(s) de PO. Se muestra una sola orden operativa y las copias se conservan para auditoria.</div>
                 <?php endif; ?>
                 <?php if ($related_pos) : ?>
                     <div class="cleg-proc-po-list">
@@ -39566,6 +39566,9 @@ if (!function_exists('cleg_procurement_styles')) {
             .cleg-proc-btn.is-ghost,.cleg-proc-btn.is-secondary,.cleg-proc-open{background:#fff;border-color:var(--p-line);color:var(--p-ink);box-shadow:none}
             .cleg-proc-btn.is-danger{background:var(--p-red);border-color:var(--p-red);color:#fff;box-shadow:0 14px 26px rgba(201,61,61,.16)}
             .cleg-proc-notice{background:var(--p-green-soft);border:1px solid rgba(25,135,84,.22);color:var(--p-green);border-radius:var(--p-radius);padding:12px 14px;margin:0 0 14px;font-weight:800}
+            .cleg-proc-notice[role="alert"]{background:var(--p-red-soft);border-color:rgba(201,61,61,.24);color:var(--p-red)}
+            .cleg-proc-notice[aria-busy="true"],.cleg-proc-upload-status[aria-busy="true"],.cleg-proc-auto-save[aria-busy="true"]{color:var(--p-blue);background:var(--p-blue-soft);border-color:rgba(26,108,255,.22)}
+            .cleg-proc-notice[aria-busy="true"]::before,.cleg-proc-upload-status[aria-busy="true"]::before,.cleg-proc-auto-save[aria-busy="true"]::before{content:"";display:inline-block;width:12px;height:12px;margin-right:7px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:cleg-proc-spin .8s linear infinite}
             .cleg-proc-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
             .cleg-proc-metrics article{background:var(--p-panel);border:1px solid var(--p-line);border-radius:var(--p-radius);padding:12px 14px 14px;min-height:86px}
             .cleg-proc-metrics span,.cleg-proc-metrics strong{display:block}
@@ -39781,6 +39784,10 @@ if (!function_exists('cleg_procurement_styles')) {
             .cleg-proc-empty{min-height:290px;display:grid;place-content:center;text-align:center;color:var(--p-muted);padding:32px;background:#fff}
             .cleg-proc-empty strong,.cleg-proc-empty h3{color:var(--p-ink);font-size:18px;margin:0 0 6px}
             .cleg-proc-empty p{margin:0;color:var(--p-muted)}
+            .cleg-proc-empty[role="alert"]{background:var(--p-red-soft);color:var(--p-red)}
+            .cleg-proc-empty[aria-busy="true"]{background:linear-gradient(90deg,#fff 25%,#f4f7fb 50%,#fff 75%);background-size:200% 100%;animation:cleg-proc-shimmer 1.4s ease-in-out infinite}
+            @keyframes cleg-proc-spin{to{transform:rotate(360deg)}}
+            @keyframes cleg-proc-shimmer{to{background-position:-200% 0}}
             .cleg-proc-detail h3{margin:0 0 4px;font-size:22px;color:var(--p-ink);line-height:1.15}
             .cleg-proc-mobile-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0 2px}
             .cleg-proc-facts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
@@ -44244,8 +44251,6 @@ add_action('init', 'cleg_sync_mirror_update_panel_page', 45);
 /**
  * END modulos/90-sync-qa/25-cleg-sync-status-wpwriter-mirror.php
  */
-
-
 
 
 
