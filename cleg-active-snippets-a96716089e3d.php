@@ -38714,7 +38714,7 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                 <nav class="cleg-proc-view-switcher">
                                     <a class="<?php echo esc_attr($view === 'pendientes' && $stage !== 'cancelled' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'all'), $base_url)); ?>">Bandeja</a>
                                     <a class="<?php echo esc_attr($filters['order_state'] === 'ready_decision' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'pre_po', 'proc_order_state' => 'ready_decision'), $base_url)); ?>">Cotizaciones</a>
-                                    <a class="<?php echo esc_attr($stage === 'po' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'po'), $base_url)); ?>">PO / Tracking</a>
+                                    <a class="<?php echo esc_attr($stage === 'po' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'po'), $base_url)); ?>">Compras activas</a>
                                     <?php if ($show_history) : ?>
                                         <a class="<?php echo esc_attr($stage === 'cancelled' || $view === 'historial' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg('proc_view', 'historial', $base_url)); ?>">Archivo</a>
                                     <?php endif; ?>
@@ -38801,7 +38801,7 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                     <?php $decision_context = cleg_procurement_request_decision_context($request, $data); ?>
                                     <?php $relevant_date = cleg_procurement_relevant_date_summary($request, $data); ?>
                                     <?php $requested_date = cleg_procurement_format_board_date($request['created_at'] ?? ($request['quote_due_date'] ?? '')); ?>
-                                    <article class="cleg-proc-request-row <?php echo esc_attr($selected_id === $request['id'] ? 'is-active' : ''); ?>">
+                                    <article class="cleg-proc-request-row <?php echo esc_attr(($stage === 'po' ? 'is-active-purchase' : 'is-quote-queue') . ($selected_id === $request['id'] ? ' is-active' : '')); ?>" data-proc-queue="<?php echo esc_attr($stage === 'po' ? 'active-purchases' : 'quotes'); ?>">
                                         <div class="cleg-proc-request-summary" style="<?php echo esc_attr('--cleg-proc-board-cols:' . $board_grid_template); ?>">
                                             <?php if (in_array('priority', $board_columns, true)) : ?>
                                                 <span class="cleg-proc-board-priority"><b><?php echo esc_html($request['priority']); ?></b><small>Prioridad</small></span>
@@ -40423,6 +40423,9 @@ body .cleg-procurement .cleg-proc-board-head{display:none!important}body .cleg-p
             body .cleg-procurement .cleg-proc-request-row summary{grid-template-columns:repeat(6,minmax(0,1fr))!important}
             @media(max-width:1280px){body .cleg-procurement .cleg-proc-board-head{display:none!important}body .cleg-procurement .cleg-proc-request-row summary{grid-template-columns:1fr!important}}
             @media(max-width:720px){body .cleg-procurement .cleg-proc-view-switcher,body .cleg-procurement .cleg-proc-quick-filters,body .cleg-procurement .cleg-proc-detail-tabs,body .cleg-procurement .cleg-proc-detail-actions{overflow:visible!important;flex-wrap:wrap!important}}
+            body .cleg-procurement .cleg-proc-request-row[data-proc-queue="quotes"]{border-inline-start:4px solid #c75000!important}
+            body .cleg-procurement .cleg-proc-request-row[data-proc-queue="active-purchases"]{border-inline-start:4px solid #2369a5!important}
+            @media(max-width:390px){body .cleg-procurement .cleg-proc-request-summary{min-width:0!important;overflow-wrap:anywhere!important}body .cleg-procurement .cleg-proc-board-action{grid-column:1/-1!important}}
             /* End CLEG procurement decision workspace v1.71 */
         </style>';
     }
@@ -44251,9 +44254,6 @@ add_action('init', 'cleg_sync_mirror_update_panel_page', 45);
 /**
  * END modulos/90-sync-qa/25-cleg-sync-status-wpwriter-mirror.php
  */
-
-
-
 
 
 
