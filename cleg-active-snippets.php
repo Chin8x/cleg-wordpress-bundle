@@ -32011,10 +32011,12 @@ if (!function_exists('cleg_procurement_save_data')) {
                 }
             }
             $overlay['source'] = 'wordpress_overlay';
-            return (bool) update_option('cleg_procurement_data_v1', $overlay, false);
+            $updated = update_option('cleg_procurement_data_v1', $overlay, false);
+            return (bool) ($updated || get_option('cleg_procurement_data_v1', null) === $overlay);
         }
 
-        return (bool) update_option('cleg_procurement_data_v1', $data, false);
+        $updated = update_option('cleg_procurement_data_v1', $data, false);
+        return (bool) ($updated || get_option('cleg_procurement_data_v1', null) === $data);
     }
 }
 
@@ -36342,7 +36344,9 @@ if (!function_exists('cleg_procurement_render_notice')) {
         if ($notice === 'quick_updated_error' && !empty($_GET['proc_notice_detail'])) {
             $message .= ' Detalle: ' . sanitize_text_field(wp_unslash($_GET['proc_notice_detail']));
         }
-        return '<div class="cleg-proc-notice' . esc_attr($notice_class) . '" role="' . ($notice_class === ' is-bad' ? 'alert' : 'status') . '">' . esc_html($message) . '</div>';
+        $notice_role = $notice_class === ' is-bad' ? 'alert' : 'status';
+        $notice_live = $notice_class === ' is-bad' ? 'assertive' : 'polite';
+        return '<div class="cleg-proc-notice' . esc_attr($notice_class) . '" role="' . esc_attr($notice_role) . '" aria-live="' . esc_attr($notice_live) . '">' . esc_html($message) . '</div>';
     }
 }
 
@@ -39208,13 +39212,8 @@ if (!function_exists('cleg_procurement_render_detail')) {
             </details>
             <?php endif; ?>
 
-            <?php if ($has_po) : ?>
-            <details class="cleg-proc-subsection cleg-proc-collapsed-quotes" id="cotizaciones">
+            <details class="cleg-proc-subsection <?php echo esc_attr($has_po ? 'cleg-proc-collapsed-quotes' : ''); ?>" id="cotizaciones">
                 <summary>Cotizaciones <span><?php echo esc_html((string) $decision_context['quote_count']); ?> activas</span></summary>
-            <?php else : ?>
-            <details class="cleg-proc-subsection" id="cotizaciones">
-                <summary>Cotizaciones <span><?php echo esc_html((string) $decision_context['quote_count']); ?> activas</span></summary>
-            <?php endif; ?>
                 <div class="cleg-proc-section-title">
                     <div>
                         <h4>Cotizaciones y decision</h4>
@@ -39223,11 +39222,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                 </div>
                 <?php echo cleg_procurement_render_quote_intake_form($request, $delivery_fit_options, $can_manage_request); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                 <?php echo cleg_procurement_render_quote_compare($request, $quotes, $quote_status_options, $delivery_fit_options, $can_manage_request); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-            <?php if ($has_po) : ?>
             </details>
-            <?php else : ?>
-            </details>
-            <?php endif; ?>
 
             <details class="cleg-proc-subsection" id="ordenes">
                 <summary>Ordenes, llegada y recepcion <span><?php echo esc_html((string) count($related_pos)); ?> PO</span></summary>
