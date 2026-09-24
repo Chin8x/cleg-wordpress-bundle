@@ -38792,7 +38792,6 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                                 <?php endif; ?>
                                             </section>
                                             <div class="cleg-proc-row-ficha-actions" aria-label="Ficha de requisicion">
-                                                <button class="cleg-proc-btn is-secondary" type="button" data-cleg-view-request>Ver ficha</button>
                                                 <button class="cleg-proc-btn is-ghost" type="button" data-cleg-print-request>Imprimir</button>
                                                 <button class="cleg-proc-btn is-ghost" type="button" data-cleg-download-request>Descargar</button>
                                             </div>
@@ -40587,12 +40586,6 @@ if (!function_exists('cleg_procurement_upload_preview_script')) {
                             link.remove();
                         }, index * 180);
                     });
-                    return;
-                }
-                var viewRequest = event.target.closest("[data-cleg-view-request]");
-                if (viewRequest) {
-                    event.preventDefault();
-                    handlePrintSheet(viewRequest, "view");
                     return;
                 }
                 var printRequest = event.target.closest("[data-cleg-print-request]");
