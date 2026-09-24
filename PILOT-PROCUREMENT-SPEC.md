@@ -23,3 +23,10 @@ La bandeja muestra artículo, proyecto, estado, fecha/ETA, prioridad, próxima a
 ## Ciclo
 
 UX/UI → aprobación de esta especificación → frontend/backend → QA → auditoría → correcciones → QA → verificación del Supervisor. No se despliega a producción.
+
+## Pendientes explícitos de Fase 1
+
+- Adjuntos privados: no se implementan todavía; los adjuntos siguen el comportamiento existente y requieren una revisión de aislamiento por tenant.
+- Cambios de permisos: no se amplían ni rediseñan en esta fase; queda pendiente una matriz por operación y recurso.
+- Idempotencia completa: no se implementa todavía para todas las escrituras; la PO y las operaciones repetibles requieren una fase específica antes del piloto.
+- No se crean registros ni se envían formularios reales durante la validación de esta fase.

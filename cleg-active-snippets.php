@@ -32011,11 +32011,10 @@ if (!function_exists('cleg_procurement_save_data')) {
                 }
             }
             $overlay['source'] = 'wordpress_overlay';
-            update_option('cleg_procurement_data_v1', $overlay, false);
-            return;
+            return (bool) update_option('cleg_procurement_data_v1', $overlay, false);
         }
 
-        update_option('cleg_procurement_data_v1', $data, false);
+        return (bool) update_option('cleg_procurement_data_v1', $data, false);
     }
 }
 
@@ -34070,7 +34069,9 @@ if (!function_exists('cleg_procurement_board_column_options')) {
 
 if (!function_exists('cleg_procurement_default_board_columns')) {
     function cleg_procurement_default_board_columns() {
-        return array('priority', 'requested', 'project', 'item', 'quantity', 'state', 'price', 'quotes', 'po', 'relevant_date', 'action');
+        // Primer nivel: contexto minimo para decidir la siguiente accion.
+        // ID, cantidad, cotizaciones, PO y actividad siguen disponibles al abrir la fila.
+        return array('priority', 'item', 'project', 'state', 'relevant_date', 'action');
     }
 }
 
@@ -34426,6 +34427,66 @@ if (!function_exists('cleg_procurement_request_decision_context')) {
             'summary' => $summary,
             'primary_po' => $primary_po,
         );
+    }
+}
+
+if (!function_exists('cleg_procurement_contextual_action')) {
+    function cleg_procurement_contextual_action($request, $decision_context) {
+        $state = (string) ($decision_context['state'] ?? 'needs_quotes');
+        $primary_po = isset($decision_context['primary_po']) && is_array($decision_context['primary_po']) ? $decision_context['primary_po'] : array();
+        $tracking = trim((string) ($primary_po['tracking'] ?? ($request['tracking_number'] ?? '')));
+
+        $action = array(
+            'label' => 'Cotizar',
+            'target' => '#cotizaciones',
+            'description' => 'Completa o inicia la cotizacion de esta requisicion.',
+            'enabled' => true,
+        );
+
+        switch ($state) {
+            case 'review_quote':
+                $action['label'] = 'Registrar cotizacion';
+                $action['description'] = 'Registra la oferta recibida para dejarla disponible para decision.';
+                break;
+            case 'compare':
+                $action['label'] = 'Decidir';
+                $action['description'] = 'Compara las cotizaciones y selecciona el siguiente paso.';
+                break;
+            case 'client_accepted':
+                $action['label'] = 'Crear PO';
+                $action['target'] = '#ordenes';
+                $action['description'] = 'La cotizacion fue aceptada; registra la PO real de QuickBooks.';
+                break;
+            case 'ordered_no_eta':
+                $action['label'] = 'Actualizar tracking';
+                $action['target'] = '#ordenes';
+                $action['description'] = 'Completa el tracking o la ETA de la PO vinculada.';
+                break;
+            case 'ordered_eta':
+                $action['label'] = $tracking === '' ? 'Actualizar tracking' : 'Registrar recepcion';
+                $action['target'] = '#ordenes';
+                $action['description'] = $tracking === '' ? 'Aun falta confirmar el tracking de la PO.' : 'La PO esta en seguimiento; registra la llegada cuando corresponda.';
+                break;
+            case 'received':
+                $action['label'] = 'Registrar recepcion';
+                $action['target'] = '#ordenes';
+                $action['description'] = 'Confirma la recepcion o revisa la evidencia registrada.';
+                break;
+            case 'client_pending':
+            case 'client_follow_up_due':
+                $action['label'] = 'Revisar decision';
+                $action['target'] = '#cotizaciones';
+                $action['description'] = (string) ($decision_context['action'] ?? 'Revisa la respuesta del cliente antes de comprar.');
+                break;
+            case 'client_closed':
+            case 'closed':
+                $action['label'] = 'Revisar ficha';
+                $action['target'] = '#resumen-solicitud';
+                $action['description'] = 'La requisicion no tiene una accion operativa pendiente.';
+                break;
+        }
+
+        return $action;
     }
 }
 
@@ -34817,6 +34878,7 @@ if (!function_exists('cleg_procurement_render_quick_basics_form')) {
                 </label>
                 <p class="cleg-proc-note-help">La nota se guarda en el historial de la requisicion y no reemplaza notas anteriores.</p>
                 <button class="cleg-proc-btn is-secondary" type="submit">Guardar datos</button>
+                <span class="cleg-proc-upload-status cleg-proc-save-status" aria-live="polite"></span>
             </form>
         </details>
         <?php
@@ -35272,8 +35334,10 @@ if (!function_exists('cleg_procurement_handle_update_request_info')) {
 
         $id = sanitize_text_field(wp_unslash($_POST['request_id'] ?? ''));
         $data = cleg_procurement_get_data();
+        $notice = 'updated_error';
 
         if ($id && isset($data['requests'][$id])) {
+            $source_before_update = (string) ($data['source'] ?? '');
             $request = $data['requests'][$id];
             cleg_procurement_require_request_edit($request);
             $new_uploads = cleg_procurement_collect_reference_uploads('reference_images');
@@ -35362,10 +35426,20 @@ if (!function_exists('cleg_procurement_handle_update_request_info')) {
             }
 
             cleg_procurement_add_audit($data, 'Informacion tecnica actualizada', $id, $update_note !== '' ? $update_note : $item_name);
-            cleg_procurement_save_data($data);
+            $local_saved = cleg_procurement_save_data($data);
+            if ($local_saved) {
+                $notice = ($source_before_update === 'airtable' && !$airtable_saved) ? 'updated_fallback' : 'updated';
+                $verified_data = cleg_procurement_get_data();
+                $verified_request = $verified_data['requests'][$id] ?? array();
+                if ((string) ($verified_request['item'] ?? '') !== (string) $item_name
+                    || (float) ($verified_request['quantity'] ?? 0) !== (float) $quantity
+                    || (string) ($verified_request['unit'] ?? '') !== (string) $unit) {
+                    $notice = 'updated_error';
+                }
+            }
         }
 
-        wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => 'updated'), home_url('/admin-procurement/')));
+        wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => $notice), home_url('/admin-procurement/')));
         exit;
     }
 }
@@ -35457,8 +35531,13 @@ if (!function_exists('cleg_procurement_handle_quick_update_basics')) {
         $po_id = sanitize_text_field(wp_unslash($_POST['po_id'] ?? ''));
         $stage = sanitize_key(wp_unslash($_POST['return_stage'] ?? 'all'));
         $data = cleg_procurement_get_data();
+        $sync_errors = array();
+        $expected_po = array();
+        $fallback_used = false;
+        $verification_failed = false;
 
         if ($id && isset($data['requests'][$id])) {
+            $source_before_update = (string) ($data['source'] ?? '');
             $request = $data['requests'][$id];
             $quantity_raw = sanitize_text_field(wp_unslash($_POST['quantity'] ?? ($request['quantity'] ?? '1')));
             $quantity = is_numeric($quantity_raw) ? max(0.01, (float) $quantity_raw) : (float) ($request['quantity'] ?? 1);
@@ -35494,9 +35573,18 @@ if (!function_exists('cleg_procurement_handle_quick_update_basics')) {
             );
 
             $data['requests'][$id] = $request;
+            cleg_procurement_set_request_override($id, array(
+                'quantity' => $quantity,
+                'unit' => $unit,
+                'required_delivery_date' => $required_delivery_date,
+                'due_date' => $request['due_date'],
+                'updated_at' => $request['updated_at'],
+            ));
             $airtable_request_saved = cleg_procurement_update_airtable_request_info($request, $item_fields);
-            if (!$airtable_request_saved && ($data['source'] ?? '') === 'airtable') {
+            if (!$airtable_request_saved && $source_before_update === 'airtable') {
+                $sync_errors[] = 'la solicitud no se confirmó en Airtable';
                 $data['source'] = 'wordpress';
+                $fallback_used = true;
             }
 
             if ($po_id !== '' && isset($data['pos'][$po_id]) && (string) ($data['pos'][$po_id]['request_id'] ?? '') === $id) {
@@ -35516,10 +35604,13 @@ if (!function_exists('cleg_procurement_handle_quick_update_basics')) {
                     $data['pos'][$po_id]['quick_update_note'] = $quick_note;
                 }
                 $data['pos'][$po_id]['updated_at'] = current_time('mysql');
+                $expected_po = $data['pos'][$po_id];
 
                 $po_saved = cleg_procurement_update_airtable_po_details($data['pos'][$po_id]);
-                if (!$po_saved && ($data['source'] ?? '') === 'airtable') {
+                if (!$po_saved && $source_before_update === 'airtable') {
+                    $sync_errors[] = 'la PO no se confirmó en Airtable';
                     $data['source'] = 'wordpress';
+                    $fallback_used = true;
                 }
 
                 $current_tracking = trim((string) ($data['pos'][$po_id]['tracking'] ?? ''));
@@ -35539,8 +35630,9 @@ if (!function_exists('cleg_procurement_handle_quick_update_basics')) {
                     if ($shipment_id) {
                         $data['pos'][$po_id]['shipment_airtable_id'] = is_string($shipment_id) ? $shipment_id : '';
                         $data['requests'][$id]['shipment_airtable_ids'][] = is_string($shipment_id) ? $shipment_id : '';
-                    } elseif (($data['source'] ?? '') === 'airtable') {
+                    } elseif ($source_before_update === 'airtable') {
                         $data['source'] = 'wordpress';
+                        $fallback_used = true;
                     }
                 }
 
@@ -35559,12 +35651,34 @@ if (!function_exists('cleg_procurement_handle_quick_update_basics')) {
                 cleg_procurement_add_audit($data, 'Datos basicos actualizados', $id, 'Bandeja');
             }
             cleg_procurement_save_data($data);
+
+            // No se muestra exito hasta comprobar que la nueva lectura conserva los valores.
+            $verified_data = cleg_procurement_get_data();
+            $verified_request = $verified_data['requests'][$id] ?? array();
+            if ((float) ($verified_request['quantity'] ?? 0) !== (float) $quantity
+                || (string) ($verified_request['unit'] ?? '') !== (string) $unit
+                || (string) ($verified_request['required_delivery_date'] ?? '') !== (string) $required_delivery_date) {
+                $sync_errors[] = 'los datos básicos no pudieron verificarse después de guardar';
+                $verification_failed = true;
+            }
+
+            if ($expected_po && (!isset($verified_data['pos'][$po_id]) || array_diff_assoc(
+                array_intersect_key($expected_po, array_flip(array('amount', 'eta', 'ordered_date', 'tracking', 'status'))),
+                array_intersect_key($verified_data['pos'][$po_id], array_flip(array('amount', 'eta', 'ordered_date', 'tracking', 'status')))
+            ))) {
+                $sync_errors[] = 'los datos de la PO no pudieron verificarse después de guardar';
+                $verification_failed = true;
+            }
+        } else {
+            $verification_failed = true;
         }
 
+        $notice = $verification_failed ? 'quick_updated_error' : ($fallback_used ? 'quick_updated_fallback' : 'quick_updated');
         wp_safe_redirect(add_query_arg(array(
             'proc_view' => 'pendientes',
             'proc_stage' => $stage ?: 'all',
-            'proc_notice' => 'quick_updated',
+            'proc_notice' => $notice,
+            'proc_notice_detail' => $sync_errors ? implode('; ', $sync_errors) : '',
         ), home_url('/admin-procurement/')));
         exit;
     }
@@ -36210,6 +36324,10 @@ if (!function_exists('cleg_procurement_render_notice')) {
             'history_deleted' => 'Registro del historico eliminado.',
             'history_delete_failed' => 'No se pudo eliminar ese registro del historico desde esta vista.',
             'quick_updated' => 'Datos basicos de compra actualizados.',
+            'quick_updated_fallback' => 'Datos basicos guardados en el fallback local; el origen remoto no confirmo la persistencia.',
+            'quick_updated_error' => 'No se pudo confirmar el guardado de los datos basicos. El fallback sigue visible; intenta de nuevo.',
+            'updated_fallback' => 'Informacion guardada en el fallback local; Airtable no confirmo la persistencia.',
+            'updated_error' => 'No se pudo confirmar la persistencia de la informacion. El fallback sigue visible; intenta de nuevo.',
             'attachments_deleted' => 'Adjuntos eliminados de la solicitud.',
         );
 
@@ -36217,7 +36335,14 @@ if (!function_exists('cleg_procurement_render_notice')) {
             return '';
         }
 
-        return '<div class="cleg-proc-notice">' . esc_html($messages[$notice]) . '</div>';
+        $notice_class = in_array($notice, array('updated_error', 'quick_updated_error'), true)
+            ? ' is-bad'
+            : (in_array($notice, array('updated_fallback', 'quick_updated_fallback'), true) ? ' is-warn' : '');
+        $message = $messages[$notice];
+        if ($notice === 'quick_updated_error' && !empty($_GET['proc_notice_detail'])) {
+            $message .= ' Detalle: ' . sanitize_text_field(wp_unslash($_GET['proc_notice_detail']));
+        }
+        return '<div class="cleg-proc-notice' . esc_attr($notice_class) . '" role="' . ($notice_class === ' is-bad' ? 'alert' : 'status') . '">' . esc_html($message) . '</div>';
     }
 }
 
@@ -38799,6 +38924,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
         $quote_status_options = array('Received', 'Under Review', 'Recommended', 'Rejected', 'Cancelled');
         $delivery_fit_options = array('Unknown', 'Yes', 'No', 'Risk');
         $decision_context = cleg_procurement_request_decision_context($request, $data);
+        $contextual_action = cleg_procurement_contextual_action($request, $decision_context);
         $current_user = wp_get_current_user();
         $show_history = cleg_procurement_user_can_view_all_requests($current_user);
         $can_manage_request = cleg_procurement_user_can_manage_requests($current_user);
@@ -38821,7 +38947,9 @@ if (!function_exists('cleg_procurement_render_detail')) {
             <section class="cleg-proc-decision-hero" aria-label="Decision de compra">
                 <div>
                     <span class="cleg-proc-decision-pill is-<?php echo esc_attr($decision_context['tone']); ?>"><?php echo esc_html($decision_context['label']); ?></span>
+                    <small><?php echo esc_html($contextual_action['description']); ?></small>
                 </div>
+                <a class="cleg-proc-btn <?php echo esc_attr($contextual_action['enabled'] ? '' : 'is-ghost'); ?>" href="<?php echo esc_url('#' . ltrim((string) $contextual_action['target'], '#')); ?>" data-cleg-proc-context-action><?php echo esc_html($contextual_action['label']); ?></a>
             </section>
             <?php if (!empty($request['client_approval_status']) || !empty($request['client_follow_up_due_date'])) : ?>
                 <section class="cleg-proc-client-summary" aria-label="Aprobacion de cliente">
@@ -39233,6 +39361,8 @@ if (!function_exists('cleg_procurement_styles')) {
             .cleg-proc-btn.is-ghost,.cleg-proc-btn.is-secondary,.cleg-proc-open{background:#fff;border-color:var(--p-line);color:var(--p-ink);box-shadow:none}
             .cleg-proc-btn.is-danger{background:var(--p-red);border-color:var(--p-red);color:#fff;box-shadow:0 14px 26px rgba(201,61,61,.16)}
             .cleg-proc-notice{background:var(--p-green-soft);border:1px solid rgba(25,135,84,.22);color:var(--p-green);border-radius:var(--p-radius);padding:12px 14px;margin:0 0 14px;font-weight:800}
+            .cleg-proc-notice.is-warn{background:#fff8dc;border-color:#ead58b;color:#725500}
+            .cleg-proc-notice.is-bad{background:#fff0f0;border-color:#e3a5a5;color:#9b2020}
             .cleg-proc-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
             .cleg-proc-metrics article{background:var(--p-panel);border:1px solid var(--p-line);border-radius:var(--p-radius);padding:12px 14px 14px;min-height:86px}
             .cleg-proc-metrics span,.cleg-proc-metrics strong{display:block}
@@ -40424,6 +40554,14 @@ if (!function_exists('cleg_procurement_upload_preview_script')) {
                 render(input);
             });
             document.addEventListener("click",function(event){
+                var contextAction = event.target.closest("[data-cleg-proc-context-action]");
+                if (contextAction) {
+                    var contextTarget = document.querySelector(contextAction.getAttribute("href") || "");
+                    if (contextTarget && contextTarget.tagName.toLowerCase() === "details") {
+                        contextTarget.open = true;
+                    }
+                    return;
+                }
                 var downloadSelected = event.target.closest("[data-cleg-download-selected]");
                 if (downloadSelected) {
                     event.preventDefault();
@@ -43861,14 +43999,3 @@ add_action('init', 'cleg_sync_mirror_update_panel_page', 45);
 /**
  * END modulos/90-sync-qa/25-cleg-sync-status-wpwriter-mirror.php
  */
-
-
-
-
-
-
-
-
-
-
-
