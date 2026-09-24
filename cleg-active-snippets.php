@@ -38882,10 +38882,12 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                 <?php endif; ?>
                             </div>
                         </aside>
+                        <?php if ($view === 'cliente') : ?>
                         <aside class="cleg-proc-panel cleg-proc-client-panel" id="cliente-update">
                             <div class="cleg-proc-panel-head"><a class="cleg-proc-mobile-back" href="<?php echo esc_url($detail_url); ?>">Volver</a><h2>Update para cliente</h2><?php echo cleg_procurement_render_mobile_menu($view, $base_url, $detail_url, $show_ai, $show_history); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
                             <div class="cleg-proc-panel-body"><?php echo $selected ? cleg_procurement_render_client_update($selected, $data) : '<div class="cleg-proc-empty"><strong>Selecciona una compra</strong><p>Abre una requisicion para preparar el update.</p></div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
                         </aside>
+                        <?php endif; ?>
                         <?php if ($show_ai) : ?>
                             <?php echo cleg_procurement_render_ai_panel($active_requests, $base_url, $detail_url, $show_ai); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                         <?php endif; ?>
