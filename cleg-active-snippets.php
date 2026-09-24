@@ -31820,6 +31820,9 @@ if (!function_exists('cleg_procurement_get_data')) {
 
             $airtable_data['requests'] = cleg_procurement_apply_request_overrides(cleg_procurement_dedupe_requests($airtable_data['requests']));
             $airtable_data['quotes'] = cleg_procurement_dedupe_quotes_by_request($airtable_data['quotes']);
+            $deduped_pos = cleg_procurement_dedupe_pos($airtable_data['pos']);
+            $airtable_data['pos'] = $deduped_pos['pos'];
+            $airtable_data['po_duplicates'] = array_merge((array) ($airtable_data['po_duplicates'] ?? array()), $deduped_pos['duplicates']);
             return $airtable_data;
         }
 
@@ -31842,6 +31845,9 @@ if (!function_exists('cleg_procurement_get_data')) {
 
         $data['requests'] = cleg_procurement_apply_request_overrides(cleg_procurement_dedupe_requests($data['requests']));
         $data['quotes'] = cleg_procurement_dedupe_quotes_by_request($data['quotes']);
+        $deduped_pos = cleg_procurement_dedupe_pos($data['pos']);
+        $data['pos'] = $deduped_pos['pos'];
+        $data['po_duplicates'] = array_merge((array) ($data['po_duplicates'] ?? array()), $deduped_pos['duplicates']);
         return $data;
     }
 }
@@ -32005,7 +32011,7 @@ if (!function_exists('cleg_procurement_save_data')) {
         if (isset($data['source']) && $data['source'] === 'airtable') {
             $overlay = get_option('cleg_procurement_data_v1');
             $overlay = is_array($overlay) ? $overlay : array();
-            foreach (array('quotes', 'pos', 'audit', 'provider_history', 'history_hidden', 'history_overrides') as $key) {
+            foreach (array('quotes', 'pos', 'audit', 'provider_history', 'history_hidden', 'history_overrides', 'po_duplicates') as $key) {
                 if (isset($data[$key]) && is_array($data[$key])) {
                     $overlay[$key] = $data[$key];
                 }
@@ -33915,6 +33921,43 @@ if (!function_exists('cleg_procurement_related_pos')) {
         return array_values(array_filter($pos, function ($po) use ($request_id) {
             return is_array($po) && (string) ($po['request_id'] ?? '') === $request_id;
         }));
+    }
+}
+
+if (!function_exists('cleg_procurement_po_normalized_number')) {
+    function cleg_procurement_po_normalized_number($value) {
+        return strtoupper(preg_replace('/[^A-Z0-9]+/i', '', trim((string) $value)));
+    }
+}
+
+if (!function_exists('cleg_procurement_dedupe_pos')) {
+    function cleg_procurement_dedupe_pos($pos) {
+        $canonical = array();
+        $duplicates = array();
+        foreach ((array) $pos as $key => $po) {
+            if (!is_array($po)) {
+                continue;
+            }
+            $request_id = sanitize_text_field((string) ($po['request_id'] ?? ''));
+            $airtable_id = sanitize_text_field((string) ($po['airtable_id'] ?? ''));
+            $number = cleg_procurement_po_normalized_number($po['id'] ?? '');
+            $identity = $airtable_id !== '' ? 'airtable:' . $airtable_id : 'request:' . $request_id . '|number:' . $number;
+            if (!isset($canonical[$identity])) {
+                $canonical[$identity] = $po;
+                continue;
+            }
+            $existing = $canonical[$identity];
+            $existing_time = strtotime((string) ($existing['updated_at'] ?? $existing['ordered_date'] ?? $existing['created_at'] ?? '')) ?: 0;
+            $current_time = strtotime((string) ($po['updated_at'] ?? $po['ordered_date'] ?? $po['created_at'] ?? '')) ?: 0;
+            if (!empty($po['airtable_id']) && empty($existing['airtable_id']) || $current_time > $existing_time) {
+                $canonical[$identity] = $po;
+                $po = $existing;
+            }
+            $po['_duplicate_of'] = $canonical[$identity]['airtable_id'] ?? ($canonical[$identity]['id'] ?? '');
+            $po['_duplicate_reason'] = 'same_airtable_id_or_request_and_po_number';
+            $duplicates[] = $po;
+        }
+        return array('pos' => array_values($canonical), 'duplicates' => $duplicates);
     }
 }
 
