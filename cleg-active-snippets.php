@@ -38670,7 +38670,7 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                 <nav class="cleg-proc-view-switcher">
                                     <a class="<?php echo esc_attr($view === 'pendientes' && $stage !== 'cancelled' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'all'), $base_url)); ?>">Bandeja</a>
                                     <a class="<?php echo esc_attr($filters['order_state'] === 'ready_decision' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'pre_po', 'proc_order_state' => 'ready_decision'), $base_url)); ?>">Cotizaciones</a>
-                                    <a class="<?php echo esc_attr($stage === 'po' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'po'), $base_url)); ?>">PO / Tracking</a>
+                                    <a class="<?php echo esc_attr($stage === 'po' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'po'), $base_url)); ?>">Compras activas</a>
                                     <?php if ($show_history) : ?>
                                         <a class="<?php echo esc_attr($stage === 'cancelled' || $view === 'historial' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg('proc_view', 'historial', $base_url)); ?>">Archivo</a>
                                     <?php endif; ?>
@@ -39013,7 +39013,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
             <nav class="cleg-proc-detail-tabs" aria-label="Secciones de requisicion">
                 <a href="#resumen-solicitud">Resumen</a>
                 <a href="#cotizaciones">Cotizaciones</a>
-                <a href="#ordenes">PO / Tracking</a>
+                <a href="#ordenes">Compras activas</a>
                 <?php if ($show_history) : ?>
                     <a href="#historial-solicitud">Historial</a>
                 <?php endif; ?>
@@ -40270,6 +40270,9 @@ if (!function_exists('cleg_procurement_styles')) {
             @media(max-width:1024px){body .cleg-procurement .cleg-proc-main{padding:16px 20px 28px!important}body .cleg-procurement .cleg-proc-sidebar{padding:16px!important}body .cleg-procurement .cleg-proc-workspace{gap:12px!important}body .cleg-procurement .cleg-proc-request-row summary{grid-template-columns:1fr!important;gap:8px!important}body .cleg-procurement .cleg-proc-request-more{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
             @media(max-width:390px){body .cleg-procurement .cleg-proc-main{padding:0 8px 20px!important}body .cleg-procurement .cleg-proc-panel{border-radius:8px!important}body .cleg-procurement .cleg-proc-panel-body{padding:10px!important}body .cleg-procurement .cleg-proc-request-more{grid-template-columns:1fr!important}body .cleg-procurement .cleg-proc-request-row summary{padding:9px!important}body .cleg-procurement .cleg-proc-request-row .cleg-proc-open{grid-column:1/-1!important}body .cleg-procurement .cleg-proc-mobile-menu a{max-width:calc(100vw - 32px)!important;overflow:hidden!important;text-overflow:ellipsis!important}}
             @media(max-width:360px){body .cleg-procurement .cleg-proc-main{padding-left:4px!important;padding-right:4px!important}body .cleg-procurement .cleg-proc-panel-head{padding-left:8px!important;padding-right:8px!important}body .cleg-procurement .cleg-proc-request-row summary{gap:6px!important}.cleg-procurement .cleg-proc-btn,.cleg-procurement .cleg-proc-open{font-size:13px!important;padding-inline:10px!important}}
+            body .cleg-procurement .cleg-proc-queue-quote{border-inline-start:4px solid #c75000!important}
+            body .cleg-procurement .cleg-proc-queue-active-purchase{border-inline-start:4px solid #2369a5!important}
+            @media(max-width:390px){body .cleg-procurement .cleg-proc-request-row summary{min-width:0!important;overflow-wrap:anywhere!important}body .cleg-procurement .cleg-proc-open{grid-column:1/-1!important;width:100%!important}}
             /* End CLEG procurement decision workspace v1.71 */
         </style>';
     }
