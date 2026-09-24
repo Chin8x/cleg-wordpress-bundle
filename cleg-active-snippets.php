@@ -39358,6 +39358,9 @@ if (!function_exists('cleg_procurement_styles')) {
             .cleg-proc-btn:hover,.cleg-proc-open:hover{transform:translateY(-1px);filter:brightness(.98)}
             .cleg-proc-btn.is-ghost,.cleg-proc-btn.is-secondary,.cleg-proc-open{background:#fff;border-color:var(--p-line);color:var(--p-ink);box-shadow:none}
             .cleg-proc-btn.is-danger{background:var(--p-red);border-color:var(--p-red);color:#fff;box-shadow:0 14px 26px rgba(201,61,61,.16)}
+            .cleg-procurement :where(a,button,summary,select,input,textarea){touch-action:manipulation}
+            .cleg-procurement :where(a,button,summary,select,input,textarea):focus-visible{outline:3px solid #f2b134;outline-offset:3px}
+            .cleg-procurement :where(.cleg-proc-btn,.cleg-proc-open,.cleg-proc-mobile-menu a){min-height:44px}
             .cleg-proc-notice{background:var(--p-green-soft);border:1px solid rgba(25,135,84,.22);color:var(--p-green);border-radius:var(--p-radius);padding:12px 14px;margin:0 0 14px;font-weight:800}
             .cleg-proc-notice.is-warn{background:#fff8dc;border-color:#ead58b;color:#725500}
             .cleg-proc-notice.is-bad{background:#fff0f0;border-color:#e3a5a5;color:#9b2020}
