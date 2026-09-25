@@ -31754,7 +31754,9 @@ if (!function_exists('cleg_procurement_airtable_data')) {
                     'updated_at' => cleg_procurement_airtable_scalar($fields, 'Ordered Date', cleg_procurement_airtable_scalar($fields, 'PO Date', '')),
                 );
 
-                $data['pos'][$po_number] = $po;
+                // Never key the raw Airtable collection by PO Number: duplicate numbers
+                // must remain available for conflict/audit reconciliation.
+                $data['pos']['airtable:' . $po_airtable_id] = $po;
 
                 if (isset($data['requests'][$request_code])) {
                     if (empty($data['requests'][$request_code]['po_airtable_ids']) || !is_array($data['requests'][$request_code]['po_airtable_ids'])) {
@@ -33474,6 +33476,22 @@ if (!function_exists('cleg_procurement_add_airtable_po')) {
             return false;
         }
 
+        // Deterministic idempotency key: the Airtable request link plus normalized
+        // QuickBooks number identifies one operational PO. Replays return the
+        // existing record instead of POSTing another row.
+        $po_records = cleg_admin_records(CLEG_PROC_AIRTABLE_POS_TABLE, array('pageSize' => 100));
+        if (!is_wp_error($po_records)) {
+            $normalized_number = cleg_procurement_po_normalized_number($po_number);
+            foreach ((array) $po_records as $existing_record) {
+                $existing_fields = isset($existing_record['fields']) && is_array($existing_record['fields']) ? $existing_record['fields'] : array();
+                $existing_links = isset($existing_fields['Procurement Requests']) && is_array($existing_fields['Procurement Requests']) ? $existing_fields['Procurement Requests'] : array();
+                $existing_number = cleg_procurement_po_normalized_number(cleg_procurement_airtable_scalar($existing_fields, 'PO Number', ''));
+                if (in_array($request['airtable_id'], $existing_links, true) && $existing_number === $normalized_number) {
+                    return sanitize_text_field((string) ($existing_record['id'] ?? '')) ?: true;
+                }
+            }
+        }
+
         $fields = array(
             'PO Number' => $po_number,
             'PO Status' => !empty($po['tracking']) ? 'In Transit' : 'Ordered',
@@ -33941,7 +33959,10 @@ if (!function_exists('cleg_procurement_dedupe_pos')) {
             $request_id = sanitize_text_field((string) ($po['request_id'] ?? ''));
             $airtable_id = sanitize_text_field((string) ($po['airtable_id'] ?? ''));
             $number = cleg_procurement_po_normalized_number($po['id'] ?? '');
-            $identity = $airtable_id !== '' ? 'airtable:' . $airtable_id : 'request:' . $request_id . '|number:' . $number;
+            $identity = 'request:' . $request_id . '|number:' . $number;
+            if ($number === '') {
+                $identity = $airtable_id !== '' ? 'airtable:' . $airtable_id : 'row:' . (string) $key;
+            }
             if (!isset($canonical[$identity])) {
                 $canonical[$identity] = $po;
                 continue;
@@ -33957,7 +33978,15 @@ if (!function_exists('cleg_procurement_dedupe_pos')) {
             $po['_duplicate_reason'] = 'same_airtable_id_or_request_and_po_number';
             $duplicates[] = $po;
         }
-        return array('pos' => array_values($canonical), 'duplicates' => $duplicates);
+        $operational = array();
+        foreach ($canonical as $po) {
+            $po_key = trim((string) ($po['id'] ?? ''));
+            if ($po_key === '') {
+                $po_key = 'airtable:' . sanitize_text_field((string) ($po['airtable_id'] ?? uniqid('po_', true)));
+            }
+            $operational[$po_key] = $po;
+        }
+        return array('pos' => $operational, 'duplicates' => $duplicates);
     }
 }
 
@@ -33983,6 +34012,37 @@ if (!function_exists('cleg_procurement_primary_po')) {
         }
 
         return is_array($primary) ? $primary : array();
+    }
+}
+
+if (!function_exists('cleg_procurement_find_po')) {
+    function cleg_procurement_find_po($data, $po_id, $airtable_id = '') {
+        $matches = array();
+        foreach ((array) ($data['pos'] ?? array()) as $key => $po) {
+            if (!is_array($po)) {
+                continue;
+            }
+            if ($airtable_id !== '' && (string) ($po['airtable_id'] ?? '') === $airtable_id) {
+                return array('key' => $key, 'po' => $po, 'ambiguous' => false);
+            }
+            if ($po_id !== '' && cleg_procurement_po_normalized_number($po['id'] ?? '') === cleg_procurement_po_normalized_number($po_id)) {
+                $matches[] = array('key' => $key, 'po' => $po);
+            }
+        }
+        if (count($matches) !== 1) {
+            return array('key' => '', 'po' => array(), 'ambiguous' => count($matches) > 1);
+        }
+        $candidate = $matches[0]['po'];
+        $candidate_request = (string) ($candidate['request_id'] ?? '');
+        $candidate_number = cleg_procurement_po_normalized_number($candidate['id'] ?? $po_id);
+        foreach ((array) ($data['po_duplicates'] ?? array()) as $duplicate) {
+            if (is_array($duplicate)
+                && (string) ($duplicate['request_id'] ?? '') === $candidate_request
+                && cleg_procurement_po_normalized_number($duplicate['id'] ?? '') === $candidate_number) {
+                return array('key' => '', 'po' => array(), 'ambiguous' => true);
+            }
+        }
+        return array('key' => $matches[0]['key'], 'po' => $candidate, 'ambiguous' => false);
     }
 }
 
@@ -35951,7 +36011,10 @@ if (!function_exists('cleg_procurement_handle_create_po')) {
                 'updated_at' => current_time('mysql'),
             );
 
-            $airtable_po_id = cleg_procurement_add_airtable_po($request, $po, $recommended_quote);
+            $existing_po = cleg_procurement_find_po($data, $po_id);
+            $airtable_po_id = (!$existing_po['ambiguous'] && !empty($existing_po['po']['airtable_id']))
+                ? $existing_po['po']['airtable_id']
+                : cleg_procurement_add_airtable_po($request, $po, $recommended_quote);
             if ($airtable_po_id) {
                 $po['airtable_id'] = is_string($airtable_po_id) ? $airtable_po_id : '';
             } elseif (($data['source'] ?? '') === 'airtable') {
@@ -35999,37 +36062,44 @@ if (!function_exists('cleg_procurement_handle_update_po_tracking')) {
 
         $request_id = sanitize_text_field(wp_unslash($_POST['request_id'] ?? ''));
         $po_id = sanitize_text_field(wp_unslash($_POST['po_id'] ?? ''));
+        $po_airtable_id = sanitize_text_field(wp_unslash($_POST['po_airtable_id'] ?? ''));
         $tracking = sanitize_text_field(wp_unslash($_POST['tracking'] ?? ''));
         $eta = sanitize_text_field(wp_unslash($_POST['eta'] ?? ''));
         $data = cleg_procurement_get_data();
 
-        if ($request_id && $po_id && $tracking !== '' && isset($data['requests'][$request_id], $data['pos'][$po_id]) && (string) ($data['pos'][$po_id]['request_id'] ?? '') === $request_id) {
+        $po_match = cleg_procurement_find_po($data, $po_id, $po_airtable_id);
+        if ($po_match['ambiguous']) {
+            wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request_id), 'proc_notice' => 'po_ambiguous'), home_url('/admin-procurement/')));
+            exit;
+        }
+        if ($request_id && $po_id && $tracking !== '' && !$po_match['ambiguous'] && $po_match['key'] !== '' && isset($data['requests'][$request_id]) && (string) ($po_match['po']['request_id'] ?? '') === $request_id) {
+            $po_key = $po_match['key'];
             $request = $data['requests'][$request_id];
-            $data['pos'][$po_id]['tracking'] = $tracking;
+            $data['pos'][$po_key]['tracking'] = $tracking;
             if ($eta !== '') {
-                $data['pos'][$po_id]['eta'] = $eta;
+                $data['pos'][$po_key]['eta'] = $eta;
             }
-            $data['pos'][$po_id]['status'] = 'In Transit';
-            $data['pos'][$po_id]['updated_at'] = current_time('mysql');
+            $data['pos'][$po_key]['status'] = 'In Transit';
+            $data['pos'][$po_key]['updated_at'] = current_time('mysql');
             $data['requests'][$request_id]['status'] = 'In Transit';
             $data['requests'][$request_id]['tracking_number'] = $tracking;
             $data['requests'][$request_id]['updated_at'] = current_time('mysql');
 
-            if (!empty($data['pos'][$po_id]['airtable_id'])) {
+            if (!empty($data['pos'][$po_key]['airtable_id'])) {
                 $shipment_update = array(
                     'type' => 'tracking',
                     'label' => 'Tracking de PO QuickBooks',
                     'value' => $tracking,
                     'payload' => array(
                         'tracking_number' => $tracking,
-                        'eta' => $eta ?: ($data['pos'][$po_id]['eta'] ?? ''),
-                        'po_airtable_id' => $data['pos'][$po_id]['airtable_id'],
+                        'eta' => $eta ?: ($data['pos'][$po_key]['eta'] ?? ''),
+                        'po_airtable_id' => $data['pos'][$po_key]['airtable_id'],
                         'shipment_status' => 'In Transit',
                     ),
                 );
                 $shipment_id = cleg_procurement_add_airtable_shipment($request, $shipment_update, 'Tracking guardado para PO QuickBooks ' . $po_id);
                 if ($shipment_id) {
-                    $data['pos'][$po_id]['shipment_airtable_id'] = is_string($shipment_id) ? $shipment_id : '';
+                    $data['pos'][$po_key]['shipment_airtable_id'] = is_string($shipment_id) ? $shipment_id : '';
                     $data['requests'][$request_id]['shipment_airtable_ids'][] = is_string($shipment_id) ? $shipment_id : '';
                 } elseif (($data['source'] ?? '') === 'airtable') {
                     $data['source'] = 'wordpress';
@@ -36053,27 +36123,35 @@ if (!function_exists('cleg_procurement_handle_receive_po')) {
         check_admin_referer('cleg_procurement_receive_po');
 
         $po_id = sanitize_text_field(wp_unslash($_POST['po_id'] ?? ''));
+        $posted_request_id = sanitize_text_field(wp_unslash($_POST['request_id'] ?? ''));
         $status = sanitize_text_field(wp_unslash($_POST['receipt_status'] ?? 'Partially Received'));
         $note = sanitize_textarea_field(wp_unslash($_POST['receipt_note'] ?? ''));
         $data = cleg_procurement_get_data();
         $request_id = '';
 
-        if ($po_id && isset($data['pos'][$po_id])) {
-            if (!cleg_procurement_po_has_quickbooks_number($po_id)) {
-                $request_id = $data['pos'][$po_id]['request_id'] ?? '';
+        $po_airtable_id = sanitize_text_field(wp_unslash($_POST['po_airtable_id'] ?? ''));
+        $po_match = cleg_procurement_find_po($data, $po_id, $po_airtable_id);
+        if ($po_match['ambiguous']) {
+            wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($posted_request_id ?: (string) ($po_match['po']['request_id'] ?? '')), 'proc_notice' => 'po_ambiguous'), home_url('/admin-procurement/')));
+            exit;
+        }
+        if ($po_id && !$po_match['ambiguous'] && $po_match['key'] !== '') {
+            $po_key = $po_match['key'];
+            if (!cleg_procurement_po_has_quickbooks_number($po_match['po']['id'] ?? $po_id)) {
+                $request_id = $po_match['po']['request_id'] ?? '';
                 wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request_id), 'proc_notice' => 'po_missing_quickbooks'), home_url('/admin-procurement/')));
                 exit;
             }
 
             $status = in_array($status, array('Partially Received', 'Received', 'Closed'), true) ? $status : 'Partially Received';
-            $data['pos'][$po_id]['status'] = $status;
-            $data['pos'][$po_id]['receipt_note'] = $note;
-            $data['pos'][$po_id]['received_at'] = current_time('mysql');
-            $data['pos'][$po_id]['updated_at'] = current_time('mysql');
-            $request_id = $data['pos'][$po_id]['request_id'];
+            $data['pos'][$po_key]['status'] = $status;
+            $data['pos'][$po_key]['receipt_note'] = $note;
+            $data['pos'][$po_key]['received_at'] = current_time('mysql');
+            $data['pos'][$po_key]['updated_at'] = current_time('mysql');
+            $request_id = $data['pos'][$po_key]['request_id'];
 
-            if (!empty($data['pos'][$po_id]['airtable_id'])) {
-                cleg_procurement_update_airtable_po_details($data['pos'][$po_id]);
+            if (!empty($data['pos'][$po_key]['airtable_id'])) {
+                cleg_procurement_update_airtable_po_details($data['pos'][$po_key]);
             }
 
             if ($request_id && isset($data['requests'][$request_id])) {
@@ -36354,6 +36432,7 @@ if (!function_exists('cleg_procurement_render_notice')) {
             'po' => 'PO registrada.',
             'po_quickbooks' => 'PO QuickBooks asignada.',
             'po_missing_quickbooks' => 'Asigna primero el PO real de QuickBooks antes de continuar.',
+            'po_ambiguous' => 'La PO tiene registros duplicados; selecciona el registro canónico antes de actualizar tracking o recepción.',
             'tracking_updated' => 'Tracking guardado.',
             'tracking_missing' => 'Escribe el tracking number antes de guardar.',
             'received' => 'Recepcion actualizada.',
@@ -39288,6 +39367,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                                         <input type="hidden" name="action" value="cleg_proc_update_po_tracking">
                                         <input type="hidden" name="request_id" value="<?php echo esc_attr($request['id']); ?>">
                                         <input type="hidden" name="po_id" value="<?php echo esc_attr($po['id']); ?>">
+                                        <input type="hidden" name="po_airtable_id" value="<?php echo esc_attr((string) ($po['airtable_id'] ?? '')); ?>">
                                         <?php wp_nonce_field('cleg_procurement_update_po_tracking'); ?>
                                         <label>Tracking number<input type="text" name="tracking" value="<?php echo esc_attr((string) ($po['tracking'] ?? '')); ?>" placeholder="Tracking number" required></label>
                                         <input type="text" name="eta" value="<?php echo esc_attr((string) ($po['eta'] ?? '')); ?>" placeholder="ETA opcional">
@@ -39295,7 +39375,9 @@ if (!function_exists('cleg_procurement_render_detail')) {
                                     </form>
                                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                                         <input type="hidden" name="action" value="cleg_proc_receive_po">
+                                        <input type="hidden" name="request_id" value="<?php echo esc_attr($request['id']); ?>">
                                         <input type="hidden" name="po_id" value="<?php echo esc_attr($po['id']); ?>">
+                                        <input type="hidden" name="po_airtable_id" value="<?php echo esc_attr((string) ($po['airtable_id'] ?? '')); ?>">
                                         <?php wp_nonce_field('cleg_procurement_receive_po'); ?>
                                         <select name="receipt_status">
                                             <option value="Partially Received">Recibido parcial</option>
