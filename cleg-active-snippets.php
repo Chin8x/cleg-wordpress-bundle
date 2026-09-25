@@ -33948,10 +33948,18 @@ if (!function_exists('cleg_procurement_po_normalized_number')) {
     }
 }
 
+if (!function_exists('cleg_procurement_po_is_placeholder')) {
+    function cleg_procurement_po_is_placeholder($value) {
+        $normalized = strtolower(trim(remove_accents((string) $value)));
+        return $normalized === '' || preg_match('/^cleg[-_ ]?po[-_ ]?/i', $normalized) || in_array($normalized, array('pending', 'pendiente', 'unknown', 'desconocido', 'n/a', 'na', 'sin po'), true);
+    }
+}
+
 if (!function_exists('cleg_procurement_dedupe_pos')) {
     function cleg_procurement_dedupe_pos($pos) {
         $canonical = array();
         $duplicates = array();
+        $valid_by_request = array();
         foreach ((array) $pos as $key => $po) {
             if (!is_array($po)) {
                 continue;
@@ -33959,6 +33967,9 @@ if (!function_exists('cleg_procurement_dedupe_pos')) {
             $request_id = sanitize_text_field((string) ($po['request_id'] ?? ''));
             $airtable_id = sanitize_text_field((string) ($po['airtable_id'] ?? ''));
             $number = cleg_procurement_po_normalized_number($po['id'] ?? '');
+            if (!cleg_procurement_po_is_placeholder($po['id'] ?? '') && $request_id !== '') {
+                $valid_by_request[$request_id] = true;
+            }
             $identity = 'request:' . $request_id . '|number:' . $number;
             if ($number === '') {
                 $identity = $airtable_id !== '' ? 'airtable:' . $airtable_id : 'row:' . (string) $key;
@@ -33977,6 +33988,15 @@ if (!function_exists('cleg_procurement_dedupe_pos')) {
             $po['_duplicate_of'] = $canonical[$identity]['airtable_id'] ?? ($canonical[$identity]['id'] ?? '');
             $po['_duplicate_reason'] = 'same_airtable_id_or_request_and_po_number';
             $duplicates[] = $po;
+        }
+        foreach ($canonical as $identity => $po) {
+            $request_id = (string) ($po['request_id'] ?? '');
+            if ($request_id !== '' && !empty($valid_by_request[$request_id]) && cleg_procurement_po_is_placeholder($po['id'] ?? '')) {
+                $po['_duplicate_of'] = 'valid_quickbooks_po_for_request';
+                $po['_duplicate_reason'] = 'placeholder_not_operational';
+                $duplicates[] = $po;
+                unset($canonical[$identity]);
+            }
         }
         $operational = array();
         foreach ($canonical as $po) {
@@ -34049,7 +34069,7 @@ if (!function_exists('cleg_procurement_find_po')) {
 if (!function_exists('cleg_procurement_po_has_quickbooks_number')) {
     function cleg_procurement_po_has_quickbooks_number($po_id) {
         $po_id = trim((string) $po_id);
-        return $po_id !== '' && !preg_match('/^CLEG-PO-/i', $po_id);
+        return $po_id !== '' && !cleg_procurement_po_is_placeholder($po_id) && !preg_match('/^CLEG-PO-/i', $po_id);
     }
 }
 
