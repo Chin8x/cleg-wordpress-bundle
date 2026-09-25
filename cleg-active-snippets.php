@@ -33936,9 +33936,24 @@ if (!function_exists('cleg_procurement_related_pos')) {
             return array();
         }
 
-        return array_values(array_filter($pos, function ($po) use ($request_id) {
+        $related = array_values(array_filter($pos, function ($po) use ($request_id) {
             return is_array($po) && (string) ($po['request_id'] ?? '') === $request_id;
         }));
+
+        $has_valid_quickbooks_po = false;
+        foreach ($related as $po) {
+            if (cleg_procurement_po_has_quickbooks_number($po['id'] ?? '')) {
+                $has_valid_quickbooks_po = true;
+                break;
+            }
+        }
+        if ($has_valid_quickbooks_po) {
+            $related = array_values(array_filter($related, function ($po) {
+                return !cleg_procurement_po_is_placeholder($po['id'] ?? '');
+            }));
+        }
+
+        return $related;
     }
 }
 
