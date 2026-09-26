@@ -373,3 +373,10 @@ Estado de release: **montado y verificado para smoke QA; QA exhaustivo pendiente
 - Captura visual administrativa: sin corte horizontal visible en la vista publicada inspeccionada.
 
 Resultado actualizado: **PASS de permisos, aislamiento de rutas, fallback seguro, montaje y smoke visual/funcional**. No se ejecutaron mutaciones sobre datos reales.
+
+## Ajuste de roles confirmado — 2026-09-26
+
+- **Alejandro Admin:** conserva acceso total, incluida IA interna, por `manage_options` o `cleg_tenant_role = Admin Tecnico / Alejandro Admin`.
+- **Luis:** conserva acceso operativo de Compras y Recibos según sus capabilities, pero queda excluido de IA interna.
+- La regla está implementada en `cleg_procurement_user_can_internal_ai()` y el bundle fue remontado con SHA256 `9850ff76c9de1a778e10c5a583be576274983bc292491ec636d38406e6c9496a`.
+- WordPress confirmó sincronización completada, candidato cargado, último estable disponible, QA funcional aprobado y cuarentena vacía a las `07:31:12`.
