@@ -38990,6 +38990,9 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                     <?php if ($show_history) : ?>
                                         <a class="<?php echo esc_attr($stage === 'cancelled' || $view === 'historial' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg('proc_view', 'historial', $base_url)); ?>">Archivo</a>
                                     <?php endif; ?>
+                                    <?php if ($show_ai) : ?>
+                                        <a class="<?php echo esc_attr($view === 'ia' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg('proc_view', 'ia', $base_url)); ?>">Asistente</a>
+                                    <?php endif; ?>
                                 </nav>
                                 <div class="cleg-proc-quick-filters" aria-label="Filtros rapidos">
                                     <a class="<?php echo esc_attr($filters['order_state'] === 'needs_quote' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'pre_po', 'proc_order_state' => 'needs_quote'), $base_url)); ?>">Pendientes</a>
