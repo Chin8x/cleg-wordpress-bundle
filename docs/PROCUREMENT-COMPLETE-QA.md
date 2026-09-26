@@ -380,3 +380,11 @@ Resultado actualizado: **PASS de permisos, aislamiento de rutas, fallback seguro
 - **Luis:** conserva acceso operativo de Compras y Recibos según sus capabilities, pero queda excluido de IA interna.
 - La regla está implementada en `cleg_procurement_user_can_internal_ai()` y el bundle fue remontado con SHA256 `9850ff76c9de1a778e10c5a583be576274983bc292491ec636d38406e6c9496a`.
 - WordPress confirmó sincronización completada, candidato cargado, último estable disponible, QA funcional aprobado y cuarentena vacía a las `07:31:12`.
+
+## Corrección de visibilidad del Asistente — 2026-09-26
+
+- Hallazgo: el acceso IA de Alejandro estaba oculto por `CLEG_PROC_PRIVATE_SYNC_ENABLED`, aunque su rol tenía permiso. Esto explicaba que no apareciera en la navegación.
+- Corrección: el permiso de visualización ahora depende del rol Admin de Alejandro; con sincronización privada apagada, el Asistente queda visible en modo consulta y oculta el botón de sincronización. Las acciones de sincronización continúan bloqueadas por su propio guard.
+- Luis no obtiene el permiso de IA. PHP lint y `git diff --check`: PASS.
+- Hash de bundle a publicar: `e4630d4dbde0662e9b7b29e894263a95a187c6365978a7a8027fa83bf45948d2`.
+- Requiere montaje y comprobación visual de la pestaña Asistente en la sesión de Alejandro; no marcar como completado antes de esa comprobación.

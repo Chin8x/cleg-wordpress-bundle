@@ -35191,10 +35191,6 @@ if (!function_exists('cleg_procurement_user_can_internal_ai')) {
     }
 
     function cleg_procurement_user_can_internal_ai($user = null) {
-        if (!cleg_procurement_private_sync_enabled()) {
-            return false;
-        }
-
         $user = $user ?: wp_get_current_user();
         if (!$user || empty($user->ID)) {
             return false;
@@ -37901,14 +37897,15 @@ add_action('admin_post_cleg_procurement_download_agent_export', 'cleg_procuremen
 
 if (!function_exists('cleg_procurement_render_ai_panel')) {
     function cleg_procurement_render_ai_panel($requests, $base_url, $detail_url = '', $show_ai = true) {
-        if (!cleg_procurement_private_sync_enabled()) {
-            return '';
+        $sync_enabled = cleg_procurement_private_sync_enabled();
+        if ($sync_enabled) {
+            cleg_procurement_pull_agent_updates_from_endpoint();
         }
-
-        cleg_procurement_pull_agent_updates_from_endpoint();
         $queue = cleg_procurement_ai_requests($requests);
         $statuses = cleg_procurement_statuses();
-        $download_url = wp_nonce_url(add_query_arg('action', 'cleg_procurement_download_agent_export', admin_url('admin-post.php')), 'cleg_procurement_agent_export');
+        $download_url = $sync_enabled
+            ? wp_nonce_url(add_query_arg('action', 'cleg_procurement_download_agent_export', admin_url('admin-post.php')), 'cleg_procurement_agent_export')
+            : '';
 
         ob_start();
         ?>
@@ -37917,13 +37914,17 @@ if (!function_exists('cleg_procurement_render_ai_panel')) {
                 <div>
                     <h2>Asistente de compras industriales</h2>
                 </div>
-                <a class="cleg-proc-btn cleg-proc-agent-sync-btn" href="<?php echo esc_url($download_url); ?>">Actualizar paquete</a>
+                <?php if ($sync_enabled) : ?>
+                    <a class="cleg-proc-btn cleg-proc-agent-sync-btn" href="<?php echo esc_url($download_url); ?>">Actualizar paquete</a>
+                <?php endif; ?>
                 <span class="cleg-proc-badge is-neutral"><?php echo esc_html((string) count($queue)); ?> abiertas</span>
                 <?php echo cleg_procurement_render_mobile_menu('ia', $base_url, $detail_url, $show_ai); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
             </div>
             <div class="cleg-proc-ai-status">
                 <strong>Bandeja de actualizacion</strong>
-                <span>Incluye solicitudes abiertas, RFQ enviados pendientes de respuesta y registros listos para revisar antes de subir datos visibles.</span>
+                <span><?php echo $sync_enabled
+                    ? 'Incluye solicitudes abiertas, RFQ enviados pendientes de respuesta y registros listos para revisar antes de subir datos visibles.'
+                    : 'Modo de consulta: la sincronizacion privada del asistente esta desactivada en la configuracion del sitio.'; ?></span>
             </div>
             <div class="cleg-proc-list cleg-proc-agent-list" aria-label="Actualizaciones del asistente">
                 <?php foreach ($queue as $request) : ?>
