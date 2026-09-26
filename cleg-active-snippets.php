@@ -35176,6 +35176,20 @@ if (!function_exists('cleg_procurement_render_quick_basics_form')) {
 }
 
 if (!function_exists('cleg_procurement_user_can_internal_ai')) {
+    function cleg_procurement_user_is_alejandro_admin($user = null) {
+        $user = $user ?: wp_get_current_user();
+        if (!$user || empty($user->ID)) {
+            return false;
+        }
+
+        if (user_can($user, 'manage_options')) {
+            return true;
+        }
+
+        $tenant_role = sanitize_text_field((string) get_user_meta($user->ID, 'cleg_tenant_role', true));
+        return $tenant_role === 'Admin Tecnico / Alejandro Admin';
+    }
+
     function cleg_procurement_user_can_internal_ai($user = null) {
         if (!cleg_procurement_private_sync_enabled()) {
             return false;
@@ -35186,11 +35200,9 @@ if (!function_exists('cleg_procurement_user_can_internal_ai')) {
             return false;
         }
 
-        if (function_exists('cleg_command_center_is_admin_user') && cleg_command_center_is_admin_user($user)) {
-            return true;
-        }
-
-        return current_user_can('manage_options');
+        // Alejandro Admin tiene acceso total; Luis conserva el acceso operativo,
+        // pero no a las funciones internas de IA.
+        return cleg_procurement_user_is_alejandro_admin($user);
     }
 }
 
