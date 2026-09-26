@@ -36713,6 +36713,7 @@ if (!function_exists('cleg_procurement_render_mobile_menu')) {
         <nav class="cleg-proc-mobile-menu" aria-label="Navegacion Compras">
             <a class="<?php echo esc_attr($view === 'pendientes' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg('proc_view', 'pendientes', $base_url)); ?>">Solicitudes</a>
             <a class="<?php echo esc_attr($view === 'solicitar' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg('proc_view', 'solicitar', $base_url)); ?>">Nueva solicitud</a>
+            <a href="<?php echo esc_url(home_url('/admin-recibos/')); ?>">Recibos</a>
             <?php if ($show_history) : ?>
                 <a class="<?php echo esc_attr($view === 'historial' ? 'is-active' : ''); ?>" href="<?php echo esc_url(add_query_arg('proc_view', 'historial', $base_url)); ?>">Historico</a>
             <?php endif; ?>
@@ -37918,8 +37919,19 @@ if (!function_exists('cleg_procurement_render_ai_panel')) {
                     <a class="cleg-proc-btn cleg-proc-agent-sync-btn" href="<?php echo esc_url($download_url); ?>">Actualizar paquete</a>
                 <?php endif; ?>
                 <span class="cleg-proc-badge is-neutral"><?php echo esc_html((string) count($queue)); ?> abiertas</span>
-                <?php echo cleg_procurement_render_mobile_menu('ia', $base_url, $detail_url, $show_ai); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
             </div>
+            <nav class="cleg-proc-control-strip" aria-label="Secciones de Compras">
+                <div class="cleg-proc-view-switcher">
+                    <a href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'all'), $base_url)); ?>">Bandeja</a>
+                    <a href="<?php echo esc_url(add_query_arg('proc_view', 'solicitar', $base_url)); ?>">Nueva solicitud</a>
+                    <a href="<?php echo esc_url(add_query_arg(array('proc_view' => 'pendientes', 'proc_stage' => 'po'), $base_url)); ?>">PO / Tracking</a>
+                    <a href="<?php echo esc_url(home_url('/admin-recibos/')); ?>">Recibos</a>
+                    <?php if ($show_history) : ?>
+                        <a href="<?php echo esc_url(add_query_arg('proc_view', 'historial', $base_url)); ?>">Archivo</a>
+                    <?php endif; ?>
+                    <a class="is-active" href="<?php echo esc_url(add_query_arg('proc_view', 'ia', $base_url)); ?>" aria-current="page">Asistente</a>
+                </div>
+            </nav>
             <div class="cleg-proc-ai-status">
                 <strong>Bandeja de actualizacion</strong>
                 <span><?php echo $sync_enabled
