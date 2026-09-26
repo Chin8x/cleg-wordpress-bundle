@@ -361,3 +361,15 @@ QA final delegado: **PASS estático parcial / NO READY runtime**. Falta montar e
 - Persisten como NO VERIFICABLE en esta sesión: pruebas destructivas/mutaciones reales, doble envío con datos de producción y medición controlada en 1440/1024/390/360 px.
 
 Estado de release: **montado y verificado para smoke QA; QA exhaustivo pendiente únicamente en los escenarios protegidos indicados arriba**.
+
+## Cierre adicional de permisos y rutas — 2026-09-26
+
+- Sesión aislada `cgarin`: Procurement carga correctamente con bandeja vacía y sin enlace a Panel.
+- `cgarin` → `/panel/`: redirección al acceso; no expone funciones de trabajador.
+- `cgarin` → `/admin-recibos/`: redirección al acceso; no expone recibos globales.
+- `cgarin` → requisición inexistente: muestra estado seguro “Sin solicitudes”, sin reutilizar otra requisición.
+- Usuario administrativo → Bandeja: filtros, contadores, tarjetas expandibles y navegación a Detalle verificados.
+- Usuario administrativo → Detalle: estado, próxima acción, secciones y PO/Tracking verificados.
+- Captura visual administrativa: sin corte horizontal visible en la vista publicada inspeccionada.
+
+Resultado actualizado: **PASS de permisos, aislamiento de rutas, fallback seguro, montaje y smoke visual/funcional**. No se ejecutaron mutaciones sobre datos reales.
