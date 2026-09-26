@@ -9,6 +9,9 @@
 - Verificación local: `git diff --check` y `php -l cleg-active-snippets.php` pasan.
 - Bundle local: SHA256 `409a6842d4cad10fbce382bb481b0bb1f8dd947e3be19a22e127d30342237156`; checksums actualizados.
 
-### Pendiente de release
+### Montaje y QA post-montaje
 
-No se marca PASS montado: la sesión Chrome autenticada perdió el puente CUA antes de la QA post-montaje. Falta verificar el hash realmente activo, rutas/roles negativos, scrollWidth/clientWidth en 1440/1024/390/360 y estados runtime sin mutaciones.
+- Publicado en `origin/main` como `2a4f572`; el auto-sync de WordPress confirmó el mismo SHA en activo, last-good y candidate: `409a6842d4cad10fbce382bb481b0bb1f8dd947e3be19a22e127d30342237156`.
+- Status privado: ejecución habilitada, bundle cargado, sin cuarentena y QA funcional aprobado; timestamp del sitio `2026-09-26 07:15:34`.
+- QA autenticado sin mutaciones: Procurement, detalle, ID inexistente, Recibos, filtros, estado vacío, notices de error/éxito y Panel.
+- Pendiente: repetir la matriz exacta de viewports 1440/1024/390/360; la capacidad visual disponible solo permitió medir `1920x855` (`clientWidth=1905`, `scrollWidth=1905`).
