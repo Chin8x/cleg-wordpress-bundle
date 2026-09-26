@@ -6255,6 +6255,9 @@ if (!function_exists('cleg_admin_user_allowed')) {
         }
 
         $user = wp_get_current_user();
+        if (function_exists('cleg00_login_user_is_procurement_only') && cleg00_login_user_is_procurement_only($user)) {
+            return false;
+        }
         $path = isset($_SERVER['REQUEST_URI']) ? trim((string) wp_parse_url(esc_url_raw(wp_unslash($_SERVER['REQUEST_URI'])), PHP_URL_PATH), '/') : '';
         $is_field_ops_admin = in_array($path, array('admin-horas', 'admin-tiempo-real', 'admin-dispositivos'), true);
 
@@ -31598,6 +31601,7 @@ if (!function_exists('cleg_procurement_airtable_data')) {
             return new WP_Error('cleg_procurement_airtable_missing', 'Airtable no esta configurado para Compras.');
         }
 
+        $data_quality = 'complete';
         $request_records = cleg_admin_records(CLEG_PROC_AIRTABLE_REQUESTS_TABLE, array(
             'pageSize' => 100,
             'sort[0][field]' => 'Created Date',
@@ -31611,21 +31615,25 @@ if (!function_exists('cleg_procurement_airtable_data')) {
         $item_records = cleg_admin_records(CLEG_PROC_AIRTABLE_ITEMS_TABLE, array('pageSize' => 100));
         if (is_wp_error($item_records)) {
             $item_records = array();
+            $data_quality = 'degraded';
         }
 
         $quote_records = cleg_admin_records(CLEG_PROC_AIRTABLE_QUOTES_TABLE, array('pageSize' => 100));
         if (is_wp_error($quote_records)) {
             $quote_records = array();
+            $data_quality = 'degraded';
         }
 
         $po_records = cleg_admin_records(CLEG_PROC_AIRTABLE_POS_TABLE, array('pageSize' => 100));
         if (is_wp_error($po_records)) {
             $po_records = array();
+            $data_quality = 'degraded';
         }
 
         $shipment_records = cleg_admin_records(CLEG_PROC_AIRTABLE_SHIPMENTS_TABLE, array('pageSize' => 100));
         if (is_wp_error($shipment_records)) {
             $shipment_records = array();
+            $data_quality = 'degraded';
         }
 
         $items_by_request = array();
@@ -31648,6 +31656,7 @@ if (!function_exists('cleg_procurement_airtable_data')) {
             'next_po' => 1,
             'audit' => array(),
             'source' => 'airtable',
+            'data_quality' => $data_quality,
         );
 
         $code_by_record_id = array();
@@ -31748,7 +31757,9 @@ if (!function_exists('cleg_procurement_airtable_data')) {
                     'ordered_date' => cleg_procurement_airtable_scalar($fields, 'Ordered Date', cleg_procurement_airtable_scalar($fields, 'PO Date', '')),
                     'status' => cleg_procurement_airtable_scalar($fields, 'PO Status', 'Ordered'),
                     'tracking' => $tracking_by_po_record_id[$po_airtable_id] ?? '',
-                    'received_qty' => 0,
+                    'received_qty' => (float) cleg_procurement_airtable_scalar($fields, 'Received Quantity', '0'),
+                    'receipt_note' => cleg_procurement_airtable_scalar($fields, 'Receipt Note', ''),
+                    'received_at' => cleg_procurement_airtable_scalar($fields, 'Received At', ''),
                     'quote_airtable_id' => isset($quote_links[0]) ? sanitize_text_field($quote_links[0]) : '',
                     'created_at' => cleg_procurement_airtable_scalar($fields, 'PO Date', ''),
                     'updated_at' => cleg_procurement_airtable_scalar($fields, 'Ordered Date', cleg_procurement_airtable_scalar($fields, 'PO Date', '')),
@@ -33460,6 +33471,16 @@ if (!function_exists('cleg_procurement_quote_is_inactive')) {
     }
 }
 
+if (!function_exists('cleg_procurement_airtable_response_ok')) {
+    function cleg_procurement_airtable_response_ok($response) {
+        if (is_wp_error($response)) {
+            return false;
+        }
+        $code = (int) wp_remote_retrieve_response_code($response);
+        return $code >= 200 && $code < 300;
+    }
+}
+
 if (!function_exists('cleg_procurement_add_airtable_po')) {
     function cleg_procurement_add_airtable_po($request, $po, $quote = array()) {
         if (empty($request['airtable_id']) || !cleg_procurement_airtable_ready()) {
@@ -33519,7 +33540,7 @@ if (!function_exists('cleg_procurement_add_airtable_po')) {
             ),
         ));
 
-        if (is_wp_error($response)) {
+        if (!cleg_procurement_airtable_response_ok($response)) {
             return false;
         }
 
@@ -33576,6 +33597,15 @@ if (!function_exists('cleg_procurement_update_airtable_po_details')) {
         if ($note !== '') {
             $fields['Notes'] = $note;
         }
+        if (isset($po['received_qty'])) {
+            $fields['Received Quantity'] = max(0, (float) $po['received_qty']);
+        }
+        if (!empty($po['receipt_note'])) {
+            $fields['Receipt Note'] = sanitize_textarea_field((string) $po['receipt_note']);
+        }
+        if (!empty($po['received_at'])) {
+            $fields['Received At'] = cleg_procurement_airtable_datetime($po['received_at']);
+        }
 
         $response = cleg_admin_request('PATCH', CLEG_PROC_AIRTABLE_POS_TABLE, array(
             'body' => array(
@@ -33589,9 +33619,28 @@ if (!function_exists('cleg_procurement_update_airtable_po_details')) {
             ),
         ));
 
-        return !is_wp_error($response)
-            && (int) wp_remote_retrieve_response_code($response) >= 200
-            && (int) wp_remote_retrieve_response_code($response) < 300;
+        return cleg_procurement_airtable_response_ok($response);
+    }
+}
+
+if (!function_exists('cleg_procurement_confirm_airtable_po_receipt')) {
+    function cleg_procurement_confirm_airtable_po_receipt($po) {
+        $record_id = sanitize_text_field((string) ($po['airtable_id'] ?? ''));
+        if ($record_id === '' || !cleg_procurement_airtable_ready()) {
+            return false;
+        }
+        $records = cleg_admin_records(CLEG_PROC_AIRTABLE_POS_TABLE, array(
+            'pageSize' => 100,
+            'filterByFormula' => "RECORD_ID()='" . cleg_admin_formula_text($record_id) . "'",
+        ));
+        if (is_wp_error($records) || empty($records[0]['fields']) || !is_array($records[0]['fields'])) {
+            return false;
+        }
+        $fields = $records[0]['fields'];
+        $remote_qty = (float) cleg_procurement_airtable_scalar($fields, 'Received Quantity', '0');
+        $remote_status = cleg_procurement_airtable_scalar($fields, 'PO Status', '');
+        return $remote_qty === (float) ($po['received_qty'] ?? 0)
+            && $remote_status === (string) ($po['status'] ?? '');
     }
 }
 
@@ -33658,6 +33707,21 @@ if (!function_exists('cleg_procurement_add_airtable_shipment')) {
             $fields['Procurement POs'] = array($po_airtable_id);
         }
 
+        // Replay guard: one tracking number per PO is one shipment event.
+        if ($po_airtable_id !== '' && $tracking_number !== '') {
+            $existing_shipments = cleg_admin_records(CLEG_PROC_AIRTABLE_SHIPMENTS_TABLE, array('pageSize' => 100));
+            if (!is_wp_error($existing_shipments)) {
+                foreach ((array) $existing_shipments as $existing_shipment) {
+                    $existing_fields = isset($existing_shipment['fields']) && is_array($existing_shipment['fields']) ? $existing_shipment['fields'] : array();
+                    $existing_links = isset($existing_fields['Procurement POs']) && is_array($existing_fields['Procurement POs']) ? $existing_fields['Procurement POs'] : array();
+                    $existing_tracking = cleg_procurement_airtable_scalar($existing_fields, 'Tracking Number', '');
+                    if (in_array($po_airtable_id, $existing_links, true) && cleg_procurement_po_normalized_number($existing_tracking) === cleg_procurement_po_normalized_number($tracking_number)) {
+                        return sanitize_text_field((string) ($existing_shipment['id'] ?? '')) ?: true;
+                    }
+                }
+            }
+        }
+
         $response = cleg_admin_request('POST', CLEG_PROC_AIRTABLE_SHIPMENTS_TABLE, array(
             'body' => array(
                 'records' => array(array('fields' => $fields)),
@@ -33665,7 +33729,7 @@ if (!function_exists('cleg_procurement_add_airtable_shipment')) {
             ),
         ));
 
-        if (is_wp_error($response)) {
+        if (!cleg_procurement_airtable_response_ok($response)) {
             return false;
         }
 
@@ -36160,6 +36224,8 @@ if (!function_exists('cleg_procurement_handle_receive_po')) {
         $po_id = sanitize_text_field(wp_unslash($_POST['po_id'] ?? ''));
         $posted_request_id = sanitize_text_field(wp_unslash($_POST['request_id'] ?? ''));
         $status = sanitize_text_field(wp_unslash($_POST['receipt_status'] ?? 'Partially Received'));
+        $received_qty_raw = sanitize_text_field(wp_unslash($_POST['received_qty'] ?? '0'));
+        $received_qty = is_numeric($received_qty_raw) ? max(0, (float) $received_qty_raw) : 0;
         $note = sanitize_textarea_field(wp_unslash($_POST['receipt_note'] ?? ''));
         $data = cleg_procurement_get_data();
         $request_id = '';
@@ -36180,13 +36246,20 @@ if (!function_exists('cleg_procurement_handle_receive_po')) {
 
             $status = in_array($status, array('Partially Received', 'Received', 'Closed'), true) ? $status : 'Partially Received';
             $data['pos'][$po_key]['status'] = $status;
+            $data['pos'][$po_key]['received_qty'] = $received_qty;
             $data['pos'][$po_key]['receipt_note'] = $note;
             $data['pos'][$po_key]['received_at'] = current_time('mysql');
             $data['pos'][$po_key]['updated_at'] = current_time('mysql');
             $request_id = $data['pos'][$po_key]['request_id'];
 
             if (!empty($data['pos'][$po_key]['airtable_id'])) {
-                cleg_procurement_update_airtable_po_details($data['pos'][$po_key]);
+                $remote_saved = cleg_procurement_update_airtable_po_details($data['pos'][$po_key]);
+                if ($remote_saved) {
+                    $remote_saved = cleg_procurement_confirm_airtable_po_receipt($data['pos'][$po_key]);
+                }
+                if (!$remote_saved && ($data['source'] ?? '') === 'airtable') {
+                    $data['source'] = 'wordpress';
+                }
             }
 
             if ($request_id && isset($data['requests'][$request_id])) {
@@ -39419,6 +39492,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                                             <option value="Received">Recibido completo</option>
                                             <option value="Closed">Cerrar</option>
                                         </select>
+                                        <input type="number" min="0" step="0.01" name="received_qty" value="<?php echo esc_attr((string) ($po['received_qty'] ?? '0')); ?>" placeholder="Cantidad recibida">
                                         <input type="text" name="receipt_note" placeholder="Nota de Luis / evidencia">
                                         <button class="cleg-proc-btn is-secondary" type="submit">Guardar recepcion</button>
                                     </form>
@@ -39804,7 +39878,7 @@ if (!function_exists('cleg_procurement_styles')) {
             @media(max-width:720px){.cleg-proc-panel-head{position:relative!important}.cleg-proc-panel-head .cleg-proc-mobile-menu{display:block!important;position:relative!important;top:auto!important;right:auto!important;width:44px!important;flex:0 0 44px!important;padding:0!important;margin:0!important;background:transparent!important;border:0!important;justify-self:end!important}.cleg-proc-panel-head .cleg-proc-mobile-menu summary{cursor:pointer;width:38px!important;height:38px!important;min-height:38px!important;padding:0!important;border:1px solid var(--p-line)!important;border-radius:9px!important;background:#fff!important;box-shadow:0 8px 18px rgba(32,37,43,.11)!important;display:grid!important;place-items:center!important;list-style:none}.cleg-proc-panel-head .cleg-proc-mobile-menu summary::-webkit-details-marker{display:none}.cleg-proc-panel-head .cleg-proc-mobile-menu summary span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.cleg-proc-panel-head .cleg-proc-mobile-menu summary:before{content:"";width:18px;height:14px;background:linear-gradient(var(--p-ink),var(--p-ink)) 0 1px/18px 2px no-repeat,linear-gradient(var(--p-ink),var(--p-ink)) 0 7px/18px 2px no-repeat,linear-gradient(var(--p-ink),var(--p-ink)) 0 13px/18px 2px no-repeat}.cleg-proc-panel-head .cleg-proc-mobile-menu nav{position:absolute!important;top:44px!important;right:0!important;width:min(270px,calc(100vw - 20px))!important;background:#fff!important;border:1px solid var(--p-line)!important;border-radius:var(--p-radius)!important;box-shadow:0 18px 42px rgba(32,37,43,.18)!important;padding:10px!important;display:grid!important;gap:6px!important;z-index:40!important}.cleg-proc-panel-head .cleg-proc-mobile-menu a{border:1px solid var(--p-line);border-radius:var(--p-radius);padding:10px 12px;color:var(--p-ink);text-decoration:none;font-weight:850}.cleg-proc-panel-head .cleg-proc-mobile-menu a.is-active{background:var(--p-blue-soft);border-color:#b8d6ee;color:var(--p-blue)}.cleg-proc-request-form{min-height:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;max-width:none!important}.cleg-proc-request-form .cleg-proc-panel-head{display:grid!important;grid-template-columns:44px minmax(0,1fr) 44px!important;align-items:center!important;gap:0!important;padding:7px 10px!important;min-height:44px!important}.cleg-proc-request-form .cleg-proc-panel-head h2{text-align:center!important;margin:0!important;font-size:15px!important}.cleg-proc-request-form .cleg-proc-mobile-back{justify-self:start!important;min-height:34px!important}.cleg-proc-request-form .cleg-proc-panel-body{padding:6px 10px 10px!important}.cleg-proc-request-form form{gap:5px!important;padding-bottom:0!important}.cleg-proc-request-form label{gap:3px!important;font-size:10px!important}.cleg-proc-request-form input:not([type="checkbox"]):not([type="radio"]),.cleg-proc-request-form select,.cleg-proc-request-form textarea{min-height:35px!important;padding:7px 8px!important}.cleg-proc-request-form textarea{min-height:48px!important}.cleg-proc-request-form button[type="submit"]{min-height:42px!important}.cleg-proc-request-form .cleg-proc-attach-grid{gap:2px!important}.cleg-proc-request-form .cleg-proc-attach-action{min-height:52px!important;padding:2px 1px!important}.cleg-proc-request-form .cleg-proc-attach-icon{width:34px!important;height:34px!important}.cleg-proc-board .cleg-proc-panel-head{display:grid!important;grid-template-columns:minmax(0,1fr) auto 44px!important;align-items:center!important;padding:10px 12px!important}.cleg-proc-board .cleg-proc-panel-head h2{text-align:left!important}.cleg-proc-detail-panel .cleg-proc-panel-head{display:grid!important;grid-template-columns:60px minmax(0,1fr) auto 44px!important;align-items:center!important;gap:8px!important;padding:10px 12px!important}.cleg-proc-detail-panel .cleg-proc-panel-head h2{text-align:center!important;min-width:0!important}.cleg-proc-detail-panel .cleg-proc-badge{max-width:110px;overflow:hidden;text-overflow:ellipsis}.cleg-proc-main>.cleg-proc-mobile-menu{display:none!important}}
             body .cleg-procurement .cleg-proc-app{width:100%!important;max-width:1920px!important}
             body .cleg-procurement .cleg-proc-main,body .cleg-procurement .cleg-proc-panel,body .cleg-procurement .cleg-proc-request-row>*{min-width:0!important}
-            body .cleg-procurement .cleg-proc-btn,body .cleg-procurement .cleg-proc-open{white-space:normal!important;text-align:center!important;min-width:max-content!important}
+             body .cleg-procurement .cleg-proc-btn,body .cleg-procurement .cleg-proc-open{white-space:normal!important;text-align:center!important;min-width:0!important;max-width:100%!important;min-height:44px!important;overflow-wrap:anywhere!important;word-break:normal!important}
             body .cleg-procurement .cleg-proc-nav a.is-active{background:rgba(255,255,255,.12)!important;border-color:rgba(255,255,255,.2)!important;color:#fff!important;-webkit-text-fill-color:#fff!important;box-shadow:none!important}
             body .cleg-procurement .cleg-proc-tabs a.is-active,body .cleg-procurement .cleg-proc-mobile-menu a.is-active{background:#06182d!important;border-color:#06182d!important;color:#fff!important;-webkit-text-fill-color:#fff!important;box-shadow:0 8px 18px rgba(6,24,45,.14)!important}
             body .cleg-procurement .cleg-proc-tabs a small{margin-left:2px!important;background:#fff!important;border:1px solid rgba(6,24,45,.12)!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important}
@@ -39823,8 +39897,9 @@ if (!function_exists('cleg_procurement_styles')) {
             body .cleg-procurement .cleg-proc-nav a{font-size:15.5px!important;line-height:1.25!important;padding:12px 12px!important;font-weight:760!important}
             body .cleg-procurement .cleg-proc-user{display:none!important}
             body .cleg-procurement .cleg-proc-actions{gap:10px!important}
-            body .cleg-procurement .cleg-proc-actions .cleg-proc-btn{min-height:38px!important;padding:8px 14px!important;font-size:15px!important;font-weight:760!important}
-            body .cleg-procurement .cleg-proc-btn,body .cleg-procurement .cleg-proc-open{border-radius:7px!important;min-height:42px!important;padding:10px 15px!important;font-weight:760!important;letter-spacing:0!important;box-shadow:none!important;white-space:nowrap!important;min-width:0!important}
+             body .cleg-procurement .cleg-proc-actions .cleg-proc-btn{min-height:44px!important;padding:8px 14px!important;font-size:15px!important;font-weight:760!important}
+             body .cleg-procurement .cleg-proc-btn,body .cleg-procurement .cleg-proc-open{border-radius:7px!important;min-height:44px!important;padding:10px 15px!important;font-weight:760!important;letter-spacing:0!important;box-shadow:none!important;white-space:normal!important;min-width:0!important;max-width:100%!important;overflow-wrap:anywhere!important;word-break:normal!important}
+             body .cleg-procurement .cleg-proc-btn,body .cleg-procurement .cleg-proc-open,body .cleg-procurement button[type="submit"]{min-width:0!important;max-width:100%!important;min-height:44px!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:normal!important}
             body .cleg-procurement .cleg-proc-btn:not(.is-ghost):not(.is-secondary):not(.is-danger){background:#c75000!important;border-color:#c75000!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
             body .cleg-procurement .cleg-proc-btn.is-ghost,body .cleg-procurement .cleg-proc-btn.is-secondary,body .cleg-procurement .cleg-proc-open{background:#fff!important;border-color:#d5dfe8!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important}
             body .cleg-procurement .cleg-proc-btn:hover,body .cleg-procurement .cleg-proc-open:hover{filter:none!important;transform:translateY(-1px)!important;border-color:#b9c8d6!important}
@@ -43367,6 +43442,20 @@ if (!function_exists('cleg_admin_receipts_module_enabled')) {
     }
 }
 
+if (!function_exists('cleg_admin_receipts_user_can_access')) {
+    function cleg_admin_receipts_user_can_access($user = null) {
+        $user = $user ?: wp_get_current_user();
+        if (!$user || empty($user->ID)) {
+            return false;
+        }
+
+        // Recibos contienen datos sensibles de compras; no usar el gate RRHH generico.
+        return user_can($user, 'manage_options')
+            || user_can($user, 'cleg_manage_procurement')
+            || user_can($user, 'cleg_view_all_purchase_requests');
+    }
+}
+
 if (!function_exists('cleg_admin_receipts_filter_formula')) {
     function cleg_admin_receipts_filter_formula($date = '', $job_site = '', $employee = '', $status = '', $amount = '') {
         $parts = array();
@@ -43423,6 +43512,9 @@ if (!function_exists('cleg_admin_receipt_records')) {
         if (!cleg_admin_receipts_module_enabled()) {
             return new WP_Error('cleg_receipts_module_disabled', 'Compras no esta activo para este tenant.');
         }
+        if (!cleg_admin_receipts_user_can_access()) {
+            return new WP_Error('cleg_receipts_forbidden', 'No tienes permisos para consultar recibos.');
+        }
 
         $query = array(
             'pageSize' => 100,
@@ -43460,7 +43552,7 @@ if (!function_exists('cleg_admin_handle_receipt_action')) {
             return;
         }
 
-        if (!cleg_admin_user_allowed()) {
+        if (!cleg_admin_receipts_user_can_access()) {
             return;
         }
 
@@ -43796,9 +43888,7 @@ if (!function_exists('cleg_admin_recibos_shortcode')) {
             return '<section class="cleg-admin-ui"><div class="cleg-admin-empty"><h2>Modulo desactivado</h2><p>Compras no esta activo para esta empresa.</p></div></section>';
         }
 
-        $can_access = function_exists('cleg_procurement_user_can_access')
-            ? cleg_procurement_user_can_access()
-            : (current_user_can('manage_options') || current_user_can('cleg_access_procurement') || current_user_can('cleg_manage_procurement'));
+        $can_access = cleg_admin_receipts_user_can_access();
         if (!$can_access) {
             return '<section class="cleg-admin-ui"><div class="cleg-admin-empty"><h2>Acceso restringido</h2><p>Esta pantalla esta disponible solo para usuarios autorizados de Compras.</p></div></section>';
         }
