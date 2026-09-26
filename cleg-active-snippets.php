@@ -40467,6 +40467,9 @@ if (!function_exists('cleg_procurement_styles')) {
             body .cleg-procurement .cleg-proc-queue-quote{border-inline-start:4px solid #c75000!important}
             body .cleg-procurement .cleg-proc-queue-active-purchase{border-inline-start:4px solid #2369a5!important}
             @media(max-width:390px){body .cleg-procurement .cleg-proc-request-row summary{min-width:0!important;overflow-wrap:anywhere!important}body .cleg-procurement .cleg-proc-open{grid-column:1/-1!important;width:100%!important}}
+            @media(min-width:721px){body .cleg-procurement .cleg-proc-primary-nav{display:none!important}}
+            @media(max-width:720px){body .cleg-procurement .cleg-proc-panel-head .cleg-proc-mobile-menu{display:none!important}body .cleg-procurement .cleg-proc-btn,body .cleg-procurement .cleg-proc-open{min-width:0!important;max-width:100%!important;white-space:normal!important;overflow-wrap:anywhere!important}body .cleg-procurement .cleg-proc-quick-filters{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;max-width:100%!important;min-width:0!important}body .cleg-procurement .cleg-proc-quick-filters a{flex:0 0 auto!important;width:auto!important;min-width:44px!important;max-width:180px!important;white-space:normal!important}}
+            @media(max-width:390px){body .cleg-procurement .cleg-proc-quick-filters a{min-height:44px!important;padding:9px 10px!important}body .cleg-procurement .cleg-proc-request-row .cleg-proc-open{width:100%!important}}
             /* End CLEG procurement decision workspace v1.71 */
         </style>';
     }
