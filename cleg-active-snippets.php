@@ -43805,12 +43805,19 @@ if (!function_exists('cleg_admin_handle_receipt_action')) {
             wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('Airtable no confirmo la correccion del recibo.'), remove_query_arg(array('_wp_http_referer'))));
             exit;
         }
-        $verified_fields = isset($verified['fields']) && is_array($verified['fields']) ? $verified['fields'] : array();
         foreach ($fields as $field => $expected) {
             if (in_array($field, array('Reviewed At', 'Review Note'), true)) {
                 continue;
             }
-            if ((string) cleg_admin_field($verified, $field) !== (string) $expected) {
+            $actual = cleg_admin_field($verified, $field);
+            if ($field === 'Quantity' && is_numeric($actual) && is_numeric($expected)) {
+                if ((float) $actual !== (float) $expected) {
+                    wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('Airtable no confirmo todos los campos del recibo.'), remove_query_arg(array('_wp_http_referer'))));
+                    exit;
+                }
+                continue;
+            }
+            if ((string) $actual !== (string) $expected) {
                 wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('Airtable no confirmo todos los campos del recibo.'), remove_query_arg(array('_wp_http_referer'))));
                 exit;
             }
@@ -44211,6 +44218,14 @@ if (!function_exists('cleg_admin_receipts_styles')) {
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-actions.is-submitting button{cursor:wait;opacity:.6}
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-actions.is-submitting button.is-loading{opacity:1;background:#06182d;color:#fff}
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-actions button:disabled{opacity:.45}
+            body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-readonly{display:inline-flex;align-items:center;min-height:40px;color:#667085;font-size:12px;font-weight:750}
+            body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-edit{margin-top:8px;border:1px solid var(--cleg-app-line,#d8e0e7);border-radius:12px;padding:8px;background:#f8fafc;min-width:220px}
+            body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-edit summary{cursor:pointer;font-size:12px;font-weight:850;color:#344054}
+            body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-edit form{display:grid;gap:8px;margin-top:8px}
+            body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-edit label{display:grid;gap:4px;font-size:11px;font-weight:750;color:#475467}
+            body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-edit input,body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-edit textarea{width:100%;min-width:0;min-height:40px;border:1px solid #cbd5e1;border-radius:8px;padding:8px;background:#fff;color:#101828}
+            body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-edit textarea{min-height:64px;resize:vertical}
+            body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-edit button{min-height:42px;border:0;border-radius:8px;padding:8px 10px;background:#06182d;color:#fff;font-weight:850;cursor:pointer}
             body .cleg-proc-receipts-screen .cleg-receipt-mobile-list{display:none}
             body .cleg-proc-receipts-screen .cleg-receipt-mobile-card{display:grid;gap:12px;padding:14px;border:1px solid var(--cleg-app-line);border-radius:12px;background:#fff;box-shadow:var(--cleg-app-shadow)}
             body .cleg-proc-receipts-screen .cleg-receipt-mobile-card+.cleg-receipt-mobile-card{margin-top:10px}
