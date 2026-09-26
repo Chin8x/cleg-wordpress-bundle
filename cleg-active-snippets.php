@@ -30689,6 +30689,19 @@ if (!function_exists('cleg_procurement_user_can_access')) {
     }
 }
 
+if (!function_exists('cleg_procurement_user_can_leave_to_worker_panel')) {
+    function cleg_procurement_user_can_leave_to_worker_panel($user = null) {
+        $user = $user ?: wp_get_current_user();
+        if (!$user || empty($user->ID)) {
+            return false;
+        }
+
+        return user_can($user, 'manage_options')
+            || user_can($user, 'cleg_manage_tenant')
+            || user_can($user, 'cleg_clock_own_hours');
+    }
+}
+
 if (!function_exists('cleg_procurement_user_can_manage_requests')) {
     function cleg_procurement_user_can_manage_requests($user = null) {
         $user = $user ?: wp_get_current_user();
@@ -30723,6 +30736,24 @@ if (!function_exists('cleg_procurement_normalize_owner_token')) {
     }
 }
 
+if (!function_exists('cleg_procurement_request_tenant_matches')) {
+    function cleg_procurement_request_tenant_matches($request, $user = null) {
+        $user = $user ?: wp_get_current_user();
+        $expected = function_exists('cleg_saas_current_tenant_id')
+            ? sanitize_key((string) cleg_saas_current_tenant_id())
+            : 'cleg';
+        $actual = sanitize_key((string) ($request['tenant_id'] ?? ($request['tenant_key'] ?? '')));
+
+        if ($actual !== '') {
+            return $expected !== '' && hash_equals($expected, $actual);
+        }
+
+        // Existing records are read from the tenant-scoped Airtable adapter;
+        // records without an explicit tenant marker stay manager-only.
+        return cleg_procurement_user_can_manage_requests($user);
+    }
+}
+
 if (!function_exists('cleg_procurement_request_belongs_to_user')) {
     function cleg_procurement_request_belongs_to_user($request, $user = null) {
         $user = $user ?: wp_get_current_user();
@@ -30738,26 +30769,7 @@ if (!function_exists('cleg_procurement_request_belongs_to_user')) {
             }
         }
 
-        $tokens = array_filter(array_map('cleg_procurement_normalize_owner_token', array(
-            $user->display_name,
-            $user->user_login,
-            $user->user_email,
-            get_user_meta($user->ID, 'nickname', true),
-            trim((string) get_user_meta($user->ID, 'first_name', true) . ' ' . (string) get_user_meta($user->ID, 'last_name', true)),
-        )));
-
-        $request_values = array_filter(array_map('cleg_procurement_normalize_owner_token', array(
-            $request['requester'] ?? '',
-            $request['created_by'] ?? '',
-            $request['requester_login'] ?? '',
-            $request['requester_email'] ?? '',
-            $request['portal_username'] ?? '',
-            $request['Portal Username'] ?? '',
-            $request['Requested By Name'] ?? '',
-            $request['Requested By Email'] ?? '',
-        )));
-
-        return (bool) array_intersect($tokens, $request_values);
+        return false;
     }
 }
 
@@ -30788,7 +30800,9 @@ if (!function_exists('cleg_procurement_user_can_view_request')) {
         $user = $user ?: wp_get_current_user();
 
         return cleg_procurement_user_can_view_all_requests($user)
-            || (user_can($user, 'cleg_view_own_purchase_requests') && cleg_procurement_request_belongs_to_user($request, $user));
+            || (cleg_procurement_request_tenant_matches($request, $user)
+                && user_can($user, 'cleg_view_own_purchase_requests')
+                && cleg_procurement_request_belongs_to_user($request, $user));
     }
 }
 
@@ -31542,6 +31556,9 @@ if (!function_exists('cleg_procurement_request_from_airtable')) {
         $unit = cleg_procurement_airtable_scalar($first_item, 'Unit', 'Unidad');
         $due_date = cleg_procurement_airtable_scalar($fields, 'Required Delivery Date', cleg_procurement_airtable_scalar($fields, 'Required Date', ''));
         $requester_name = cleg_procurement_airtable_scalar($fields, 'Requested By Name', 'Usuario');
+        $requester_user_id = cleg_procurement_airtable_scalar($fields, 'WordPress User ID', cleg_procurement_airtable_scalar($fields, 'Requested By WP User ID', ''));
+        $requester_login = cleg_procurement_airtable_scalar($fields, 'Portal Username', '');
+        $tenant_id = cleg_procurement_airtable_scalar($fields, 'Tenant ID', cleg_procurement_airtable_scalar($fields, 'Tenant Key', ''));
         $raw_status = cleg_procurement_airtable_scalar($fields, 'Procurement Status', 'Submitted by Vendor');
         $attachments = cleg_procurement_dedupe_attachments(array_merge(
             cleg_procurement_airtable_attachment_urls($fields, 'Attachments'),
@@ -31555,6 +31572,9 @@ if (!function_exists('cleg_procurement_request_from_airtable')) {
             'item' => $item_description ?: cleg_procurement_airtable_scalar($fields, 'Request Title', $code),
             'project' => cleg_procurement_airtable_scalar($fields, 'Project / Cost Notes', 'Project Pending'),
             'requester' => $requester_name,
+            'requester_user_id' => is_numeric($requester_user_id) ? (int) $requester_user_id : 0,
+            'requester_login' => sanitize_user($requester_login, true),
+            'tenant_id' => sanitize_key($tenant_id),
             'quantity' => is_numeric($quantity) ? (float) $quantity : 1,
             'unit' => $unit ?: 'Unidad',
             'quote_due_date' => cleg_procurement_airtable_scalar($fields, 'Quote Due Date', ''),
@@ -31810,6 +31830,17 @@ if (!function_exists('cleg_procurement_get_data')) {
                 }
                 $airtable_data['quotes'] = cleg_procurement_dedupe_quotes_by_request($airtable_data['quotes']);
 
+                foreach ((array) $legacy_data['requests'] as $legacy_id => $legacy_request) {
+                    if (!isset($airtable_data['requests'][$legacy_id]) || !is_array($legacy_request)) {
+                        continue;
+                    }
+                    foreach (array('requester_user_id', 'requester_login', 'requester_email', 'tenant_id', 'tenant_key') as $identity_key) {
+                        if (empty($airtable_data['requests'][$legacy_id][$identity_key]) && !empty($legacy_request[$identity_key])) {
+                            $airtable_data['requests'][$legacy_id][$identity_key] = $legacy_request[$identity_key];
+                        }
+                    }
+                }
+
                 if (!empty($legacy_data['pos']) && is_array($legacy_data['pos'])) {
                     $airtable_data['pos'] = array_merge((array) $legacy_data['pos'], (array) $airtable_data['pos']);
                 }
@@ -31854,6 +31885,7 @@ if (!function_exists('cleg_procurement_get_data')) {
             'next_po' => 1,
             'audit' => array(),
             'source' => 'wordpress',
+            'data_quality' => 'degraded',
         ));
 
         $data['requests'] = cleg_procurement_apply_request_overrides(cleg_procurement_dedupe_requests($data['requests']));
@@ -33476,6 +33508,13 @@ if (!function_exists('cleg_procurement_airtable_response_ok')) {
         if (is_wp_error($response)) {
             return false;
         }
+
+        // The integration layer normalizes successful 2xx responses to arrays;
+        // only the legacy raw HTTP path exposes a response code here.
+        if (is_array($response)) {
+            return true;
+        }
+
         $code = (int) wp_remote_retrieve_response_code($response);
         return $code >= 200 && $code < 300;
     }
@@ -35396,6 +35435,7 @@ if (!function_exists('cleg_procurement_handle_create_request')) {
             'requester_user_id' => $user && $user->ID ? (int) $user->ID : 0,
             'requester_login' => $user && $user->ID ? sanitize_user($user->user_login, true) : '',
             'requester_email' => $user && $user->ID ? sanitize_email($user->user_email) : '',
+            'tenant_id' => function_exists('cleg_saas_current_tenant_id') ? sanitize_key((string) cleg_saas_current_tenant_id()) : 'cleg',
             'quantity' => $quantity,
             'unit' => $unit,
             'quote_due_date' => $quote_due_date,
@@ -36229,6 +36269,7 @@ if (!function_exists('cleg_procurement_handle_receive_po')) {
         $note = sanitize_textarea_field(wp_unslash($_POST['receipt_note'] ?? ''));
         $data = cleg_procurement_get_data();
         $request_id = '';
+        $notice = 'received_error';
 
         $po_airtable_id = sanitize_text_field(wp_unslash($_POST['po_airtable_id'] ?? ''));
         $po_match = cleg_procurement_find_po($data, $po_id, $po_airtable_id);
@@ -36245,6 +36286,10 @@ if (!function_exists('cleg_procurement_handle_receive_po')) {
             }
 
             $status = in_array($status, array('Partially Received', 'Received', 'Closed'), true) ? $status : 'Partially Received';
+            if ($received_qty <= 0) {
+                wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request_id), 'proc_notice' => 'received_error'), home_url('/admin-procurement/')));
+                exit;
+            }
             $data['pos'][$po_key]['status'] = $status;
             $data['pos'][$po_key]['received_qty'] = $received_qty;
             $data['pos'][$po_key]['receipt_note'] = $note;
@@ -36259,7 +36304,12 @@ if (!function_exists('cleg_procurement_handle_receive_po')) {
                 }
                 if (!$remote_saved && ($data['source'] ?? '') === 'airtable') {
                     $data['source'] = 'wordpress';
+                    $notice = 'received_fallback';
+                } else {
+                    $notice = $remote_saved ? 'received' : 'received_error';
                 }
+            } else {
+                $notice = 'received';
             }
 
             if ($request_id && isset($data['requests'][$request_id])) {
@@ -36268,10 +36318,15 @@ if (!function_exists('cleg_procurement_handle_receive_po')) {
             }
 
             cleg_procurement_add_audit($data, 'Recepcion actualizada', $po_id, $status . ' - ' . $note);
-            cleg_procurement_save_data($data);
         }
 
-        wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request_id), 'proc_notice' => 'received'), home_url('/admin-procurement/')));
+        if ($request_id === '' || empty($data['pos'][$po_key ?? ''])) {
+            $notice = 'received_error';
+        } elseif (!cleg_procurement_save_data($data)) {
+            $notice = 'received_error';
+        }
+
+        wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request_id), 'proc_notice' => $notice), home_url('/admin-procurement/')));
         exit;
     }
 }
@@ -36505,8 +36560,8 @@ if (!function_exists('cleg_procurement_metric_count')) {
 if (!function_exists('cleg_procurement_selected_request')) {
     function cleg_procurement_selected_request($data) {
         $selected = sanitize_text_field(wp_unslash($_GET['proc_request'] ?? ''));
-        if ($selected && isset($data['requests'][$selected])) {
-            return $selected;
+        if ($selected !== '') {
+            return isset($data['requests'][$selected]) ? $selected : '';
         }
 
         $requests = cleg_procurement_sort_requests($data['requests']);
@@ -36544,6 +36599,8 @@ if (!function_exists('cleg_procurement_render_notice')) {
             'tracking_updated' => 'Tracking guardado.',
             'tracking_missing' => 'Escribe el tracking number antes de guardar.',
             'received' => 'Recepcion actualizada.',
+            'received_fallback' => 'Recepcion guardada localmente, pero Airtable no confirmo la persistencia remota.',
+            'received_error' => 'No se pudo confirmar la recepcion. No se marco como guardada.',
             'history_created' => 'Historico creado.',
             'history_create_failed' => 'No se pudo crear el registro del historico. Revisa Airtable o intenta guardarlo de nuevo.',
             'airtable_create_failed' => 'No se pudo guardar la solicitud en Airtable. Revisa la conexion o intenta de nuevo; no se creo una copia local para evitar duplicados.',
@@ -36573,9 +36630,9 @@ if (!function_exists('cleg_procurement_render_notice')) {
             return '';
         }
 
-        $notice_class = in_array($notice, array('updated_error', 'quick_updated_error'), true)
+        $notice_class = in_array($notice, array('updated_error', 'quick_updated_error', 'received_error'), true)
             ? ' is-bad'
-            : (in_array($notice, array('updated_fallback', 'quick_updated_fallback'), true) ? ' is-warn' : '');
+            : (in_array($notice, array('updated_fallback', 'quick_updated_fallback', 'received_fallback'), true) ? ' is-warn' : '');
         $message = $messages[$notice];
         if ($notice === 'quick_updated_error' && !empty($_GET['proc_notice_detail'])) {
             $message .= ' Detalle: ' . sanitize_text_field(wp_unslash($_GET['proc_notice_detail']));
@@ -43459,6 +43516,30 @@ if (!function_exists('cleg_admin_receipts_user_can_access')) {
     }
 }
 
+if (!function_exists('cleg_admin_receipts_user_can_manage')) {
+    function cleg_admin_receipts_user_can_manage($user = null) {
+        $user = $user ?: wp_get_current_user();
+        if (!$user || empty($user->ID)) {
+            return false;
+        }
+
+        return user_can($user, 'manage_options')
+            || user_can($user, 'cleg_manage_procurement');
+    }
+}
+
+if (!function_exists('cleg_admin_receipt_action_allowed')) {
+    function cleg_admin_receipt_action_allowed($status, $action) {
+        $transitions = array(
+            'Archivado' => array('review'),
+            'Revisar' => array('archive', 'resolved'),
+            'Resuelto' => array('archive'),
+        );
+
+        return in_array($action, $transitions[$status] ?? array(), true);
+    }
+}
+
 if (!function_exists('cleg_admin_receipts_filter_formula')) {
     function cleg_admin_receipts_filter_formula($date = '', $job_site = '', $employee = '', $status = '', $amount = '') {
         $parts = array();
@@ -43555,7 +43636,7 @@ if (!function_exists('cleg_admin_handle_receipt_action')) {
             return;
         }
 
-        if (!cleg_admin_receipts_user_can_access()) {
+        if (!cleg_admin_receipts_user_can_manage()) {
             return;
         }
 
@@ -43569,6 +43650,7 @@ if (!function_exists('cleg_admin_handle_receipt_action')) {
             'archive' => 'Archivado',
             'review' => 'Revisar',
             'resolved' => 'Resuelto',
+            'edit' => '',
         );
 
         if ($record_id === '' || !isset($allowed[$action])) {
@@ -43583,17 +43665,69 @@ if (!function_exists('cleg_admin_handle_receipt_action')) {
 
         $user = wp_get_current_user();
         $actor_name = sanitize_text_field($user->display_name ?: $user->user_login);
-        $new_status = $allowed[$action];
-        $note = isset($_POST['cleg_receipt_note']) ? sanitize_textarea_field(wp_unslash($_POST['cleg_receipt_note'])) : '';
         $current_note = cleg_admin_field($record, 'Review Note');
-        $audit = cleg_admin_audit_line($actor_name, 'Status', cleg_admin_field($record, 'Status'), $new_status, $note);
+        $current_status = cleg_admin_field($record, 'Status', 'Archivado');
+        $fields = array();
 
-        $fields = array(
-            'Status' => $new_status,
-            'Reviewed By' => $actor_name,
-            'Reviewed At' => gmdate('c'),
-            'Review Note' => trim($current_note . "\n" . $audit),
-        );
+        if ($action === 'edit') {
+            $before = array(
+                'Employee Name' => cleg_admin_field($record, 'Employee Name'),
+                'Job Site Name' => cleg_admin_field($record, 'Job Site Name'),
+                'Purchase Category' => cleg_admin_field($record, 'Purchase Category'),
+                'Quantity' => cleg_admin_field($record, 'Quantity'),
+            );
+            $after = array(
+                'Employee Name' => sanitize_text_field(wp_unslash($_POST['cleg_receipt_employee'] ?? $before['Employee Name'])),
+                'Job Site Name' => sanitize_text_field(wp_unslash($_POST['cleg_receipt_project'] ?? $before['Job Site Name'])),
+                'Purchase Category' => sanitize_text_field(wp_unslash($_POST['cleg_receipt_purchase'] ?? $before['Purchase Category'])),
+                'Quantity' => sanitize_text_field(wp_unslash($_POST['cleg_receipt_quantity'] ?? $before['Quantity'])),
+            );
+            $reason = sanitize_textarea_field(wp_unslash($_POST['cleg_receipt_reason'] ?? ''));
+            $evidence = sanitize_text_field(wp_unslash($_POST['cleg_receipt_evidence'] ?? ''));
+            if ($reason === '' || $evidence === '') {
+                wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('La correccion requiere motivo y evidencia.'), remove_query_arg(array('_wp_http_referer'))));
+                exit;
+            }
+            if ($after['Quantity'] !== '' && (!is_numeric($after['Quantity']) || (float) $after['Quantity'] < 0)) {
+                wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('La cantidad debe ser numerica y no negativa.'), remove_query_arg(array('_wp_http_referer'))));
+                exit;
+            }
+            $changed = false;
+            foreach ($before as $field => $value) {
+                if ((string) $value !== (string) ($after[$field] ?? '')) {
+                    $changed = true;
+                    break;
+                }
+            }
+            if (!$changed) {
+                wp_safe_redirect(add_query_arg('receipt_saved', '1', remove_query_arg(array('_wp_http_referer'))));
+                exit;
+            }
+            $audit = cleg_admin_audit_line($actor_name, 'Receipt correction', wp_json_encode($before), wp_json_encode($after), $reason . ' | Evidencia: ' . $evidence);
+            $fields = $after;
+            $fields['Reviewed By'] = $actor_name;
+            $fields['Reviewed At'] = gmdate('c');
+            $fields['Review Note'] = trim($current_note . "\n" . $audit);
+        } else {
+            $new_status = $allowed[$action];
+            if ($current_status === $new_status) {
+                // A replay of the same action is already in the desired state.
+                wp_safe_redirect(add_query_arg('receipt_saved', '1', remove_query_arg(array('_wp_http_referer'))));
+                exit;
+            }
+            if (!cleg_admin_receipt_action_allowed($current_status, $action)) {
+                wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('Accion de recibo no valida para su estado actual.'), remove_query_arg(array('_wp_http_referer'))));
+                exit;
+            }
+            $note = isset($_POST['cleg_receipt_note']) ? sanitize_textarea_field(wp_unslash($_POST['cleg_receipt_note'])) : '';
+            $audit = cleg_admin_audit_line($actor_name, 'Status', $current_status, $new_status, $note);
+            $fields = array(
+                'Status' => $new_status,
+                'Reviewed By' => $actor_name,
+                'Reviewed At' => gmdate('c'),
+                'Review Note' => trim($current_note . "\n" . $audit),
+            );
+        }
 
         $result = cleg_admin_request('PATCH', CLEG_AIRTABLE_RECEIPTS_TABLE, array(
             'body' => array(
@@ -43605,6 +43739,22 @@ if (!function_exists('cleg_admin_handle_receipt_action')) {
         if (is_wp_error($result)) {
             wp_safe_redirect(add_query_arg('receipt_error', rawurlencode($result->get_error_message()), remove_query_arg(array('_wp_http_referer'))));
             exit;
+        }
+
+        $verified = cleg_admin_receipt_record_by_id($record_id);
+        if (is_wp_error($verified) || empty($verified)) {
+            wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('Airtable no confirmo la correccion del recibo.'), remove_query_arg(array('_wp_http_referer'))));
+            exit;
+        }
+        $verified_fields = isset($verified['fields']) && is_array($verified['fields']) ? $verified['fields'] : array();
+        foreach ($fields as $field => $expected) {
+            if (in_array($field, array('Reviewed At', 'Review Note'), true)) {
+                continue;
+            }
+            if ((string) cleg_admin_field($verified, $field) !== (string) $expected) {
+                wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('Airtable no confirmo todos los campos del recibo.'), remove_query_arg(array('_wp_http_referer'))));
+                exit;
+            }
         }
 
         wp_safe_redirect(add_query_arg(array('receipt_saved' => '1', 'cleg_refresh' => time()), remove_query_arg(array('_wp_http_referer'))));
@@ -43827,9 +43977,7 @@ if (!function_exists('cleg_admin_receipts_review_count')) {
 
 if (!function_exists('cleg_admin_receipts_procurement_shell_open')) {
     function cleg_admin_receipts_procurement_shell_open($review_count = 0) {
-        if (function_exists('cleg_procurement_guard')) {
-            cleg_procurement_guard();
-        } elseif (!function_exists('cleg_admin_user_allowed') || !cleg_admin_user_allowed()) {
+        if (!cleg_admin_receipts_user_can_access()) {
             return '<section class="cleg-procurement cleg-proc-receipts-screen"><div class="cleg-proc-empty"><h2>Acceso restringido</h2><p>Inicia sesion con un usuario autorizado.</p></div></section>';
         }
 
