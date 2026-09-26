@@ -1,5 +1,15 @@
 # Procurement changelog
 
+## 2026-09-26 — separación de cotización al cliente y compra aprobada
+
+- Bandeja separada en `Cotizar al cliente`, `Compra aprobada` y `Cerradas`, con conteos y enlaces conservando filtros/URLs existentes.
+- Estados redactados desde el trabajo real: cotización de suplidor, propuesta al cliente y orden/recepción ya no se presentan como el mismo paso.
+- PO solo aparece como próxima acción cuando la respuesta del cliente es `Aceptada`; comparar precios no invita a crear una PO.
+- Seguimiento al cliente acotado a tres push-backs; guardar envío, push-back, aceptación, rechazo y cierre sin respuesta en la auditoría y en las notas persistentes de decisión de la cotización.
+- `Sin respuesta` solo se permite cerrar después de tres seguimientos; se conservan los estados históricos y no se migran ni eliminan registros.
+- Verificación local: parser PHP (`php-parser`) y `git diff --check` pasan; el entorno no tiene CLI de PHP, por lo que esto no sustituye pruebas de ejecución. No se declara montado ni aprobado hasta completar QA del bundle publicado.
+- La vista de Bandeja elimina el resumen global duplicado y reemplaza filtros redundantes por filtros específicos de cada carril; requisiciones recibidas pasan a Cerradas.
+
 ## 2026-09-26 — QA implementation pass
 
 - Seguridad: aislamiento por tenant e identidad de solicitante, rutas de detalle inexistentes sin fallback silencioso y salida a Panel limitada a capacidades operativas.
