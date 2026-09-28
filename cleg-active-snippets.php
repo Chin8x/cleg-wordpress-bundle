@@ -31250,7 +31250,7 @@ if (!function_exists('cleg_procurement_po_line_plan')) {
         $quote_fields = (array) ($quote_record['fields'] ?? array());
         $quote_request_links = isset($quote_fields['Procurement Requests']) && is_array($quote_fields['Procurement Requests']) ? array_values(array_unique($quote_fields['Procurement Requests'])) : array();
         $quote_item_links = isset($quote_fields['Procurement Items']) && is_array($quote_fields['Procurement Items']) ? array_values(array_unique($quote_fields['Procurement Items'])) : array();
-        if (cleg_procurement_airtable_scalar($quote_fields, 'Client Response Status', '') !== 'Aceptada'
+        if (!cleg_procurement_quote_purchase_authorized($request, $quote_fields)
             || count($quote_request_links) !== 1 || $quote_request_links[0] !== $request['airtable_id']
             || !$quote_item_links) {
             return new WP_Error('cleg_procurement_po_quote_item_ambiguous', 'La cotizacion aceptada no identifica de forma inequivoca sus Procurement Items.');
@@ -31321,7 +31321,7 @@ if (!function_exists('cleg_procurement_po_line_plan')) {
             $line_quote_requests = isset($line_quote_fields['Procurement Requests']) && is_array($line_quote_fields['Procurement Requests']) ? array_values(array_unique($line_quote_fields['Procurement Requests'])) : array();
             $line_quote_items = isset($line_quote_fields['Procurement Items']) && is_array($line_quote_fields['Procurement Items']) ? array_values(array_unique($line_quote_fields['Procurement Items'])) : array();
             if (!$line_quote || count($line_quote_requests) !== 1 || $line_quote_requests[0] !== $request['airtable_id']
-                || cleg_procurement_airtable_scalar($line_quote_fields, 'Client Response Status', '') !== 'Aceptada'
+                || !cleg_procurement_quote_purchase_authorized($request, $line_quote_fields)
                 || !in_array($item_links[0], $line_quote_items, true)) {
                 return new WP_Error('cleg_procurement_po_line_ambiguous', 'Una PO Line existente no conserva una quote aceptada verificable para su item.');
             }
@@ -31552,10 +31552,9 @@ if (!function_exists('cleg_procurement_receipt_ordered_quantity')) {
         $item_requests = isset($item_fields['Procurement Requests']) && is_array($item_fields['Procurement Requests']) ? array_values(array_unique($item_fields['Procurement Requests'])) : array();
         if (count($request_links) !== 1 || count($po_quote_links) !== 1 || $po_quote_links[0] !== $quote_id
             || count($quote_requests) !== 1 || $quote_requests[0] !== $request_links[0]
-            || cleg_procurement_airtable_scalar($quote_fields, 'Client Response Status', '') !== 'Aceptada'
             || !in_array($item_id, $quote_items, true)
             || count($item_requests) !== 1 || $item_requests[0] !== $request_links[0]) {
-            return new WP_Error('cleg_procurement_receipt_line_chain_ambiguous', 'No se demuestra la cadena PO→quote aceptada→item→requisicion.');
+            return new WP_Error('cleg_procurement_receipt_line_chain_ambiguous', 'No se demuestra la cadena PO→cotizacion de proveedor→item→requisicion.');
         }
         $ordered = $line_fields['Ordered Quantity'] ?? null;
         if (!cleg_procurement_quantity_is_cents($ordered)) {
@@ -31671,7 +31670,7 @@ if (!function_exists('cleg_procurement_receipt_intent_token')) {
 }
 
 if (!function_exists('cleg_procurement_create_receipt_event')) {
-    function cleg_procurement_create_receipt_event($source_data, $po_airtable_id, $quantity, $receipt_status, $received_by, $condition, $notes, $token, $shipment_airtable_id = '', $po_line_airtable_id = '') {
+    function cleg_procurement_create_receipt_event($source_data, $po_airtable_id, $quantity, $receipt_status, $received_by, $condition, $notes, $token, $shipment_airtable_id = '', $po_line_airtable_id = '', $received_date = '') {
         $line_id = sanitize_text_field((string) $po_line_airtable_id);
         $po_id = sanitize_text_field((string) $po_airtable_id);
         $quantity = is_numeric($quantity) ? (float) $quantity : 0;
@@ -31680,12 +31679,13 @@ if (!function_exists('cleg_procurement_create_receipt_event')) {
         $notes = sanitize_textarea_field((string) $notes);
         $token = sanitize_text_field((string) $token);
         $shipment_airtable_id = sanitize_text_field((string) $shipment_airtable_id);
+        $received_date = cleg_procurement_airtable_date($received_date);
         if (!cleg_procurement_receipt_is_record_id($line_id)) {
             return new WP_Error('cleg_procurement_receipt_line_untrusted', 'La recepcion requiere un ID canonico de PO Line.');
         }
         if (!cleg_procurement_quantity_is_cents($quantity)
-            || !in_array($received_by, array('Luis', 'Alejandro', 'Other'), true)
-            || !in_array($condition, array('Good', 'Damaged', 'Wrong item', 'Incomplete', 'Needs inspection'), true)
+            || !in_array($received_by, array('', 'Luis', 'Alejandro', 'Other'), true)
+            || !in_array($condition, array('', 'Good', 'Damaged', 'Wrong item', 'Incomplete', 'Needs inspection'), true)
             || $token === '' || strlen($token) > 100) {
             return new WP_Error('cleg_procurement_receipt_input_invalid', 'Cantidad, responsable, condicion o token de recepcion no valido.');
         }
@@ -31701,6 +31701,7 @@ if (!function_exists('cleg_procurement_create_receipt_event')) {
             'condition' => $condition,
             'notes' => $notes,
             'shipment_airtable_id' => $shipment_airtable_id,
+            'received_date' => $received_date,
         );
         $input_hash = hash('sha256', serialize($input_fingerprint));
         $pending_error = function () use ($receipt_code) {
@@ -31729,13 +31730,14 @@ if (!function_exists('cleg_procurement_create_receipt_event')) {
             }
             return $verified['po_airtable_id'] === $po_id ? $verified : new WP_Error('cleg_procurement_receipt_po_line_mismatch', 'La PO Line no pertenece a la PO indicada.');
         };
-        $prior_matches_input = function ($fields) use ($line_id, $quantity, $received_by, $condition, $notes, $shipment_airtable_id, $receipt_status) {
+        $prior_matches_input = function ($fields) use ($line_id, $quantity, $received_by, $condition, $notes, $shipment_airtable_id, $receipt_status, $received_date) {
             $links = isset($fields['Procurement PO Lines']) && is_array($fields['Procurement PO Lines']) ? array_values($fields['Procurement PO Lines']) : array();
             $shipments = isset($fields['Procurement Shipments']) && is_array($fields['Procurement Shipments']) ? array_values($fields['Procurement Shipments']) : array();
             return count($links) === 1 && $links[0] === $line_id
                 && (float) ($fields['Quantity Received'] ?? -1) === $quantity
                 && cleg_procurement_airtable_scalar($fields, 'Received By', '') === $received_by
                 && cleg_procurement_airtable_scalar($fields, 'Condition', '') === $condition
+                && cleg_procurement_airtable_date(cleg_procurement_airtable_scalar($fields, 'Received Date', '')) === $received_date
                 && $shipments === ($shipment_airtable_id !== '' ? array($shipment_airtable_id) : array())
                 && cleg_procurement_airtable_scalar($fields, 'Luis Confirmation Notes', '') === $notes
                 && ($receipt_status === '' || cleg_procurement_airtable_scalar($fields, 'Receipt Status', '') === $receipt_status);
@@ -31780,12 +31782,13 @@ if (!function_exists('cleg_procurement_create_receipt_event')) {
             $prior_expected = array(
                 'Receipt Code' => $receipt_code,
                 'Receipt Status' => cleg_procurement_airtable_scalar($prior_fields, 'Receipt Status', ''),
-                'Received By' => $received_by,
                 'Quantity Received' => number_format($quantity, 2, '.', ''),
                 'Quantity Remaining' => number_format((float) ($prior_fields['Quantity Remaining'] ?? 0), 2, '.', ''),
-                'Condition' => $condition,
                 'Procurement PO Lines' => array($line_id),
             );
+            if ($received_by !== '') $prior_expected['Received By'] = $received_by;
+            if ($condition !== '') $prior_expected['Condition'] = $condition;
+            if ($received_date !== '') $prior_expected['Received Date'] = $received_date;
             if ($notes !== '') {
                 $prior_expected['Luis Confirmation Notes'] = $notes;
             }
@@ -31821,12 +31824,19 @@ if (!function_exists('cleg_procurement_create_receipt_event')) {
         $expected = array(
             'Receipt Code' => $receipt_code,
             'Receipt Status' => $derived_status,
-            'Received By' => $received_by,
             'Quantity Received' => number_format($quantity, 2, '.', ''),
             'Quantity Remaining' => number_format($remaining, 2, '.', ''),
-            'Condition' => $condition,
             'Procurement PO Lines' => array($line_id),
         );
+        if ($received_by !== '') {
+            $expected['Received By'] = $received_by;
+        }
+        if ($condition !== '') {
+            $expected['Condition'] = $condition;
+        }
+        if ($received_date !== '') {
+            $expected['Received Date'] = $received_date;
+        }
         if ($notes !== '') {
             $expected['Luis Confirmation Notes'] = $notes;
         }
@@ -31866,6 +31876,7 @@ if (!function_exists('cleg_procurement_create_receipt_event')) {
                 || (float) ($prior_fields['Quantity Remaining'] ?? -1) !== (float) $expected['Quantity Remaining']
                 || cleg_procurement_airtable_scalar($prior_fields, 'Received By', '') !== $received_by
                 || cleg_procurement_airtable_scalar($prior_fields, 'Condition', '') !== $condition
+                || cleg_procurement_airtable_date(cleg_procurement_airtable_scalar($prior_fields, 'Received Date', '')) !== $received_date
                 || $prior_shipments !== ($expected['Procurement Shipments'] ?? array())
                 || cleg_procurement_airtable_scalar($prior_fields, 'Luis Confirmation Notes', '') !== ($expected['Luis Confirmation Notes'] ?? '')
                 || cleg_procurement_airtable_scalar($prior_fields, 'Receipt Status', '') !== $expected['Receipt Status']) {
@@ -31891,7 +31902,7 @@ if (!function_exists('cleg_procurement_create_receipt_event')) {
                 return new WP_Error('cleg_procurement_receipt_replay_conflict', 'La intención de recepción reenviada tiene una carga distinta.');
             }
         }
-        $find_code = function ($records) use ($receipt_code, $expected, $line_id) {
+        $find_code = function ($records) use ($receipt_code, $expected, $line_id, $received_date) {
             foreach ((array) $records as $record) {
                 $fields = (array) ($record['fields'] ?? array());
                 if (cleg_procurement_airtable_scalar($fields, 'Receipt Code', '') !== $receipt_code) {
@@ -31903,8 +31914,9 @@ if (!function_exists('cleg_procurement_create_receipt_event')) {
                     || (float) ($fields['Quantity Received'] ?? -1) !== (float) $expected['Quantity Received']
                     || (float) ($fields['Quantity Remaining'] ?? -1) !== (float) $expected['Quantity Remaining']
                     || cleg_procurement_airtable_scalar($fields, 'Receipt Status', '') !== $expected['Receipt Status']
-                    || cleg_procurement_airtable_scalar($fields, 'Received By', '') !== $expected['Received By']
-                    || cleg_procurement_airtable_scalar($fields, 'Condition', '') !== $expected['Condition']
+                    || cleg_procurement_airtable_scalar($fields, 'Received By', '') !== ($expected['Received By'] ?? '')
+                    || cleg_procurement_airtable_scalar($fields, 'Condition', '') !== ($expected['Condition'] ?? '')
+                    || cleg_procurement_airtable_date(cleg_procurement_airtable_scalar($fields, 'Received Date', '')) !== $received_date
                     || cleg_procurement_airtable_scalar($fields, 'Luis Confirmation Notes', '') !== ($expected['Luis Confirmation Notes'] ?? '')
                     || $shipments !== ($expected['Procurement Shipments'] ?? array())) {
                     return new WP_Error('cleg_procurement_receipt_replay_conflict', 'Receipt Code existente no coincide con el evento reenviado.');
@@ -31928,7 +31940,7 @@ if (!function_exists('cleg_procurement_create_receipt_event')) {
             return $pending_error();
         }
         $response = cleg_admin_request('POST', CLEG_PROC_AIRTABLE_RECEIPTS_TABLE, array('body' => array(
-            'records' => array(array('fields' => array_merge($expected, array('Received Date' => current_time('Y-m-d'))))),
+            'records' => array(array('fields' => $expected)),
             'typecast' => true,
         )));
         if (!cleg_procurement_airtable_response_ok($response)) {
@@ -31969,7 +31981,8 @@ if (!function_exists('cleg_procurement_receive_po_submission')) {
             sanitize_textarea_field((string) ($post['receipt_note'] ?? '')),
             sanitize_text_field((string) ($post['receipt_token'] ?? '')),
             sanitize_text_field((string) ($post['shipment_airtable_id'] ?? '')),
-            sanitize_text_field((string) ($post['po_line_airtable_id'] ?? ''))
+            sanitize_text_field((string) ($post['po_line_airtable_id'] ?? '')),
+            sanitize_text_field((string) ($post['received_date'] ?? ''))
         );
     }
 }
@@ -32183,15 +32196,16 @@ if (!function_exists('cleg_procurement_render_receipt_forms')) {
                 <strong><?php echo esc_html($description . ' · ' . $unit); ?></strong>
                 <small>Recibido <?php echo esc_html(number_format($line_state['received_quantity'], 2, '.', '') . ' / ' . number_format($line_state['quantity'], 2, '.', '') . ' ' . $unit); ?> · Restante <?php echo esc_html(number_format($line_state['remaining_quantity'], 2, '.', '') . ' ' . $unit); ?></small>
                 <label>Cantidad recibida ahora<input type="number" name="received_qty" min="0.01" max="<?php echo esc_attr(number_format($line_state['remaining_quantity'], 2, '.', '')); ?>" step="0.01" required></label>
-                <label>Recibido por<select name="received_by" required><option value="Luis">Luis</option><option value="Alejandro">Alejandro</option><option value="Other">Other</option></select></label>
-                <label>Condicion<select name="receipt_condition" required><option value="Good">Good</option><option value="Damaged">Damaged</option><option value="Wrong item">Wrong item</option><option value="Incomplete">Incomplete</option><option value="Needs inspection">Needs inspection</option></select></label>
+                <label>Fecha real de llegada (opcional)<input type="date" name="received_date"><small>Déjala en blanco si no se conoce; la fecha de registro queda en la auditoría.</small></label>
+                <label>Recibido por<select name="received_by"><option value="">Sin dato (histórico)</option><option value="Luis">Luis</option><option value="Alejandro">Alejandro</option><option value="Other">Otra persona</option></select></label>
+                <label>Condición<select name="receipt_condition"><option value="">Sin dato (histórico)</option><option value="Good">Bueno</option><option value="Damaged">Dañado</option><option value="Wrong item">Artículo equivocado</option><option value="Incomplete">Incompleto</option><option value="Needs inspection">Requiere inspección</option></select></label>
                 <label>Shipment (opcional)<select name="shipment_airtable_id"><option value="">Sin shipment</option>
                     <?php foreach ((array) ($data['airtable_shipments'] ?? array()) as $shipment) { $shipment_fields = (array) ($shipment['fields'] ?? array()); $po_links = isset($shipment_fields['Procurement POs']) && is_array($shipment_fields['Procurement POs']) ? $shipment_fields['Procurement POs'] : array(); if (!in_array($po_id, $po_links, true)) continue; ?>
                         <option value="<?php echo esc_attr((string) ($shipment['id'] ?? '')); ?>"><?php echo esc_html(cleg_procurement_airtable_scalar($shipment_fields, 'Tracking Number', (string) ($shipment['id'] ?? 'Shipment'))); ?></option>
                     <?php } ?>
                 </select></label>
                 <label>Notas<textarea name="receipt_note" rows="2"></textarea></label>
-                <button class="cleg-proc-btn is-secondary" type="submit">Registrar evento de recepcion</button>
+                <button class="cleg-proc-btn is-secondary" type="submit">Registrar llegada / recepción</button>
             </form>
             <?php
         }
@@ -32799,6 +32813,25 @@ if (!function_exists('cleg_procurement_request_from_airtable')) {
         $first_item = $linked_items ? reset($linked_items) : array();
         $first_item_id = is_array($first_item) && isset($first_item['_airtable_id']) ? sanitize_text_field($first_item['_airtable_id']) : '';
         $first_item = is_array($first_item) && isset($first_item['fields']) && is_array($first_item['fields']) ? $first_item['fields'] : $first_item;
+        $item_airtable_ids = array();
+        $request_items = array();
+        foreach ($linked_items as $linked_item) {
+            if (!is_array($linked_item)) {
+                continue;
+            }
+            $linked_item_id = sanitize_text_field((string) ($linked_item['_airtable_id'] ?? ''));
+            $linked_item_fields = isset($linked_item['fields']) && is_array($linked_item['fields']) ? $linked_item['fields'] : $linked_item;
+            if ($linked_item_id === '') {
+                continue;
+            }
+            $item_airtable_ids[] = $linked_item_id;
+            $request_items[] = array(
+                'airtable_id' => $linked_item_id,
+                'item' => cleg_procurement_airtable_scalar($linked_item_fields, 'Item Description', 'Item pendiente'),
+                'quantity' => cleg_procurement_airtable_scalar($linked_item_fields, 'Quantity', '1'),
+                'unit' => cleg_procurement_airtable_scalar($linked_item_fields, 'Unit', 'Unidad'),
+            );
+        }
 
         $item_description = cleg_procurement_airtable_scalar($first_item, 'Item Description', cleg_procurement_airtable_scalar($fields, 'Request Title', 'Solicitud procurement'));
         $quantity = cleg_procurement_airtable_scalar($first_item, 'Quantity', '1');
@@ -32817,7 +32850,10 @@ if (!function_exists('cleg_procurement_request_from_airtable')) {
             'id' => $code,
             'airtable_id' => $record_id,
             'item_airtable_id' => $first_item_id,
+            'item_airtable_ids' => array_values(array_unique($item_airtable_ids)),
+            'items' => $request_items,
             'item' => $item_description ?: cleg_procurement_airtable_scalar($fields, 'Request Title', $code),
+            'purchase_purpose' => cleg_procurement_purchase_purpose_normalize(cleg_procurement_airtable_scalar($fields, 'Purchase Purpose', '')),
             'project' => cleg_procurement_airtable_scalar($fields, 'Project / Cost Notes', 'Project Pending'),
             'requester' => $requester_name,
             'requester_user_id' => is_numeric($requester_user_id) ? (int) $requester_user_id : 0,
@@ -32859,6 +32895,119 @@ if (!function_exists('cleg_procurement_request_from_airtable')) {
             'created_at' => cleg_procurement_airtable_scalar($fields, 'Created Date', ''),
             'updated_at' => cleg_procurement_history_scalar($fields, array('Last Modified', 'Last Modified Time', 'Updated At', 'Modified Date', 'Created Date'), ''),
         );
+    }
+}
+
+if (!function_exists('cleg_procurement_purchase_purpose_normalize')) {
+    function cleg_procurement_purchase_purpose_normalize($purpose) {
+        $purpose = sanitize_text_field((string) $purpose);
+        return in_array($purpose, array('Internal C&L', 'Customer project'), true) ? $purpose : '';
+    }
+}
+
+if (!function_exists('cleg_procurement_purchase_purpose_is_valid')) {
+    function cleg_procurement_purchase_purpose_is_valid($purpose) {
+        return in_array(cleg_procurement_purchase_purpose_normalize($purpose), array('Internal C&L', 'Customer project'), true);
+    }
+}
+
+if (!function_exists('cleg_procurement_optional_money')) {
+    function cleg_procurement_optional_money($value) {
+        $value = trim((string) $value);
+        if ($value === '') return null;
+        $value = str_replace(array(',', '$', ' '), '', $value);
+        if (!is_numeric($value) || (float) $value < 0) return false;
+        return round((float) $value, 2);
+    }
+}
+
+if (!function_exists('cleg_procurement_quote_cost_breakdown')) {
+    function cleg_procurement_quote_cost_breakdown($quote) {
+        $quote = is_array($quote) ? $quote : array();
+        return array(
+            'total' => cleg_procurement_optional_money($quote['amount'] ?? ''),
+            'subtotal' => cleg_procurement_optional_money($quote['subtotal'] ?? ''),
+            'shipping' => cleg_procurement_optional_money($quote['shipping'] ?? ''),
+            'tax' => cleg_procurement_optional_money($quote['tax'] ?? ''),
+        );
+    }
+}
+
+if (!function_exists('cleg_procurement_quote_cost_input')) {
+    function cleg_procurement_quote_cost_input($values) {
+        $values = is_array($values) ? $values : array();
+        $costs = array();
+        foreach (array('amount', 'subtotal', 'shipping', 'tax') as $key) {
+            $raw = $values[$key] ?? '';
+            $parsed = cleg_procurement_optional_money($raw);
+            if ($parsed === false || ($key === 'amount' && $parsed === null)) {
+                return new WP_Error('cleg_procurement_quote_cost_invalid', 'El total es obligatorio y cada costo debe ser un importe no negativo válido.');
+            }
+            $costs[$key] = $parsed;
+        }
+        $components = array_filter(array($costs['subtotal'], $costs['shipping'], $costs['tax']), function ($value) { return $value !== null; });
+        $parts_total = array_sum($components);
+        if ($parts_total - (float) $costs['amount'] > 0.01
+            || (count($components) === 3 && abs($parts_total - (float) $costs['amount']) > 0.01)) {
+            return new WP_Error('cleg_procurement_quote_cost_mismatch', 'Precio, shipping e impuestos no cuadran con el total cotizado. Revisa el documento del suplidor.');
+        }
+        foreach ($costs as $key => $value) {
+            $costs[$key] = $value === null ? '' : number_format((float) $value, 2, '.', '');
+        }
+        return $costs;
+    }
+}
+
+if (!function_exists('cleg_procurement_quote_cost_airtable_fields')) {
+    function cleg_procurement_quote_cost_airtable_fields($quote, $clear_empty = false) {
+        $quote = is_array($quote) ? $quote : array();
+        $fields = array();
+        foreach (array('subtotal' => 'Subtotal', 'shipping' => 'Freight / Shipping Cost', 'tax' => 'Tax') as $key => $field) {
+            $amount = cleg_procurement_optional_money($quote[$key] ?? '');
+            if ($amount === false) {
+                return new WP_Error('cleg_procurement_quote_cost_invalid', 'Un costo de la cotizacion no es un importe no negativo valido.');
+            }
+            if ($amount === null) {
+                if ($clear_empty) $fields[$field] = null;
+                continue;
+            }
+            $fields[$field] = number_format($amount, 2, '.', '');
+        }
+        return $fields;
+    }
+}
+
+if (!function_exists('cleg_procurement_is_internal_purchase')) {
+    function cleg_procurement_is_internal_purchase($request) {
+        return is_array($request) && cleg_procurement_purchase_purpose_normalize($request['purchase_purpose'] ?? '') === 'Internal C&L';
+    }
+}
+
+if (!function_exists('cleg_procurement_po_lines_schema_verified')) {
+    function cleg_procurement_po_lines_schema_verified() {
+        $tenant_id = function_exists('cleg_saas_current_tenant_id') ? sanitize_key((string) cleg_saas_current_tenant_id()) : 'cleg';
+        $cache_key = 'cleg_proc_po_schema_v1_' . substr(hash('sha256', $tenant_id . '|' . CLEG_PROC_AIRTABLE_PO_LINES_TABLE), 0, 24);
+        $cached = get_transient($cache_key);
+        if (is_array($cached) && isset($cached['verified'], $cached['checked_at']) && time() - (int) $cached['checked_at'] < 300) {
+            return (bool) $cached['verified'];
+        }
+
+        $required_fields = array(
+            'PO Line Code',
+            'Procurement POs',
+            'Procurement Quotes',
+            'Procurement Items',
+            'Item Description Snapshot',
+            'Unit Snapshot',
+            'Ordered Quantity',
+        );
+        $probe = cleg_admin_request('GET', CLEG_PROC_AIRTABLE_PO_LINES_TABLE, array('query' => array(
+            'pageSize' => 1,
+            'fields[]' => $required_fields,
+        )));
+        $verified = !is_wp_error($probe) && isset($probe['records']) && is_array($probe['records']);
+        set_transient($cache_key, array('verified' => $verified, 'checked_at' => time()), 300);
+        return $verified;
     }
 }
 
@@ -32928,6 +33077,10 @@ if (!function_exists('cleg_procurement_airtable_data')) {
             }
         }
 
+        $po_lines_schema_override = apply_filters('cleg_procurement_po_lines_schema_verified', null);
+        $po_lines_schema_verified = is_bool($po_lines_schema_override) ? $po_lines_schema_override : cleg_procurement_po_lines_schema_verified();
+        $receipts_schema_override = apply_filters('cleg_procurement_receipts_schema_verified', null);
+        $receipts_schema_verified = is_bool($receipts_schema_override) ? $receipts_schema_override : cleg_procurement_receipts_schema_verified();
         $data = array(
             'requests' => array(),
             'quotes' => array(),
@@ -32944,8 +33097,8 @@ if (!function_exists('cleg_procurement_airtable_data')) {
             'po_lines_quality' => $po_lines_quality,
             'receipts_quality' => $receipts_quality,
             // A successful table read alone does not prove field/choice/link schema. Enable only after active-base review.
-            'po_lines_schema_verified' => (bool) apply_filters('cleg_procurement_po_lines_schema_verified', false),
-            'receipts_schema_verified' => (bool) apply_filters('cleg_procurement_receipts_schema_verified', false),
+            'po_lines_schema_verified' => (bool) $po_lines_schema_verified,
+            'receipts_schema_verified' => (bool) $receipts_schema_verified,
             'next_request' => count($request_records) + 1,
             'next_po' => 1,
             'audit' => array(),
@@ -32977,9 +33130,13 @@ if (!function_exists('cleg_procurement_airtable_data')) {
 
                 $data['quotes'][$request_code][] = array(
                     'airtable_id' => sanitize_text_field($record['id'] ?? ''),
+                    'item_airtable_ids' => isset($fields['Procurement Items']) && is_array($fields['Procurement Items']) ? array_values(array_unique(array_filter(array_map('sanitize_text_field', $fields['Procurement Items']), 'cleg_procurement_receipt_is_record_id'))) : array(),
                     'vendor' => cleg_procurement_airtable_scalar($fields, 'Vendor Name Snapshot', ''),
                     'contact' => cleg_procurement_airtable_scalar($fields, 'Contact Snapshot', ''),
                     'amount' => cleg_procurement_airtable_scalar($fields, 'Quote Amount', '0'),
+                    'subtotal' => cleg_procurement_airtable_scalar($fields, 'Subtotal', ''),
+                    'shipping' => cleg_procurement_airtable_scalar($fields, 'Freight / Shipping Cost', ''),
+                    'tax' => cleg_procurement_airtable_scalar($fields, 'Tax', ''),
                     'eta' => cleg_procurement_airtable_scalar($fields, 'Lead Time', ''),
                     'expires' => cleg_procurement_airtable_scalar($fields, 'Expiration Date', ''),
                     'risk' => cleg_procurement_airtable_scalar($fields, 'Can Meet Required Delivery Date', ''),
@@ -33049,6 +33206,9 @@ if (!function_exists('cleg_procurement_airtable_data')) {
                     'request_id' => $request_code,
                     'vendor' => cleg_procurement_airtable_scalar($fields, 'Vendor Name Snapshot', ''),
                     'amount' => cleg_procurement_airtable_scalar($fields, 'Total', cleg_procurement_airtable_scalar($fields, 'Subtotal', '0')),
+                    'subtotal' => cleg_procurement_airtable_scalar($fields, 'Subtotal', ''),
+                    'tax' => cleg_procurement_airtable_scalar($fields, 'Tax', ''),
+                    'shipping' => cleg_procurement_airtable_scalar($fields, 'Freight', ''),
                     'eta' => cleg_procurement_airtable_scalar($fields, 'Estimated Arrival', ''),
                     'ordered_date' => cleg_procurement_airtable_scalar($fields, 'Ordered Date', cleg_procurement_airtable_scalar($fields, 'PO Date', '')),
                     'status' => cleg_procurement_airtable_scalar($fields, 'PO Status', 'Ordered'),
@@ -34434,6 +34594,7 @@ if (!function_exists('cleg_procurement_create_airtable_request')) {
             $request_fields = array(
                 'Request Code' => $request_code,
                 'Request Title' => $request['item'],
+                'Purchase Purpose' => cleg_procurement_purchase_purpose_normalize($request['purchase_purpose'] ?? ''),
                 'Request Type' => 'Material / Item',
                 'Requested By Name' => $request['requester'],
                 'Requested By Role' => cleg_procurement_airtable_requester_role($request['requester']),
@@ -34651,6 +34812,15 @@ if (!function_exists('cleg_procurement_update_airtable_quote')) {
             'Client Last Follow Up Date' => cleg_procurement_airtable_date($quote['client_last_follow_up_date'] ?? ''),
             'Client Decision Notes' => $quote['client_decision_notes'] ?? '',
         );
+        $cost_fields = cleg_procurement_quote_cost_airtable_fields($quote, true);
+        if (is_wp_error($cost_fields)) {
+            return false;
+        }
+        $fields = array_merge($fields, $cost_fields);
+        $quote_item_ids = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array) ($quote['item_airtable_ids'] ?? array())), 'cleg_procurement_receipt_is_record_id')));
+        if ($quote_item_ids) {
+            $fields['Procurement Items'] = $quote_item_ids;
+        }
         $quote_documents = cleg_procurement_airtable_attachments(cleg_procurement_quote_documents($quote));
         if ($quote_documents) {
             $fields['Quote Documents'] = $quote_documents;
@@ -34688,6 +34858,7 @@ if (!function_exists('cleg_procurement_update_airtable_request_info')) {
 
         $request_fields = array(
             'Request Title' => $request['item'],
+            'Purchase Purpose' => cleg_procurement_purchase_purpose_normalize($request['purchase_purpose'] ?? ''),
             'Procurement Status' => $request['status'],
             'Priority' => $request['priority'],
             'Required Date' => $request['required_delivery_date'] ?: $request['quote_due_date'],
@@ -34904,6 +35075,15 @@ if (!function_exists('cleg_procurement_add_airtable_quote')) {
             'Client Decision Notes' => $quote['client_decision_notes'] ?? '',
             'Procurement Requests' => array($request['airtable_id']),
         );
+        $cost_fields = cleg_procurement_quote_cost_airtable_fields($quote, false);
+        if (is_wp_error($cost_fields)) {
+            return $cost_fields;
+        }
+        $fields = array_merge($fields, $cost_fields);
+        $quote_item_ids = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array) ($quote['item_airtable_ids'] ?? array())), 'cleg_procurement_receipt_is_record_id')));
+        if ($quote_item_ids) {
+            $fields['Procurement Items'] = $quote_item_ids;
+        }
         $quote_documents = cleg_procurement_airtable_attachments(cleg_procurement_quote_documents($quote));
         if ($quote_documents) {
             $fields['Quote Documents'] = $quote_documents;
@@ -35204,17 +35384,25 @@ if (!function_exists('cleg_procurement_airtable_patch_confirmed')) {
 
 if (!function_exists('cleg_procurement_po_details_from_accepted_quote')) {
     function cleg_procurement_po_details_from_accepted_quote($quote) {
-        if (!is_array($quote) || (string) ($quote['client_response_status'] ?? '') !== 'Aceptada') {
-            return new WP_Error('cleg_procurement_po_quote_unaccepted', 'La PO requiere una cotizacion aceptada.');
+        $internal_purchase = is_array($quote) && cleg_procurement_is_internal_purchase($quote);
+        if (!is_array($quote) || (!$internal_purchase && (string) ($quote['client_response_status'] ?? '') !== 'Aceptada')) {
+            return new WP_Error('cleg_procurement_po_quote_unaccepted', $internal_purchase ? 'La compra interna requiere una cotizacion de suplidor seleccionada.' : 'La PO requiere una cotizacion aceptada por el cliente.');
         }
 
         $vendor = sanitize_text_field((string) ($quote['vendor'] ?? ''));
-        $amount = sanitize_text_field((string) ($quote['amount'] ?? ''));
-        if ($vendor === '' || $amount === '' || !is_numeric($amount) || (float) $amount < 0) {
+        $costs = cleg_procurement_quote_cost_breakdown($quote);
+        $amount = $costs['total'];
+        if ($vendor === '' || $amount === null || $amount === false) {
             return new WP_Error('cleg_procurement_po_quote_invalid', 'La cotizacion aceptada no tiene proveedor y monto validos.');
         }
 
-        return array('vendor' => $vendor, 'amount' => $amount);
+        return array(
+            'vendor' => $vendor,
+            'amount' => number_format((float) $amount, 2, '.', ''),
+            'subtotal' => $costs['subtotal'],
+            'shipping' => $costs['shipping'],
+            'tax' => $costs['tax'],
+        );
     }
 }
 
@@ -35246,31 +35434,80 @@ if (!function_exists('cleg_procurement_po_authoritative_quote')) {
         if (is_wp_error($request)) {
             return $request;
         }
+        if (!cleg_procurement_purchase_purpose_is_valid($request['purchase_purpose'] ?? '')) {
+            return new WP_Error('cleg_procurement_purchase_purpose_required', 'Clasifica la requisicion como compra para cliente o compra interna antes de crear una PO.');
+        }
         $quotes = isset($data['airtable_quotes'][$request_id]) && is_array($data['airtable_quotes'][$request_id])
             ? cleg_procurement_active_quotes($data['airtable_quotes'][$request_id])
             : array();
-        $accepted = array();
+        $internal_purchase = cleg_procurement_is_internal_purchase($request);
+        $eligible = array();
         foreach ($quotes as $quote) {
-            if (!is_array($quote) || (string) ($quote['client_response_status'] ?? '') !== 'Aceptada') {
+            if (!is_array($quote) || (!$internal_purchase && (string) ($quote['client_response_status'] ?? '') !== 'Aceptada')) {
                 continue;
             }
             $quote_id = sanitize_text_field((string) ($quote['airtable_id'] ?? ''));
             if (!preg_match('/^rec[a-zA-Z0-9]{14}$/', $quote_id)) {
                 return new WP_Error('cleg_procurement_po_quote_untrusted', 'La cotizacion aceptada no tiene un ID Airtable verificable.');
             }
-            $accepted[$quote_id] = $quote;
+            $quote['purchase_purpose'] = $request['purchase_purpose'] ?? 'Customer project';
+            $eligible[$quote_id] = $quote;
         }
-        if (!$accepted) {
-            return new WP_Error('cleg_procurement_po_quote_missing', 'No existe una cotizacion aceptada en la lectura Airtable autoritativa.');
+        if (!$eligible) {
+            return new WP_Error('cleg_procurement_po_quote_missing', $internal_purchase ? 'No existe una cotizacion de suplidor activa y verificable para la compra interna.' : 'No existe una cotizacion aceptada en la lectura Airtable autoritativa.');
         }
-        $recommended = array_filter($accepted, function ($quote) { return ($quote['recommended'] ?? '') === 'yes'; });
+        $recommended = array_filter($eligible, function ($quote) { return ($quote['recommended'] ?? '') === 'yes'; });
         if (count($recommended) === 1) {
             return reset($recommended);
         }
-        if (count($accepted) === 1 && !$recommended) {
-            return reset($accepted);
+        if (count($eligible) === 1 && !$recommended) {
+            return reset($eligible);
         }
-        return new WP_Error('cleg_procurement_po_quote_ambiguous', 'Hay varias cotizaciones aceptadas sin una recomendacion Airtable unica.');
+        return new WP_Error('cleg_procurement_po_quote_ambiguous', $internal_purchase ? 'Hay varias cotizaciones internas sin una recomendacion Airtable unica.' : 'Hay varias cotizaciones aceptadas sin una recomendacion Airtable unica.');
+    }
+}
+
+if (!function_exists('cleg_procurement_receipts_schema_verified')) {
+    function cleg_procurement_receipts_schema_verified() {
+        $tenant_id = function_exists('cleg_saas_current_tenant_id') ? sanitize_key((string) cleg_saas_current_tenant_id()) : 'cleg';
+        $cache_key = 'cleg_proc_receipt_schema_v1_' . substr(hash('sha256', $tenant_id . '|' . CLEG_PROC_AIRTABLE_RECEIPTS_TABLE), 0, 24);
+        $cached = get_transient($cache_key);
+        if (is_array($cached) && isset($cached['verified'], $cached['checked_at']) && time() - (int) $cached['checked_at'] < 300) {
+            return (bool) $cached['verified'];
+        }
+
+        $required_fields = array(
+            'Receipt Code', 'Receipt Status', 'Received By', 'Received Date', 'Quantity Received',
+            'Quantity Remaining', 'Condition', 'Luis Confirmation Notes', 'Procurement POs',
+            'Procurement PO Lines', 'Procurement Shipments',
+        );
+        $probe = cleg_admin_request('GET', CLEG_PROC_AIRTABLE_RECEIPTS_TABLE, array('query' => array(
+            'pageSize' => 1,
+            'fields[]' => $required_fields,
+        )));
+        $verified = !is_wp_error($probe) && isset($probe['records']) && is_array($probe['records']);
+        set_transient($cache_key, array('verified' => $verified, 'checked_at' => time()), 300);
+        return $verified;
+    }
+}
+
+if (!function_exists('cleg_procurement_request_by_airtable_id')) {
+    function cleg_procurement_request_by_airtable_id($data, $airtable_id) {
+        foreach ((array) ($data['requests'] ?? array()) as $request) {
+            if (is_array($request) && sanitize_text_field((string) ($request['airtable_id'] ?? '')) === (string) $airtable_id) {
+                return $request;
+            }
+        }
+        return array();
+    }
+}
+
+if (!function_exists('cleg_procurement_quote_purchase_authorized')) {
+    function cleg_procurement_quote_purchase_authorized($request, $quote_fields) {
+        return is_array($request)
+            && cleg_procurement_purchase_purpose_is_valid($request['purchase_purpose'] ?? '')
+            && (cleg_procurement_is_internal_purchase($request)
+                || cleg_procurement_airtable_scalar((array) $quote_fields, 'Client Response Status', '') === 'Aceptada');
     }
 }
 
@@ -35321,7 +35558,8 @@ if (!function_exists('cleg_procurement_po_intent_identity_fields')) {
             || !preg_match('/^rec[a-zA-Z0-9]{14}$/', (string) reset($request_links))
             || !is_array($quote_links) || count($quote_links) !== 1
             || !preg_match('/^rec[a-zA-Z0-9]{14}$/', (string) reset($quote_links))
-            || !is_numeric($fields['Subtotal'] ?? null) || !is_numeric($fields['Total'] ?? null)) {
+            || !is_numeric($fields['Total'] ?? null)
+            || (isset($fields['Subtotal']) && $fields['Subtotal'] !== '' && !is_numeric($fields['Subtotal']))) {
             return new WP_Error('cleg_procurement_po_identity_invalid', 'Los campos inmutables de PO no tienen identidad/link/montos verificables.');
         }
         $identity = array(
@@ -35329,9 +35567,16 @@ if (!function_exists('cleg_procurement_po_intent_identity_fields')) {
             'Procurement Requests' => array(sanitize_text_field((string) reset($request_links))),
             'Procurement Quotes' => array(sanitize_text_field((string) reset($quote_links))),
             'Vendor Name Snapshot' => $vendor,
-            'Subtotal' => (float) $fields['Subtotal'],
             'Total' => (float) $fields['Total'],
         );
+        if (isset($fields['Subtotal']) && is_numeric($fields['Subtotal'])) {
+            $identity['Subtotal'] = (float) $fields['Subtotal'];
+        }
+        foreach (array('Tax', 'Freight') as $cost_field) {
+            if (isset($fields[$cost_field]) && is_numeric($fields[$cost_field])) {
+                $identity[$cost_field] = (float) $fields[$cost_field];
+            }
+        }
         // Order dates are immutable header identity. ETA, status and notes are mutable
         // operational fields and deliberately do not participate in replay matching.
         foreach (array('PO Date', 'Ordered Date') as $date_field) {
@@ -35639,11 +35884,15 @@ if (!function_exists('cleg_procurement_add_airtable_po')) {
             'Vendor Name Snapshot' => sanitize_text_field((string) ($po['vendor'] ?? 'Proveedor pendiente')),
             'PO Date' => $ordered_date,
             'Ordered Date' => $ordered_date,
-            'Subtotal' => $amount,
             'Total' => $amount,
             'Notes' => sanitize_textarea_field((string) ($po['notes'] ?? ('PO QuickBooks asignada desde solicitud ' . ($request['id'] ?? '')))),
             'Procurement Requests' => array($request['airtable_id']),
         );
+        foreach (array('subtotal' => 'Subtotal', 'shipping' => 'Freight', 'tax' => 'Tax') as $cost_key => $airtable_field) {
+            if (($quote_details[$cost_key] ?? null) !== null) {
+                $fields[$airtable_field] = number_format((float) $quote_details[$cost_key], 2, '.', '');
+            }
+        }
 
         if ($eta) {
             $fields['Estimated Arrival'] = $eta;
@@ -35734,9 +35983,13 @@ if (!function_exists('cleg_procurement_update_airtable_po_details')) {
 
         $fields = array(
             'PO Status' => sanitize_text_field((string) ($po['status'] ?? 'Ordered')),
-            'Subtotal' => sanitize_text_field((string) ($po['amount'] ?? '0')),
             'Total' => sanitize_text_field((string) ($po['amount'] ?? '0')),
         );
+        foreach (array('subtotal' => 'Subtotal', 'shipping' => 'Freight', 'tax' => 'Tax') as $cost_key => $airtable_field) {
+            if (isset($po[$cost_key]) && $po[$cost_key] !== '' && is_numeric($po[$cost_key])) {
+                $fields[$airtable_field] = number_format((float) $po[$cost_key], 2, '.', '');
+            }
+        }
 
         $ordered_date = cleg_procurement_airtable_date($po['ordered_date'] ?? '');
         if ($ordered_date) {
@@ -36430,7 +36683,7 @@ if (!function_exists('cleg_procurement_context_workflow_lane')) {
         if (in_array($state, array('closed', 'client_closed', 'purchase_cancelled'), true)) {
             return 'closed';
         }
-        if (in_array($state, array('client_accepted', 'ordered_no_eta', 'ordered_eta', 'received', 'purchase_review'), true)) {
+        if (in_array($state, array('client_accepted', 'internal_purchase_ready', 'ordered_no_eta', 'ordered_eta', 'received', 'purchase_review'), true)) {
             return 'purchase';
         }
         return 'client';
@@ -36453,7 +36706,7 @@ if (!function_exists('cleg_procurement_board_queue_class')) {
         if ($state === 'purchase_review') {
             return 'purchase-review';
         }
-        return $state === 'client_accepted' ? 'purchase-ready' : 'active-purchase';
+        return in_array($state, array('client_accepted', 'internal_purchase_ready'), true) ? 'purchase-ready' : 'active-purchase';
     }
 }
 
@@ -37493,7 +37746,8 @@ if (!function_exists('cleg_procurement_request_decision_context')) {
         if (!$client_quote && $active_quotes) {
             $client_quote = reset($active_quotes);
         }
-        $client_context = $client_quote ? cleg_procurement_client_quote_context($client_quote) : array();
+        $internal_purchase = cleg_procurement_is_internal_purchase($request);
+        $client_context = $client_quote && !$internal_purchase ? cleg_procurement_client_quote_context($client_quote) : array();
         $purchase_summary = cleg_procurement_purchase_fulfillment_summary($related_pos, $related_po_duplicates, cleg_procurement_receipt_snapshot_is_verified($data));
         if (!empty($related_pos) && !empty($purchase_summary['next_po'])) {
             $primary_po = $purchase_summary['next_po'];
@@ -37510,11 +37764,11 @@ if (!function_exists('cleg_procurement_request_decision_context')) {
         $legacy_order_status = in_array($request_status, array('In Transit', 'Ordered', 'PO Created', 'Partially Received'), true);
         $client_quote_sent = cleg_procurement_client_quote_was_sent($client_quote);
         $client_was_accepted = $client_status_normalized === 'aceptada';
-        $commercial_terminal_conflict = ($request_cancelled && $client_was_accepted)
-            || ($request_status === 'Received' && $client_was_lost);
+        $commercial_terminal_conflict = !$internal_purchase && (($request_cancelled && $client_was_accepted)
+            || ($request_status === 'Received' && $client_was_lost));
         $no_po_but_read_uncertain = !$related_pos
             && !cleg_procurement_po_read_is_complete($data)
-            && ($request_cancelled || $request_terminal_status || $legacy_order_status || ($client_quote_sent && ($client_was_lost || $client_was_accepted)));
+            && ($request_cancelled || $request_terminal_status || $legacy_order_status || (!$internal_purchase && $client_quote_sent && ($client_was_lost || $client_was_accepted)));
 
         if ($commercial_terminal_conflict || $no_po_but_read_uncertain) {
             $state = 'purchase_review';
@@ -37530,20 +37784,20 @@ if (!function_exists('cleg_procurement_request_decision_context')) {
                 $tone = 'warn';
                 $action = 'Revisar recepción y estado de compra';
             } elseif ($purchase_summary['all_cancelled']) {
-                if ($client_status_normalized === 'aceptada') {
+                if ($internal_purchase || $client_status_normalized === 'aceptada') {
                     $state = 'purchase_review';
-                    $label = 'PO cancelada · decidir siguiente paso';
+                    $label = $internal_purchase ? 'PO cancelada · decidir si reordenar' : 'PO cancelada · decidir siguiente paso';
                     $tone = 'warn';
-                    $action = 'Resolver compra aprobada';
+                    $action = $internal_purchase ? 'Revisar compra interna y decidir si reordenar' : 'Resolver compra aprobada';
                 } else {
                     $state = 'purchase_cancelled';
                     $label = 'Compra cancelada';
                     $tone = 'muted';
                     $action = 'Abrir el expediente de la requisición';
                 }
-            } elseif ($request_cancelled || $client_was_lost) {
+            } elseif ($request_cancelled || (!$internal_purchase && $client_was_lost)) {
                 $state = 'purchase_review';
-                $label = $request_cancelled ? 'Solicitud cancelada · PO por resolver' : 'Cliente cerró · PO por resolver';
+                $label = $request_cancelled ? 'Solicitud cancelada · PO por resolver' : ($internal_purchase ? 'Compra interna · PO por resolver' : 'Cliente cerró · PO por resolver');
                 $tone = 'warn';
                 $action = 'Resolver PO abierta antes de archivar';
             } elseif ($request_terminal_status && !$purchase_summary['complete']) {
@@ -37568,15 +37822,33 @@ if (!function_exists('cleg_procurement_request_decision_context')) {
                 $action = $purchase_summary['has_tracking'] ? 'Actualizar tracking o registrar recepción' : 'Actualizar tracking y llegada';
             } else {
                 $state = 'ordered_no_eta';
-                $label = 'PO creada · falta tracking / llegada';
-                $tone = 'warn';
-                $action = 'Registrar tracking o fecha de llegada';
+                $label = $internal_purchase ? 'Compra interna · PO creada' : 'PO creada · falta tracking / llegada';
+                $tone = $internal_purchase ? 'ok' : 'warn';
+                $action = $internal_purchase ? 'Consultar PO; registrar llegada si aplica' : 'Registrar tracking o fecha de llegada';
             }
         } elseif ($request_cancelled) {
             $state = 'closed';
             $label = 'Cancelada';
             $tone = 'muted';
             $action = 'Consultar historial';
+        } elseif ($internal_purchase) {
+            $recommended_internal_quotes = array_filter($active_quotes, function ($quote) { return is_array($quote) && ($quote['recommended'] ?? '') === 'yes'; });
+            if (!$active_quotes) {
+                $state = 'needs_quotes';
+                $label = 'Compra interna · falta cotización';
+                $tone = 'warn';
+                $action = 'Registrar cotización de suplidor';
+            } elseif (count($recommended_internal_quotes) === 1 || count($active_quotes) === 1) {
+                $state = 'internal_purchase_ready';
+                $label = 'Compra interna · lista para PO';
+                $tone = 'ok';
+                $action = 'Crear PO sin seguimiento al cliente';
+            } else {
+                $state = 'purchase_review';
+                $label = 'Compra interna · elegir cotización';
+                $tone = 'warn';
+                $action = 'Seleccionar una cotización de suplidor';
+            }
         } elseif ($client_quote_sent && $client_was_lost) {
             $state = 'client_closed';
             $label = $client_status_normalized === 'rechazada' || $client_status_normalized === 'rejected' ? 'Rechazado por cliente' : 'Descartado sin respuesta';
@@ -37587,6 +37859,12 @@ if (!function_exists('cleg_procurement_request_decision_context')) {
             $label = $request_terminal_status ? 'Estado heredado · verificar compra' : 'Compra heredada · verificar PO';
             $tone = 'warn';
             $action = 'Conciliar requisición con PO y recepción';
+        } elseif (!cleg_procurement_purchase_purpose_is_valid($request['purchase_purpose'] ?? '')
+            && (!$client_quote_sent || $client_was_accepted)) {
+            $state = 'purchase_purpose_required';
+            $label = 'Clasificar destino de compra';
+            $tone = 'warn';
+            $action = 'Indicar si es compra interna o para cliente';
         } elseif ($client_quote_sent) {
             $client_status = (string) ($client_quote['client_response_status'] ?? '');
             if ($client_status === 'Aceptada') {
@@ -37639,8 +37917,9 @@ if (!function_exists('cleg_procurement_request_decision_context')) {
             'primary_po' => $primary_po,
             'purchase_summary' => $purchase_summary,
             'client_quote' => $client_quote,
-            'client_was_sent' => cleg_procurement_client_quote_was_sent($client_quote),
+            'client_was_sent' => !$internal_purchase && cleg_procurement_client_quote_was_sent($client_quote),
             'client_context' => $client_context,
+            'purchase_purpose' => cleg_procurement_purchase_purpose_normalize($request['purchase_purpose'] ?? ''),
         );
     }
 }
@@ -37673,6 +37952,11 @@ if (!function_exists('cleg_procurement_contextual_action')) {
         );
 
         switch ($state) {
+            case 'purchase_purpose_required':
+                $action['label'] = 'Clasificar destino';
+                $action['target'] = '#resumen-solicitud';
+                $action['description'] = 'Define si esta requisición se compra para un cliente o para uso interno antes de iniciar seguimiento o crear una PO.';
+                break;
             case 'review_quote':
                 $action['label'] = 'Preparar cotizacion';
                 $action['description'] = 'Usa el precio del suplidor para preparar la propuesta al cliente. No crea una PO.';
@@ -37682,10 +37966,13 @@ if (!function_exists('cleg_procurement_contextual_action')) {
                 $action['description'] = 'Compara opciones de suplidores y define el costo que vas a cotizar al cliente. No crea una PO.';
                 break;
             case 'client_accepted':
+            case 'internal_purchase_ready':
                 $action['target'] = '#ordenes';
                 if (is_array($po_creation_plan) && isset($po_creation_plan['quote'], $po_creation_plan['lines'])) {
                     $action['label'] = 'Crear PO';
-                    $action['description'] = 'La cotizacion aceptada y las partidas estan verificadas; registra la PO real de QuickBooks.';
+                    $action['description'] = $state === 'internal_purchase_ready'
+                        ? 'Compra interna: la cotización seleccionada y las partidas están verificadas. No se requiere aceptación ni seguimiento del cliente.'
+                        : 'La cotización aceptada y las partidas están verificadas; registra la PO real de QuickBooks.';
                 } else {
                     $action['label'] = 'PO bloqueada';
                     $action['enabled'] = false;
@@ -37868,6 +38155,9 @@ if (!function_exists('cleg_procurement_render_quote_intake_form')) {
         if (!$can_manage) {
             return '';
         }
+        $request_items = array_values(array_filter((array) ($request['items'] ?? array()), function ($item) {
+            return is_array($item) && cleg_procurement_receipt_is_record_id((string) ($item['airtable_id'] ?? ''));
+        }));
 
         ob_start();
         ?>
@@ -37879,9 +38169,24 @@ if (!function_exists('cleg_procurement_render_quote_intake_form')) {
                 <?php wp_nonce_field('cleg_procurement_add_quote'); ?>
                 <label>Requisicion<input type="text" value="<?php echo esc_attr($request['id']); ?>" readonly></label>
                 <label>Item<input type="text" value="<?php echo esc_attr($request['item']); ?>" readonly></label>
+                <?php if (count($request_items) === 1) : ?>
+                    <input type="hidden" name="procurement_item_ids[]" value="<?php echo esc_attr($request_items[0]['airtable_id']); ?>">
+                <?php elseif (count($request_items) > 1) : ?>
+                    <fieldset class="cleg-proc-quote-items"><legend>Partidas incluidas en esta cotizacion</legend>
+                        <?php foreach ($request_items as $request_item) : ?>
+                            <label><input type="checkbox" name="procurement_item_ids[]" value="<?php echo esc_attr($request_item['airtable_id']); ?>"> <?php echo esc_html($request_item['item'] . ' · ' . $request_item['quantity'] . ' ' . $request_item['unit']); ?></label>
+                        <?php endforeach; ?>
+                    </fieldset>
+                <?php else : ?>
+                    <p class="cleg-proc-notice is-warn" role="status">No se puede guardar una cotizacion sin vincularla a una partida verificable.</p>
+                <?php endif; ?>
                 <label>Cantidad<input type="text" value="<?php echo esc_attr(trim((string) ($request['quantity'] ?? '1') . ' ' . (string) ($request['unit'] ?? ''))); ?>" readonly></label>
                 <label>Suplidor<input type="text" name="vendor" placeholder="Ej. Grainger" required></label>
+                <label>Precio / subtotal (opcional)<input type="number" min="0" step="0.01" name="subtotal" placeholder="No indicado si no aparece"></label>
+                <label>Shipping / envío (opcional)<input type="number" min="0" step="0.01" name="shipping" placeholder="No indicado si no aparece"></label>
+                <label>Taxes / impuestos (opcional)<input type="number" min="0" step="0.01" name="tax" placeholder="No indicado si no aparece"></label>
                 <label>Total cotizado<input type="number" step="0.01" name="amount" placeholder="0.00" required></label>
+                <p class="cleg-proc-quote-muted is-wide">El total es el importe final del suplidor. Precio, envío e impuestos se guardan por separado; un dato no indicado queda en blanco, no se convierte en $0.</p>
                 <label>Tiempo de entrega<input type="text" name="eta" placeholder="Ej. 3-5 dias"></label>
                 <label>Llegada estimada a PR<input type="date" name="estimated_delivery_to_pr"></label>
                 <details class="cleg-proc-quote-advanced">
@@ -37920,6 +38225,9 @@ if (!function_exists('cleg_procurement_render_quote_compare')) {
         if ($can_manage === null) {
             $can_manage = cleg_procurement_user_can_manage_requests(wp_get_current_user());
         }
+        $request_items = array_values(array_filter((array) ($request['items'] ?? array()), function ($item) {
+            return is_array($item) && cleg_procurement_receipt_is_record_id((string) ($item['airtable_id'] ?? ''));
+        }));
 
         $active_quotes = cleg_procurement_active_quotes($quotes);
         $best_quote = cleg_procurement_best_quote($active_quotes);
@@ -37937,6 +38245,7 @@ if (!function_exists('cleg_procurement_render_quote_compare')) {
                 $is_void = cleg_procurement_quote_is_inactive($quote);
                     $is_best = !$is_void && $best_fingerprint !== '' && cleg_procurement_quote_fingerprint($quote) === $best_fingerprint;
                     $amount = cleg_procurement_numeric_amount($quote['amount'] ?? null);
+                    $cost_breakdown = cleg_procurement_quote_cost_breakdown($quote);
                     $contact_detail = trim((string) ($quote['supplier_contact_person'] ?? '') . ' ' . (string) ($quote['supplier_contact_email'] ?? '') . ' ' . (string) ($quote['supplier_contact_phone'] ?? ''));
                     $quote_note = trim((string) ($quote['delivery_risk_notes'] ?? '') . ' ' . (string) ($quote['notes'] ?? '') . ' ' . (string) ($quote['decision_support_notes'] ?? '') . ' ' . (string) ($quote['client_decision_notes'] ?? ''));
                     $client_context = cleg_procurement_client_quote_context($quote);
@@ -37952,6 +38261,12 @@ if (!function_exists('cleg_procurement_render_quote_compare')) {
                             <?php endif; ?>
                         </header>
                         <div class="cleg-proc-quote-money"><?php echo esc_html($amount !== null ? cleg_procurement_money($amount) : (string) ($quote['amount'] ?? 'Pendiente')); ?></div>
+                        <dl class="cleg-proc-quote-cost-breakdown" aria-label="Desglose de costos">
+                            <div><dt>Precio / subtotal</dt><dd><?php echo esc_html($cost_breakdown['subtotal'] === null ? 'No indicado' : cleg_procurement_money($cost_breakdown['subtotal'])); ?></dd></div>
+                            <div><dt>Shipping / envío</dt><dd><?php echo esc_html($cost_breakdown['shipping'] === null ? 'No indicado' : cleg_procurement_money($cost_breakdown['shipping'])); ?></dd></div>
+                            <div><dt>Taxes / impuestos</dt><dd><?php echo esc_html($cost_breakdown['tax'] === null ? 'No indicado' : cleg_procurement_money($cost_breakdown['tax'])); ?></dd></div>
+                            <div><dt>Total final</dt><dd><?php echo esc_html($amount !== null ? cleg_procurement_money($amount) : 'Pendiente'); ?></dd></div>
+                        </dl>
                         <dl>
                             <div><dt>Entrega suplidor</dt><dd><?php echo esc_html($quote['eta'] ?? 'Pendiente'); ?></dd></div>
                             <div><dt>Llegada a PR</dt><dd><?php echo esc_html($quote['estimated_delivery_to_pr'] ?? 'Pendiente'); ?></dd></div>
@@ -37972,7 +38287,7 @@ if (!function_exists('cleg_procurement_render_quote_compare')) {
                             <p class="cleg-proc-quote-muted">Sin evidencia registrada</p>
                         <?php endif; ?>
                         <?php echo cleg_procurement_render_quote_evidence($quote); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-                        <?php if (!$is_void && $can_manage) : ?>
+                <?php if (!$is_void && $can_manage && !cleg_procurement_is_internal_purchase($request)) : ?>
                             <?php
                             $client_follow_up_count = min(3, absint($quote['client_follow_up_count'] ?? 0));
                             $client_sent = !empty($quote['client_sent_at']);
@@ -38097,7 +38412,20 @@ if (!function_exists('cleg_procurement_render_quote_compare')) {
                                 <label>Persona contacto<input type="text" name="supplier_contact_person" value="<?php echo esc_attr($quote['supplier_contact_person'] ?? ''); ?>"></label>
                                 <label>Email contacto<input type="email" name="supplier_contact_email" value="<?php echo esc_attr($quote['supplier_contact_email'] ?? ''); ?>"></label>
                                 <label>Telefono contacto<input type="tel" name="supplier_contact_phone" value="<?php echo esc_attr($quote['supplier_contact_phone'] ?? ''); ?>"></label>
-                                <label>Total cotizado<input type="number" step="0.01" name="amount" value="<?php echo esc_attr($quote['amount'] ?? '0'); ?>" required></label>
+                                <?php if (count($request_items) === 1) : ?>
+                                    <input type="hidden" name="procurement_item_ids[]" value="<?php echo esc_attr($request_items[0]['airtable_id']); ?>">
+                                <?php elseif (count($request_items) > 1) : ?>
+                                    <fieldset class="cleg-proc-quote-items"><legend>Partidas incluidas en esta cotización</legend>
+                                        <?php foreach ($request_items as $request_item) : ?>
+                                            <?php $item_is_linked = in_array($request_item['airtable_id'], (array) ($quote['item_airtable_ids'] ?? array()), true); ?>
+                                            <label><input type="checkbox" name="procurement_item_ids[]" value="<?php echo esc_attr($request_item['airtable_id']); ?>" <?php checked($item_is_linked); ?>> <?php echo esc_html($request_item['item'] . ' · ' . $request_item['quantity'] . ' ' . $request_item['unit']); ?></label>
+                                        <?php endforeach; ?>
+                                    </fieldset>
+                                <?php endif; ?>
+                        <label>Precio / subtotal<input type="number" min="0" step="0.01" name="subtotal" value="<?php echo esc_attr($quote['subtotal'] ?? ''); ?>" placeholder="No indicado"></label>
+                        <label>Shipping / envío<input type="number" min="0" step="0.01" name="shipping" value="<?php echo esc_attr($quote['shipping'] ?? ''); ?>" placeholder="No indicado"></label>
+                        <label>Taxes / impuestos<input type="number" min="0" step="0.01" name="tax" value="<?php echo esc_attr($quote['tax'] ?? ''); ?>" placeholder="No indicado"></label>
+                        <label>Total cotizado<input type="number" min="0" step="0.01" name="amount" value="<?php echo esc_attr($quote['amount'] ?? '0'); ?>" required></label>
                                 <label>Tiempo de entrega<input type="text" name="eta" value="<?php echo esc_attr($quote['eta'] ?? ''); ?>"></label>
                                 <label>Llegada estimada a PR<input type="date" name="estimated_delivery_to_pr" value="<?php echo esc_attr($quote['estimated_delivery_to_pr'] ?? ''); ?>"></label>
                                 <label>Cumple entrega requerida<select name="can_meet_required_delivery_date"><?php echo cleg_procurement_select_options($delivery_fit_options, $quote['can_meet_required_delivery_date'] ?? 'Unknown'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></select></label>
@@ -38160,7 +38488,7 @@ if (!function_exists('cleg_procurement_render_quick_basics_form')) {
             || cleg_procurement_context_workflow_lane($decision_context) === 'received') {
             return '';
         }
-        $po_creation_plan = ($decision_context['state'] ?? '') === 'client_accepted'
+        $po_creation_plan = in_array(($decision_context['state'] ?? ''), array('client_accepted', 'internal_purchase_ready'), true)
             ? cleg_procurement_po_creation_plan($data, (string) ($request['id'] ?? ''))
             : null;
         $contextual_action = cleg_procurement_contextual_action($request, $decision_context, $po_creation_plan);
@@ -38409,7 +38737,7 @@ if (!function_exists('cleg_procurement_request_matches_order_filter')) {
         };
 
         if ($filter === 'accepted_no_po') {
-            return ($context['state'] ?? '') === 'client_accepted' && empty($primary_po);
+            return in_array(($context['state'] ?? ''), array('client_accepted', 'internal_purchase_ready'), true) && empty($primary_po);
         }
 
         if ($filter === 'needs_quote') {
@@ -38624,6 +38952,12 @@ if (!function_exists('cleg_procurement_handle_create_request')) {
             exit;
         }
 
+        $purchase_purpose = cleg_procurement_purchase_purpose_normalize(wp_unslash($_POST['purchase_purpose'] ?? ''));
+        if (!cleg_procurement_purchase_purpose_is_valid($purchase_purpose)) {
+            wp_safe_redirect(add_query_arg(array('proc_view' => 'solicitar', 'proc_notice' => 'purchase_purpose_required'), home_url('/admin-procurement/')));
+            exit;
+        }
+
         $data = cleg_procurement_get_data();
         $user = wp_get_current_user();
         $creator_context = cleg_procurement_request_creator_context($user);
@@ -38665,10 +38999,12 @@ if (!function_exists('cleg_procurement_handle_create_request')) {
         $unit = sanitize_text_field(wp_unslash($_POST['unit'] ?? 'Unidad'));
         $substitute = sanitize_text_field(wp_unslash($_POST['substitute'] ?? 'Pendiente'));
         $purchase_intent = cleg_procurement_purchase_intent_from_substitute($substitute);
+        $purchase_purpose = cleg_procurement_purchase_purpose_normalize(wp_unslash($_POST['purchase_purpose'] ?? ''));
 
         $data['requests'][$id] = array(
             'id' => $id,
             'item' => $item_name,
+            'purchase_purpose' => $purchase_purpose,
             'project' => sanitize_text_field(wp_unslash($_POST['project'] ?? 'Project Pending')),
             'requester' => $creator_context['requester'],
             'requester_user_id' => $creator_context['requester_user_id'],
@@ -38745,6 +39081,13 @@ if (!function_exists('cleg_procurement_handle_create_request')) {
         if (is_array($airtable_saved) && !empty($airtable_saved['request_record_id'])) {
             $data['requests'][$id]['airtable_id'] = $airtable_saved['request_record_id'];
             $data['requests'][$id]['item_airtable_id'] = $airtable_saved['item_record_id'] ?? '';
+            $data['requests'][$id]['item_airtable_ids'] = !empty($airtable_saved['item_record_id']) ? array($airtable_saved['item_record_id']) : array();
+            $data['requests'][$id]['items'] = !empty($airtable_saved['item_record_id']) ? array(array(
+                'airtable_id' => $airtable_saved['item_record_id'],
+                'item' => $item_name,
+                'quantity' => $quantity,
+                'unit' => $unit,
+            )) : array();
         }
         if (is_array($airtable_saved) && !empty($airtable_saved['replayed'])) {
             wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => 'created_existing'), home_url('/admin-procurement/')));
@@ -38876,6 +39219,11 @@ if (!function_exists('cleg_procurement_handle_update_request_info')) {
             $source_before_update = (string) ($data['source'] ?? '');
             $request = $data['requests'][$id];
             cleg_procurement_require_request_edit($request);
+            $purchase_purpose = cleg_procurement_purchase_purpose_normalize(wp_unslash($_POST['purchase_purpose'] ?? ($request['purchase_purpose'] ?? '')));
+            if (!cleg_procurement_purchase_purpose_is_valid($purchase_purpose)) {
+                wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => 'purchase_purpose_required'), home_url('/admin-procurement/')));
+                exit;
+            }
             $quantity_raw = wp_unslash($_POST['quantity'] ?? '');
             $quantity = cleg_procurement_validate_request_quantity($quantity_raw);
             if (is_wp_error($quantity)) {
@@ -38919,6 +39267,7 @@ if (!function_exists('cleg_procurement_handle_update_request_info')) {
                 : ($item_missing_information ? 'Completar informacion faltante: ' . $item_missing_information : 'Revisar clasificacion tecnica antes de enviar RFQ.');
 
             $request['item'] = $item_name;
+            $request['purchase_purpose'] = $purchase_purpose;
             $request['project'] = sanitize_text_field(wp_unslash($_POST['project'] ?? $request['project']));
             $request['quantity'] = $quantity;
             $request['unit'] = $unit;
@@ -39319,6 +39668,27 @@ if (!function_exists('cleg_procurement_handle_add_quote')) {
 
         if ($id && isset($data['requests'][$id])) {
             cleg_procurement_require_request_edit_by_id($data, $id);
+            $valid_item_ids = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array) ($data['requests'][$id]['item_airtable_ids'] ?? array())), 'cleg_procurement_receipt_is_record_id')));
+            $posted_item_ids = isset($_POST['procurement_item_ids']) && is_array($_POST['procurement_item_ids'])
+                ? array_values(array_unique(array_filter(array_map('sanitize_text_field', wp_unslash($_POST['procurement_item_ids'])), 'cleg_procurement_receipt_is_record_id')))
+                : array();
+            if (!$posted_item_ids && count($valid_item_ids) === 1) {
+                $posted_item_ids = $valid_item_ids;
+            }
+            if (!$posted_item_ids || array_diff($posted_item_ids, $valid_item_ids)) {
+                wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => 'quote_item_required'), home_url('/admin-procurement/')));
+                exit;
+            }
+            $quote_costs = cleg_procurement_quote_cost_input(array(
+                'amount' => sanitize_text_field(wp_unslash($_POST['amount'] ?? '')),
+                'subtotal' => sanitize_text_field(wp_unslash($_POST['subtotal'] ?? '')),
+                'shipping' => sanitize_text_field(wp_unslash($_POST['shipping'] ?? '')),
+                'tax' => sanitize_text_field(wp_unslash($_POST['tax'] ?? '')),
+            ));
+            if (is_wp_error($quote_costs)) {
+                wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => $quote_costs->get_error_code()), home_url('/admin-procurement/')));
+                exit;
+            }
             if (!isset($data['quotes'][$id]) || !is_array($data['quotes'][$id])) {
                 $data['quotes'][$id] = array();
             }
@@ -39326,11 +39696,15 @@ if (!function_exists('cleg_procurement_handle_add_quote')) {
             $quote_documents = cleg_procurement_upload_reference_images('quote_documents');
             $quote = array(
                 'vendor' => sanitize_text_field(wp_unslash($_POST['vendor'] ?? '')),
+                'item_airtable_ids' => $posted_item_ids,
                 'contact' => sanitize_text_field(wp_unslash($_POST['contact'] ?? '')),
                 'supplier_contact_person' => sanitize_text_field(wp_unslash($_POST['supplier_contact_person'] ?? '')),
                 'supplier_contact_email' => sanitize_email(wp_unslash($_POST['supplier_contact_email'] ?? '')),
                 'supplier_contact_phone' => sanitize_text_field(wp_unslash($_POST['supplier_contact_phone'] ?? '')),
-                'amount' => sanitize_text_field(wp_unslash($_POST['amount'] ?? '0')),
+                'amount' => $quote_costs['amount'],
+                'subtotal' => $quote_costs['subtotal'],
+                'shipping' => $quote_costs['shipping'],
+                'tax' => $quote_costs['tax'],
                 'eta' => sanitize_text_field(wp_unslash($_POST['eta'] ?? '')),
                 'expires' => sanitize_text_field(wp_unslash($_POST['expires'] ?? '')),
                 'risk' => sanitize_text_field(wp_unslash($_POST['risk'] ?? 'Medio')),
@@ -39392,7 +39766,34 @@ if (!function_exists('cleg_procurement_handle_update_quote')) {
 
         if ($id && isset($data['requests'][$id]) && isset($data['quotes'][$id][$quote_index])) {
             cleg_procurement_require_request_edit_by_id($data, $id);
+            if (cleg_procurement_is_internal_purchase($data['requests'][$id]) && strpos($quote_action, 'client_') === 0) {
+                wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => 'internal_client_followup_disabled'), home_url('/admin-procurement/')));
+                exit;
+            }
             $existing = is_array($data['quotes'][$id][$quote_index]) ? $data['quotes'][$id][$quote_index] : array();
+            $quote_costs = cleg_procurement_quote_cost_input(array(
+                'amount' => sanitize_text_field(wp_unslash($_POST['amount'] ?? ($existing['amount'] ?? ''))),
+                'subtotal' => sanitize_text_field(wp_unslash($_POST['subtotal'] ?? ($existing['subtotal'] ?? ''))),
+                'shipping' => sanitize_text_field(wp_unslash($_POST['shipping'] ?? ($existing['shipping'] ?? ''))),
+                'tax' => sanitize_text_field(wp_unslash($_POST['tax'] ?? ($existing['tax'] ?? ''))),
+            ));
+            if (is_wp_error($quote_costs)) {
+                wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => $quote_costs->get_error_code()), home_url('/admin-procurement/')));
+                exit;
+            }
+            $quote_item_ids = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array) ($existing['item_airtable_ids'] ?? array())), 'cleg_procurement_receipt_is_record_id')));
+            if ($quote_action === 'update' || isset($_POST['procurement_item_ids'])) {
+                $valid_item_ids = array_values(array_unique(array_filter(array_map('sanitize_text_field', (array) ($data['requests'][$id]['item_airtable_ids'] ?? array())), 'cleg_procurement_receipt_is_record_id')));
+                $posted_item_ids = isset($_POST['procurement_item_ids']) && is_array($_POST['procurement_item_ids'])
+                    ? array_values(array_unique(array_filter(array_map('sanitize_text_field', wp_unslash($_POST['procurement_item_ids'])), 'cleg_procurement_receipt_is_record_id')))
+                    : array();
+                if (!$posted_item_ids && count($valid_item_ids) === 1) $posted_item_ids = $valid_item_ids;
+                if (!$posted_item_ids || array_diff($posted_item_ids, $valid_item_ids)) {
+                    wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => 'quote_item_required'), home_url('/admin-procurement/')));
+                    exit;
+                }
+                $quote_item_ids = $posted_item_ids;
+            }
             $existing_client_status = (string) ($existing['client_response_status'] ?? '');
             $existing_follow_ups = absint($existing['client_follow_up_count'] ?? 0);
             $posted_client_status = sanitize_text_field(wp_unslash($_POST['client_response_status'] ?? $existing_client_status));
@@ -39419,7 +39820,11 @@ if (!function_exists('cleg_procurement_handle_update_quote')) {
                 'supplier_contact_person' => sanitize_text_field(wp_unslash($_POST['supplier_contact_person'] ?? ($existing['supplier_contact_person'] ?? ''))),
                 'supplier_contact_email' => sanitize_email(wp_unslash($_POST['supplier_contact_email'] ?? ($existing['supplier_contact_email'] ?? ''))),
                 'supplier_contact_phone' => sanitize_text_field(wp_unslash($_POST['supplier_contact_phone'] ?? ($existing['supplier_contact_phone'] ?? ''))),
-                'amount' => sanitize_text_field(wp_unslash($_POST['amount'] ?? ($existing['amount'] ?? '0'))),
+                'item_airtable_ids' => $quote_item_ids,
+                'amount' => $quote_costs['amount'],
+                'subtotal' => $quote_costs['subtotal'],
+                'shipping' => $quote_costs['shipping'],
+                'tax' => $quote_costs['tax'],
                 'eta' => sanitize_text_field(wp_unslash($_POST['eta'] ?? ($existing['eta'] ?? ''))),
                 'expires' => cleg_procurement_airtable_date(wp_unslash($_POST['expires'] ?? ($existing['expires'] ?? ''))),
                 'risk' => sanitize_text_field(wp_unslash($_POST['risk'] ?? ($existing['risk'] ?? 'Medio'))),
@@ -39753,7 +40158,8 @@ if (!function_exists('cleg_procurement_handle_create_po')) {
             $recommended_quote = cleg_procurement_po_authoritative_quote($data, $id);
             if (is_wp_error($recommended_quote)) {
                 $quote_error = $recommended_quote->get_error_code();
-                $notice = $quote_error === 'cleg_procurement_po_quote_ambiguous' ? 'client_quote_ambiguous' : ($quote_error === 'cleg_procurement_po_quote_missing' ? 'client_approval_required' : '');
+                $internal_purchase = cleg_procurement_is_internal_purchase($data['requests'][$id] ?? array());
+                $notice = $quote_error === 'cleg_procurement_po_quote_ambiguous' ? ($internal_purchase ? 'internal_quote_ambiguous' : 'client_quote_ambiguous') : ($quote_error === 'cleg_procurement_po_quote_missing' ? ($internal_purchase ? 'internal_quote_required' : 'client_approval_required') : '');
                 if ($notice !== '') {
                     wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($id), 'proc_notice' => $notice), home_url('/admin-procurement/')));
                     exit;
@@ -39804,7 +40210,8 @@ if (!function_exists('cleg_procurement_handle_create_po')) {
             if (is_wp_error($recommended_quote)) {
                 cleg_procurement_po_creation_lock_release($po_locks);
                 $quote_error = $recommended_quote->get_error_code();
-                $notice = $quote_error === 'cleg_procurement_po_quote_ambiguous' ? 'client_quote_ambiguous' : ($quote_error === 'cleg_procurement_po_quote_missing' ? 'client_approval_required' : '');
+                $internal_purchase = cleg_procurement_is_internal_purchase($data['requests'][$id] ?? array());
+                $notice = $quote_error === 'cleg_procurement_po_quote_ambiguous' ? ($internal_purchase ? 'internal_quote_ambiguous' : 'client_quote_ambiguous') : ($quote_error === 'cleg_procurement_po_quote_missing' ? ($internal_purchase ? 'internal_quote_required' : 'client_approval_required') : '');
                 if ($notice === '') {
                     wp_die(esc_html($recommended_quote->get_error_message()), esc_html__('PO no creada', 'cleg'), array('response' => 503));
                 }
@@ -39919,8 +40326,12 @@ if (!function_exists('cleg_procurement_handle_update_po_tracking')) {
             exit;
         }
         $data = cleg_procurement_get_data();
-        $notice = $tracking === '' ? 'tracking_missing' : 'tracking_error';
+        $notice = ($tracking === '' && $eta === '') ? 'tracking_missing' : 'tracking_error';
         $notice_detail = '';
+        if ($tracking === '' && $eta === '') {
+            wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request_id), 'proc_notice' => 'tracking_missing'), home_url('/admin-procurement/')));
+            exit;
+        }
 
         $po_match = cleg_procurement_find_po($data, $po_id, $po_airtable_id);
         if ($po_match['ambiguous']) {
@@ -39940,7 +40351,7 @@ if (!function_exists('cleg_procurement_handle_update_po_tracking')) {
                 exit;
             }
         }
-        if ($request_id && $po_id && $tracking !== '' && !$po_match['ambiguous'] && $po_match['key'] !== '' && isset($data['requests'][$request_id]) && (string) ($po_match['po']['request_id'] ?? '') === $request_id) {
+        if ($request_id && $po_id && ($tracking !== '' || $eta !== '') && !$po_match['ambiguous'] && $po_match['key'] !== '' && isset($data['requests'][$request_id]) && (string) ($po_match['po']['request_id'] ?? '') === $request_id) {
             $submitted_shipment_status = cleg_procurement_resolve_shipment_status(
                 $shipment_status_raw,
                 $shipment_status_was_submitted,
@@ -39955,20 +40366,25 @@ if (!function_exists('cleg_procurement_handle_update_po_tracking')) {
             cleg_procurement_require_request_edit_by_id($data, $request_id);
             $po_key = $po_match['key'];
             $request = $data['requests'][$request_id];
-            $data['pos'][$po_key]['tracking'] = $tracking;
+            $effective_tracking = $tracking !== '' ? $tracking : sanitize_text_field((string) ($data['pos'][$po_key]['tracking'] ?? ''));
+            if ($tracking !== '') {
+                $data['pos'][$po_key]['tracking'] = $tracking;
+            }
             if ($eta !== '') {
                 $data['pos'][$po_key]['eta'] = $eta;
             }
-            $data['requests'][$request_id]['tracking_number'] = $tracking;
+            if ($tracking !== '') {
+                $data['requests'][$request_id]['tracking_number'] = $tracking;
+            }
             $data['requests'][$request_id]['updated_at'] = current_time('mysql');
 
             if (!empty($data['pos'][$po_key]['airtable_id'])) {
                 $shipment_update = array(
-                    'type' => 'tracking',
-                    'label' => 'Tracking de PO QuickBooks',
-                    'value' => $tracking,
+                    'type' => $tracking !== '' ? 'tracking' : 'eta',
+                    'label' => $tracking !== '' ? 'Tracking de PO QuickBooks' : 'ETA de PO QuickBooks',
+                    'value' => $tracking !== '' ? $tracking : $eta,
                     'payload' => array(
-                        'tracking_number' => $tracking,
+                        'tracking_number' => $effective_tracking,
                         'eta' => $eta ?: ($data['pos'][$po_key]['eta'] ?? ''),
                         'po_airtable_id' => $data['pos'][$po_key]['airtable_id'],
                         'shipment_status' => $submitted_shipment_status,
@@ -39981,7 +40397,7 @@ if (!function_exists('cleg_procurement_handle_update_po_tracking')) {
                     $notice = 'tracking_pending_reconciliation';
                 } elseif ($shipment_id) {
                     $shipment_record_id = is_string($shipment_id) ? $shipment_id : '';
-                    $confirmed = cleg_procurement_confirm_airtable_shipment($shipment_record_id, $tracking, $eta ?: ($data['pos'][$po_key]['eta'] ?? ''), $submitted_shipment_status);
+                    $confirmed = cleg_procurement_confirm_airtable_shipment($shipment_record_id, $effective_tracking, $eta ?: ($data['pos'][$po_key]['eta'] ?? ''), $submitted_shipment_status);
                     if ($confirmed) {
                         $data['pos'][$po_key]['shipment_airtable_id'] = $shipment_record_id;
                         $data['pos'][$po_key]['shipment_status'] = $submitted_shipment_status;
@@ -40325,6 +40741,10 @@ if (!function_exists('cleg_procurement_render_notice')) {
             'client_quote_amount_required' => 'Indica el precio total que se envió al cliente para dejarlo registrado.',
             'client_approval_required' => 'No se puede crear una PO hasta registrar la aceptación del cliente en la cotización.',
             'client_quote_ambiguous' => 'Hay varias cotizaciones aceptadas; marca cuál aceptó el cliente para vincular la PO al suplidor correcto.',
+            'internal_quote_required' => 'La compra interna requiere una cotización de suplidor vinculada a sus partidas.',
+            'internal_quote_ambiguous' => 'La compra interna tiene varias cotizaciones sin selección única; marca una recomendada.',
+            'quote_item_required' => 'Vincula la cotización a una partida de esta requisición antes de guardarla.',
+            'internal_client_followup_disabled' => 'Esta requisición es una compra interna; no aplica seguimiento al cliente.',
             'po' => 'PO registrada.',
             'po_quickbooks' => 'PO QuickBooks asignada.',
             'po_missing_quickbooks' => 'Asigna primero el PO real de QuickBooks antes de continuar.',
@@ -42645,6 +43065,13 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                             <option>New Industrial Service</option>
                                         </select>
                                     </label>
+                                    <label>Destino de la requisición
+                                        <select name="purchase_purpose" required>
+                                            <option value="" selected disabled>Selecciona el destino</option>
+                                            <option value="Customer project">Para cotizar a cliente</option>
+                                            <option value="Internal C&amp;L">Compra interna C&amp;L</option>
+                                        </select>
+                                    </label>
                                     <label>Equipo, material o servicio
                                         <input type="text" name="item" required placeholder="Ej. motor, panel, sensor, servicio tecnico">
                                     </label>
@@ -42863,7 +43290,7 @@ if (!function_exists('cleg_admin_procurement_shortcode')) {
                                 <?php foreach ($board_requests as $request) : ?>
                                     <?php $commercial_summary = cleg_procurement_request_commercial_summary($request, $data); ?>
                                     <?php $decision_context = cleg_procurement_request_decision_context($request, $data); ?>
-                                    <?php $po_creation_plan = ($decision_context['state'] ?? '') === 'client_accepted' ? cleg_procurement_po_creation_plan($data, (string) ($request['id'] ?? '')) : null; ?>
+                                    <?php $po_creation_plan = in_array(($decision_context['state'] ?? ''), array('client_accepted', 'internal_purchase_ready'), true) ? cleg_procurement_po_creation_plan($data, (string) ($request['id'] ?? '')) : null; ?>
                                     <?php $contextual_action = cleg_procurement_contextual_action($request, $decision_context, $po_creation_plan); ?>
                                     <?php $task_focus_control = !empty($contextual_action['enabled']) ? 'task' : 'open'; ?>
                                     <?php $task_link_parts = cleg_procurement_board_detail_link_parts($request['id'], $_GET, $task_focus_control, $workflow_lane, !empty($contextual_action['enabled']) ? ($contextual_action['target'] ?? '#resumen-solicitud') : ''); ?>
@@ -43225,6 +43652,13 @@ if (!function_exists('cleg_procurement_render_detail')) {
                     <label class="is-wide">Item / parte
                         <input type="text" name="item" value="<?php echo esc_attr($request['item']); ?>" required>
                     </label>
+                    <label>Destino de la requisición
+                        <select name="purchase_purpose" required>
+                            <option value="" <?php selected(cleg_procurement_purchase_purpose_normalize($request['purchase_purpose'] ?? ''), ''); ?> disabled>Selecciona el destino</option>
+                            <option value="Customer project" <?php selected(cleg_procurement_purchase_purpose_normalize($request['purchase_purpose'] ?? ''), 'Customer project'); ?>>Para cotizar a cliente</option>
+                            <option value="Internal C&amp;L" <?php selected(cleg_procurement_purchase_purpose_normalize($request['purchase_purpose'] ?? ''), 'Internal C&L'); ?>>Compra interna C&amp;L</option>
+                        </select>
+                    </label>
                     <label>Proyecto
                         <select name="project" required>
                             <?php echo cleg_procurement_select_options($project_options, $request['project']); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
@@ -43483,7 +43917,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                                         <input type="hidden" name="po_airtable_id" value="<?php echo esc_attr((string) ($po['airtable_id'] ?? '')); ?>">
                                         <?php wp_nonce_field('cleg_procurement_update_po_tracking'); ?>
                                         <?php echo cleg_procurement_render_shipment_status_select($po['shipment_status'] ?? null, !empty($po['shipment_exists'])); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-                                        <label>Tracking number<input type="text" name="tracking" value="<?php echo esc_attr((string) ($po['tracking'] ?? '')); ?>" placeholder="Tracking number" required></label>
+                <label>Tracking (opcional)<input type="text" name="tracking" value="<?php echo esc_attr((string) ($po['tracking'] ?? '')); ?>" placeholder="Aún no disponible"></label>
                                         <label>ETA opcional<input type="text" name="eta" value="<?php echo esc_attr((string) ($po['eta'] ?? '')); ?>" placeholder="ETA opcional"></label>
                                         <button class="cleg-proc-btn is-secondary" type="submit">Guardar tracking</button>
                                     </form>
