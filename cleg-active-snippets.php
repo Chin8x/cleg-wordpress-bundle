@@ -31251,8 +31251,7 @@ if (!function_exists('cleg_procurement_po_line_plan')) {
         $quote_request_links = isset($quote_fields['Procurement Requests']) && is_array($quote_fields['Procurement Requests']) ? array_values(array_unique($quote_fields['Procurement Requests'])) : array();
         $quote_item_links = isset($quote_fields['Procurement Items']) && is_array($quote_fields['Procurement Items']) ? array_values(array_unique($quote_fields['Procurement Items'])) : array();
         if (!cleg_procurement_quote_purchase_authorized($request, $quote_fields)
-            || count($quote_request_links) !== 1 || $quote_request_links[0] !== $request['airtable_id']
-            || !$quote_item_links) {
+            || count($quote_request_links) !== 1 || $quote_request_links[0] !== $request['airtable_id']) {
             return new WP_Error('cleg_procurement_po_quote_item_ambiguous', 'La cotizacion aceptada no identifica de forma inequivoca sus Procurement Items.');
         }
 
@@ -31267,6 +31266,10 @@ if (!function_exists('cleg_procurement_po_line_plan')) {
             if (in_array($request['airtable_id'], $item_requests, true)) {
                 $request_items[$item_id] = $item_record;
             }
+        }
+        if (!$quote_item_links) {
+            if (count($request_items) !== 1) return new WP_Error('cleg_procurement_po_quote_item_ambiguous', 'La cotizacion aceptada no identifica de forma inequivoca sus Procurement Items.');
+            $quote_item_links = array_keys($request_items);
         }
         foreach ($quote_item_links as $item_id) {
             if (!cleg_procurement_receipt_is_record_id((string) $item_id) || !isset($request_items[$item_id])) {
@@ -31320,6 +31323,7 @@ if (!function_exists('cleg_procurement_po_line_plan')) {
             $line_quote_fields = is_array($line_quote) ? (array) ($line_quote['fields'] ?? array()) : array();
             $line_quote_requests = isset($line_quote_fields['Procurement Requests']) && is_array($line_quote_fields['Procurement Requests']) ? array_values(array_unique($line_quote_fields['Procurement Requests'])) : array();
             $line_quote_items = isset($line_quote_fields['Procurement Items']) && is_array($line_quote_fields['Procurement Items']) ? array_values(array_unique($line_quote_fields['Procurement Items'])) : array();
+            if (!$line_quote_items && count($request_items) === 1) $line_quote_items = array_keys($request_items);
             if (!$line_quote || count($line_quote_requests) !== 1 || $line_quote_requests[0] !== $request['airtable_id']
                 || !cleg_procurement_quote_purchase_authorized($request, $line_quote_fields)
                 || !in_array($item_links[0], $line_quote_items, true)) {
@@ -31550,9 +31554,19 @@ if (!function_exists('cleg_procurement_receipt_ordered_quantity')) {
         $quote_requests = isset($quote_fields['Procurement Requests']) && is_array($quote_fields['Procurement Requests']) ? array_values(array_unique($quote_fields['Procurement Requests'])) : array();
         $quote_items = isset($quote_fields['Procurement Items']) && is_array($quote_fields['Procurement Items']) ? array_values(array_unique($quote_fields['Procurement Items'])) : array();
         $item_requests = isset($item_fields['Procurement Requests']) && is_array($item_fields['Procurement Requests']) ? array_values(array_unique($item_fields['Procurement Requests'])) : array();
+        $legacy_quote_item_match = false;
+        if (!$quote_items && count($request_links) === 1 && count($quote_requests) === 1 && $quote_requests[0] === $request_links[0]) {
+            $linked_request_items = array();
+            foreach ((array) ($data['airtable_items'] ?? array()) as $candidate) {
+                $candidate_fields = (array) ($candidate['fields'] ?? array());
+                $candidate_requests = isset($candidate_fields['Procurement Requests']) && is_array($candidate_fields['Procurement Requests']) ? array_values(array_unique($candidate_fields['Procurement Requests'])) : array();
+                if (count($candidate_requests) === 1 && $candidate_requests[0] === $request_links[0]) $linked_request_items[(string) ($candidate['id'] ?? '')] = true;
+            }
+            $legacy_quote_item_match = count($linked_request_items) === 1 && isset($linked_request_items[$item_id]);
+        }
         if (count($request_links) !== 1 || count($po_quote_links) !== 1 || $po_quote_links[0] !== $quote_id
             || count($quote_requests) !== 1 || $quote_requests[0] !== $request_links[0]
-            || !in_array($item_id, $quote_items, true)
+            || !(in_array($item_id, $quote_items, true) || $legacy_quote_item_match)
             || count($item_requests) !== 1 || $item_requests[0] !== $request_links[0]) {
             return new WP_Error('cleg_procurement_receipt_line_chain_ambiguous', 'No se demuestra la cadena PO→cotizacion de proveedor→item→requisicion.');
         }
