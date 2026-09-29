@@ -32986,7 +32986,7 @@ if (!function_exists('cleg_procurement_is_internal_purchase')) {
 if (!function_exists('cleg_procurement_po_lines_schema_verified')) {
     function cleg_procurement_po_lines_schema_verified() {
         $tenant_id = function_exists('cleg_saas_current_tenant_id') ? sanitize_key((string) cleg_saas_current_tenant_id()) : 'cleg';
-        $cache_key = 'cleg_proc_po_schema_v1_' . substr(hash('sha256', $tenant_id . '|' . CLEG_PROC_AIRTABLE_PO_LINES_TABLE), 0, 24);
+        $cache_key = 'cleg_proc_po_schema_v2_' . substr(hash('sha256', $tenant_id . '|' . CLEG_PROC_AIRTABLE_PO_LINES_TABLE), 0, 24);
         $cached = get_transient($cache_key);
         if (is_array($cached) && isset($cached['verified'], $cached['checked_at']) && time() - (int) $cached['checked_at'] < 300) {
             return (bool) $cached['verified'];
@@ -33001,9 +33001,12 @@ if (!function_exists('cleg_procurement_po_lines_schema_verified')) {
             'Unit Snapshot',
             'Ordered Quantity',
         );
+        $field_checks = array_map(function ($field) {
+            return '{' . str_replace(array('\\', '}'), array('\\\\', '\\}'), $field) . '}=BLANK()';
+        }, $required_fields);
         $probe = cleg_admin_request('GET', CLEG_PROC_AIRTABLE_PO_LINES_TABLE, array('query' => array(
             'pageSize' => 1,
-            'fields[]' => $required_fields,
+            'filterByFormula' => 'OR(' . implode(',', $field_checks) . ')',
         )));
         $verified = !is_wp_error($probe) && isset($probe['records']) && is_array($probe['records']);
         set_transient($cache_key, array('verified' => $verified, 'checked_at' => time()), 300);
@@ -34837,13 +34840,7 @@ if (!function_exists('cleg_procurement_update_airtable_quote')) {
                 'typecast' => true,
             ),
         ));
-
-        if (is_wp_error($response)) {
-            return false;
-        }
-
-        $code = (int) wp_remote_retrieve_response_code($response);
-        return $code >= 200 && $code < 300;
+        return cleg_procurement_airtable_patch_confirmed($response, $quote['airtable_id']);
     }
 }
 
@@ -35000,13 +34997,7 @@ if (!function_exists('cleg_procurement_update_airtable_request_client_summary'))
                 'typecast' => true,
             ),
         ));
-
-        if (is_wp_error($response)) {
-            return false;
-        }
-
-        $code = (int) wp_remote_retrieve_response_code($response);
-        return $code >= 200 && $code < 300;
+        return cleg_procurement_airtable_patch_confirmed($response, $request['airtable_id']);
     }
 }
 
@@ -35247,13 +35238,7 @@ if (!function_exists('cleg_procurement_update_airtable_history_row')) {
                 'typecast' => true,
             ),
         ));
-
-        if (is_wp_error($response)) {
-            return false;
-        }
-
-        $code = (int) wp_remote_retrieve_response_code($response);
-        return $code >= 200 && $code < 300;
+        return cleg_procurement_airtable_patch_confirmed($response, $record_id);
     }
 }
 
@@ -35470,7 +35455,7 @@ if (!function_exists('cleg_procurement_po_authoritative_quote')) {
 if (!function_exists('cleg_procurement_receipts_schema_verified')) {
     function cleg_procurement_receipts_schema_verified() {
         $tenant_id = function_exists('cleg_saas_current_tenant_id') ? sanitize_key((string) cleg_saas_current_tenant_id()) : 'cleg';
-        $cache_key = 'cleg_proc_receipt_schema_v1_' . substr(hash('sha256', $tenant_id . '|' . CLEG_PROC_AIRTABLE_RECEIPTS_TABLE), 0, 24);
+        $cache_key = 'cleg_proc_receipt_schema_v2_' . substr(hash('sha256', $tenant_id . '|' . CLEG_PROC_AIRTABLE_RECEIPTS_TABLE), 0, 24);
         $cached = get_transient($cache_key);
         if (is_array($cached) && isset($cached['verified'], $cached['checked_at']) && time() - (int) $cached['checked_at'] < 300) {
             return (bool) $cached['verified'];
@@ -35481,9 +35466,12 @@ if (!function_exists('cleg_procurement_receipts_schema_verified')) {
             'Quantity Remaining', 'Condition', 'Luis Confirmation Notes', 'Procurement POs',
             'Procurement PO Lines', 'Procurement Shipments',
         );
+        $field_checks = array_map(function ($field) {
+            return '{' . str_replace(array('\\', '}'), array('\\\\', '\\}'), $field) . '}=BLANK()';
+        }, $required_fields);
         $probe = cleg_admin_request('GET', CLEG_PROC_AIRTABLE_RECEIPTS_TABLE, array('query' => array(
             'pageSize' => 1,
-            'fields[]' => $required_fields,
+            'filterByFormula' => 'OR(' . implode(',', $field_checks) . ')',
         )));
         $verified = !is_wp_error($probe) && isset($probe['records']) && is_array($probe['records']);
         set_transient($cache_key, array('verified' => $verified, 'checked_at' => time()), 300);
@@ -43947,7 +43935,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                     <?php /* Existing POs are actionable above; keep the creation limitation secondary and out of ambiguous PO cards. */ ?>
                 <?php elseif ($can_manage_request) : ?>
                     <?php if (is_wp_error($po_line_form_plan)) : ?>
-                        <p class="cleg-proc-notice is-warn cleg-proc-po-setup-message" role="status">No se puede crear una nueva PO con la configuración actual<?php echo $related_pos ? '; las órdenes existentes se conservan' : ''; ?>. Contacta al administrador para revisar el bloqueo.</p>
+                        <p class="cleg-proc-notice is-warn cleg-proc-po-setup-message" role="status"><?php echo esc_html($po_line_form_plan->get_error_message()); ?><?php echo $related_pos ? ' Las órdenes existentes se conservan.' : ''; ?></p>
                     <?php else : ?>
                     <form class="cleg-proc-quote-form cleg-proc-create-po-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                         <input type="hidden" name="action" value="cleg_proc_create_po">
