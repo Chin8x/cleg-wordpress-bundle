@@ -31827,6 +31827,16 @@ if (!function_exists('cleg_procurement_create_receipt_event')) {
         if ($ordered['po_airtable_id'] !== $po_id) {
             return new WP_Error('cleg_procurement_receipt_po_line_mismatch', 'La PO Line no pertenece a la PO indicada.');
         }
+        foreach ((array) ($source_data['airtable_pos'] ?? array()) as $canonical_po_record) {
+            if (!is_array($canonical_po_record) || sanitize_text_field((string) ($canonical_po_record['id'] ?? '')) !== $po_id) {
+                continue;
+            }
+            $canonical_po_status = cleg_procurement_airtable_scalar((array) ($canonical_po_record['fields'] ?? array()), 'PO Status', '');
+            if (cleg_procurement_receipt_status_conflicts_with_balance($canonical_po_status, $ordered['remaining_quantity'])) {
+                return new WP_Error('cleg_procurement_receipt_po_status_conflict', 'La PO figura recibida o cerrada, pero la línea conserva saldo. Requiere revisión administrativa antes de registrar otra recepción.');
+            }
+            break;
+        }
         if ($quantity > $ordered['remaining_quantity'] + 0.000001) {
             return new WP_Error('cleg_procurement_receipt_excess', 'La cantidad recibida supera el saldo abierto de esta PO Line.');
         }
@@ -32093,6 +32103,9 @@ if (!function_exists('cleg_procurement_receipt_result_notice')) {
             if ($result->get_error_code() === 'cleg_procurement_receipt_po_cancelled') {
                 return 'received_po_cancelled';
             }
+            if ($result->get_error_code() === 'cleg_procurement_receipt_po_status_conflict') {
+                return 'received_po_status_conflict';
+            }
             if ($result->get_error_code() === 'cleg_procurement_receipt_pending') {
                 return 'received_pending_reconciliation';
             }
@@ -32200,7 +32213,7 @@ if (!function_exists('cleg_procurement_render_receipt_forms')) {
                 continue;
             }
             ?>
-            <form class="cleg-proc-receipt-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <form class="cleg-proc-receipt-form cleg-proc-workflow-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="cleg_proc_receive_po">
                 <input type="hidden" name="request_id" value="<?php echo esc_attr($request_id); ?>">
                 <input type="hidden" name="po_airtable_id" value="<?php echo esc_attr($po_id); ?>">
@@ -32210,16 +32223,22 @@ if (!function_exists('cleg_procurement_render_receipt_forms')) {
                 <strong><?php echo esc_html($description . ' · ' . $unit); ?></strong>
                 <small>Recibido <?php echo esc_html(number_format($line_state['received_quantity'], 2, '.', '') . ' / ' . number_format($line_state['quantity'], 2, '.', '') . ' ' . $unit); ?> · Restante <?php echo esc_html(number_format($line_state['remaining_quantity'], 2, '.', '') . ' ' . $unit); ?></small>
                 <label>Cantidad recibida ahora<input type="number" name="received_qty" min="0.01" max="<?php echo esc_attr(number_format($line_state['remaining_quantity'], 2, '.', '')); ?>" step="0.01" required></label>
-                <label>Fecha real de llegada (opcional)<input type="date" name="received_date"><small>Déjala en blanco si no se conoce; la fecha de registro queda en la auditoría.</small></label>
-                <label>Recibido por<select name="received_by"><option value="">Sin dato (histórico)</option><option value="Luis">Luis</option><option value="Alejandro">Alejandro</option><option value="Other">Otra persona</option></select></label>
-                <label>Condición<select name="receipt_condition"><option value="">Sin dato (histórico)</option><option value="Good">Bueno</option><option value="Damaged">Dañado</option><option value="Wrong item">Artículo equivocado</option><option value="Incomplete">Incompleto</option><option value="Needs inspection">Requiere inspección</option></select></label>
-                <label>Shipment (opcional)<select name="shipment_airtable_id"><option value="">Sin shipment</option>
+                <details class="cleg-proc-receipt-context">
+                    <summary>Agregar datos opcionales de recepción</summary>
+                    <div class="cleg-proc-receipt-context-grid">
+                <label>Fecha real de llegada<input type="date" name="received_date"><small>Opcional; la fecha del registro se conserva en auditoría.</small></label>
+                <label>Recibido por<select name="received_by"><option value="">No indicado</option><option value="Luis">Luis</option><option value="Alejandro">Alejandro</option><option value="Other">Otra persona</option></select></label>
+                <label>Condición<select name="receipt_condition"><option value="">No indicada</option><option value="Good">Bueno</option><option value="Damaged">Dañado</option><option value="Wrong item">Artículo equivocado</option><option value="Incomplete">Incompleto</option><option value="Needs inspection">Requiere inspección</option></select></label>
+                <label>Envío relacionado<select name="shipment_airtable_id"><option value="">Sin envío asociado</option>
                     <?php foreach ((array) ($data['airtable_shipments'] ?? array()) as $shipment) { $shipment_fields = (array) ($shipment['fields'] ?? array()); $po_links = isset($shipment_fields['Procurement POs']) && is_array($shipment_fields['Procurement POs']) ? $shipment_fields['Procurement POs'] : array(); if (!in_array($po_id, $po_links, true)) continue; ?>
                         <option value="<?php echo esc_attr((string) ($shipment['id'] ?? '')); ?>"><?php echo esc_html(cleg_procurement_airtable_scalar($shipment_fields, 'Tracking Number', (string) ($shipment['id'] ?? 'Shipment'))); ?></option>
                     <?php } ?>
                 </select></label>
-                <label>Notas<textarea name="receipt_note" rows="2"></textarea></label>
-                <button class="cleg-proc-btn is-secondary" type="submit">Registrar llegada / recepción</button>
+                <label>Nota de recepción<textarea name="receipt_note" rows="2" placeholder="Opcional…"></textarea></label>
+                    </div>
+                </details>
+                <button class="cleg-proc-btn" type="submit" data-proc-saving-label="Guardando recepción…">Registrar recepción</button>
+                <small class="cleg-proc-submit-status" data-proc-saving role="status" aria-live="polite"></small>
             </form>
             <?php
         }
@@ -36894,7 +36913,7 @@ if (!function_exists('cleg_procurement_tracking_target_guard')) {
         }
 
         $po_status = strtolower(trim(remove_accents((string) ($po['status'] ?? ''))));
-        $claims_received_complete = $po_status === 'received complete';
+        $claims_received_complete = in_array($po_status, array('received', 'received complete', 'closed', 'delivered complete'), true);
         $ledger_verified = ($po['receipt_ledger_source'] ?? '') === 'airtable_verified'
             && empty($po['receipt_ledger_review'])
             && cleg_procurement_receipt_is_record_id((string) ($po['airtable_id'] ?? ''))
@@ -36939,6 +36958,14 @@ if (!function_exists('cleg_procurement_tracking_target_guard')) {
             return new WP_Error('cleg_procurement_po_received_read_only', 'La recepción completa está confirmada; el seguimiento y la ETA son de solo consulta.');
         }
         return true;
+    }
+}
+
+if (!function_exists('cleg_procurement_receipt_status_conflicts_with_balance')) {
+    function cleg_procurement_receipt_status_conflicts_with_balance($status, $remaining_quantity) {
+        $normalized = strtolower(trim(remove_accents(sanitize_text_field((string) $status))));
+        $terminal = in_array($normalized, array('received', 'received complete', 'closed', 'delivered complete', 'recibido', 'cerrado'), true);
+        return $terminal && is_numeric($remaining_quantity) && (float) $remaining_quantity > 0.000001;
     }
 }
 
@@ -40328,9 +40355,11 @@ if (!function_exists('cleg_procurement_handle_update_po_tracking')) {
             exit;
         }
         $data = cleg_procurement_get_data();
-        $notice = ($tracking === '' && $eta === '') ? 'tracking_missing' : 'tracking_error';
+        $has_shipment_status_update = $shipment_status_was_submitted && !is_wp_error($submitted_shipment_status);
+        $has_shipment_update = $tracking !== '' || $eta !== '' || $has_shipment_status_update;
+        $notice = $has_shipment_update ? 'tracking_error' : 'tracking_missing';
         $notice_detail = '';
-        if ($tracking === '' && $eta === '') {
+        if (!$has_shipment_update) {
             wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request_id), 'proc_notice' => 'tracking_missing'), home_url('/admin-procurement/')));
             exit;
         }
@@ -40353,7 +40382,11 @@ if (!function_exists('cleg_procurement_handle_update_po_tracking')) {
                 exit;
             }
         }
-        if ($request_id && $po_id && ($tracking !== '' || $eta !== '') && !$po_match['ambiguous'] && $po_match['key'] !== '' && isset($data['requests'][$request_id]) && (string) ($po_match['po']['request_id'] ?? '') === $request_id) {
+        if ($request_id && $po_id && $has_shipment_update && !$po_match['ambiguous'] && $po_match['key'] !== '' && isset($data['requests'][$request_id]) && (string) ($po_match['po']['request_id'] ?? '') === $request_id) {
+            if (cleg_procurement_is_internal_purchase($data['requests'][$request_id])) {
+                wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request_id), 'proc_notice' => 'tracking_not_applicable'), home_url('/admin-procurement/')));
+                exit;
+            }
             $submitted_shipment_status = cleg_procurement_resolve_shipment_status(
                 $shipment_status_raw,
                 $shipment_status_was_submitted,
@@ -40757,12 +40790,14 @@ if (!function_exists('cleg_procurement_render_notice')) {
             'po_ambiguous' => 'La PO tiene registros duplicados; selecciona el registro canónico antes de actualizar tracking o recepción.',
             'po_cancelled_read_only' => 'Esta PO está cancelada y es de solo consulta; no se guardaron cambios de tracking.',
             'tracking_updated' => 'Tracking guardado.',
+            'tracking_not_applicable' => 'Las compras internas no usan seguimiento de envío; registra la recepción cuando llegue el material.',
             'tracking_fallback' => 'Tracking guardado localmente, pero Airtable no confirmo la persistencia remota.',
             'tracking_pending_reconciliation' => 'El Shipment existe o pudo guardarse, pero la PO no quedó conciliada. No crees otro Shipment; revisa/reintenta el mismo tracking.',
-            'tracking_missing' => 'Escribe el tracking number antes de guardar.',
+            'tracking_missing' => 'Añade un tracking, una ETA o cambia el estado del envío antes de guardar.',
             'tracking_status_invalid' => 'Estado de envío inválido; no se guardaron cambios.',
             'received' => 'Recepcion actualizada.',
             'received_po_cancelled' => 'Esta PO está cancelada y es de solo consulta; no se creó ningún evento de recepción.',
+            'received_po_status_conflict' => 'La PO figura recibida o cerrada, pero conserva saldo pendiente; solicita revisión administrativa antes de registrar otra recepción.',
             'received_busy' => 'Otra recepcion de esta linea esta en curso. No se envio otra; espera y revisa el saldo actualizado.',
             'received_fallback' => 'Recepcion guardada localmente, pero Airtable no confirmo la persistencia remota.',
             'received_error' => 'No se pudo confirmar la recepcion. No se marco como guardada.',
@@ -43494,6 +43529,7 @@ add_action('template_redirect', 'cleg_procurement_render_standalone_page', 0);
 if (!function_exists('cleg_procurement_render_detail')) {
     function cleg_procurement_render_detail($request, $data) {
         $statuses = cleg_procurement_statuses();
+        $is_internal_purchase = cleg_procurement_is_internal_purchase($request);
         $quantity_field = cleg_procurement_request_quantity_field_state('edit:' . (string) ($request['id'] ?? ''), $request['quantity'] ?? '1');
         $quantity_error_id = 'cleg-proc-edit-quantity-error-' . sanitize_key((string) ($request['id'] ?? 'request'));
         $quotes = isset($data['quotes'][$request['id']]) && is_array($data['quotes'][$request['id']]) ? $data['quotes'][$request['id']] : array();
@@ -43897,39 +43933,69 @@ if (!function_exists('cleg_procurement_render_detail')) {
                              $po_receipt_summary = $po_receipt_ledger_review
                                  ? 'Recepción: requiere reconciliación'
                                  : 'Recibido ' . number_format($po_receipt_received, 2, '.', '') . ' / ' . number_format($po_receipt_quantity, 2, '.', '') . ' · Restante ' . number_format($po_receipt_remaining, 2, '.', '');
+                             $po_shipment_status_value = sanitize_text_field((string) ($po['shipment_status'] ?? ''));
+                             $po_dispatch_confirmed = cleg_procurement_shipment_confirms_dispatch($po_shipment_status_value);
+            $po_receipt_complete = !$po_receipt_ledger_review && $po_receipt_quantity > 0 && $po_receipt_remaining <= 0;
+            $po_receipt_in_progress = $po_receipt_received > 0 && !$po_receipt_complete;
+            $po_receipt_status_conflict = cleg_procurement_receipt_status_conflicts_with_balance($po['status'] ?? '', $po_receipt_remaining);
+            $po_receipt_action_blocked = $po_receipt_ledger_review || $po_receipt_status_conflict;
+            $po_tracking_step_open = !$po_tracking_terminal && !$po_receipt_complete && !$po_dispatch_confirmed && !$po_receipt_in_progress && !$is_internal_purchase;
+            $po_receipt_step_open = !$po_receipt_ledger_review && !$po_receipt_complete && ($po_receipt_in_progress || $po_shipment_status_value === 'Out for delivery');
+            $po_workflow_next = $po_receipt_complete ? 'Compra recibida y conciliada' : ($po_receipt_action_blocked ? 'Resolver la diferencia entre estado de PO y cantidades recibidas' : ($po_receipt_in_progress || $po_shipment_status_value === 'Out for delivery' ? 'Registrar lo que llegó; el tracking no es requisito para recibir' : ($po_tracking_step_open ? 'Actualizar envío cuando el proveedor confirme despacho' : 'Esperar la llegada y registrar cantidades recibidas')));
+            $po_workflow_current_step = $po_receipt_complete ? 4 : ($po_receipt_in_progress || $po_shipment_status_value === 'Out for delivery' ? 3 : ($po_tracking_step_open ? 2 : 3));
                              ?>
-                            <details class="cleg-proc-po" data-proc-po-airtable-id="<?php echo esc_attr((string) ($po['airtable_id'] ?? '')); ?>">
+                            <details class="cleg-proc-po" data-proc-po-airtable-id="<?php echo esc_attr((string) ($po['airtable_id'] ?? '')); ?>" <?php echo count($related_pos) === 1 && !$po_receipt_complete ? 'open' : ''; ?>>
                                 <summary class="cleg-proc-po-summary">
                                     <strong>PO QuickBooks: <?php echo esc_html($has_quickbooks_po ? $po['id'] : 'Pendiente'); ?></strong>
                                     <span><?php echo esc_html($po['vendor']); ?> · <?php echo esc_html(cleg_procurement_money($po['amount'])); ?> · <?php echo esc_html($po['status']); ?></span>
                                     <small><?php echo esc_html($po_receipt_summary); ?><?php if ($po_tracking_summary) : ?> · <?php echo esc_html(implode(' · ', $po_tracking_summary)); ?><?php endif; ?></small>
                                 </summary>
                                 <div class="cleg-proc-po-body">
+                                <ol class="cleg-proc-purchase-progress" aria-label="Progreso de PO, envío y recepción">
+                                    <li class="<?php echo $has_quickbooks_po ? 'is-complete' : ''; ?>"><span>1</span><strong>PO</strong><small><?php echo $has_quickbooks_po ? 'Registrada' : 'Pendiente'; ?></small></li>
+                                    <li aria-current="<?php echo $po_workflow_current_step === 2 ? 'step' : 'false'; ?>" class="<?php echo $is_internal_purchase ? 'is-complete' : ($po_workflow_current_step === 2 ? 'is-current' : ($po_workflow_current_step > 2 ? 'is-complete' : '')); ?>"><span>2</span><strong><?php echo $is_internal_purchase ? 'Envío: no aplica' : 'Envío'; ?></strong><small><?php echo esc_html($is_internal_purchase ? 'Compra interna' : ($po_tracking_value !== '' ? 'Tracking guardado' : ($po_dispatch_confirmed ? 'Despacho confirmado' : 'Por actualizar'))); ?></small></li>
+                                    <li aria-current="<?php echo $po_workflow_current_step === 3 ? 'step' : 'false'; ?>" class="<?php echo $po_receipt_complete ? 'is-complete' : ($po_workflow_current_step === 3 ? 'is-current' : ''); ?>"><span>3</span><strong>Recepción</strong><small><?php echo esc_html($po_receipt_complete ? 'Completa' : ($po_receipt_in_progress ? 'Parcial' : 'Pendiente')); ?></small></li>
+                                </ol>
+                                <p class="cleg-proc-po-next-action" role="status"><strong>Siguiente:</strong> <?php echo esc_html($po_workflow_next); ?></p>
                                 <?php if ($po_receipt_ledger_review) : ?>
                                     <small class="cleg-proc-po-ledger-review" role="status">Recepción bloqueada: no hay una conciliación verificable del saldo; requiere revisión.</small>
+                                <?php elseif ($po_receipt_status_conflict) : ?>
+                                    <small class="cleg-proc-po-ledger-review" role="status">La PO figura como recibida o cerrada, pero quedan unidades sin conciliar. No registres otra llegada hasta revisar la orden.</small>
                                 <?php endif; ?>
                                 <?php if ($can_manage_request) : ?>
                                     <?php if ($has_quickbooks_po) : ?>
                                     <?php $tracking_target_guard = cleg_procurement_tracking_target_guard($po); ?>
-                                    <?php if (!is_wp_error($tracking_target_guard)) : ?>
-                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                                    <?php if (!is_wp_error($tracking_target_guard) && !$po_receipt_status_conflict && !$is_internal_purchase) : ?>
+                                    <details class="cleg-proc-flow-step cleg-proc-shipment-step" <?php echo $po_tracking_step_open && !$is_internal_purchase ? 'open' : ''; ?>>
+                                    <summary><strong>2 · Envío y tracking</strong><small><?php echo esc_html($po_tracking_value !== '' ? 'Tracking ' . $po_tracking_value : ($po_shipment_status_value !== '' ? $po_shipment_status_value : 'Pendiente de actualizar')); ?></small></summary>
+                                    <form class="cleg-proc-workflow-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                                         <input type="hidden" name="action" value="cleg_proc_update_po_tracking">
                                         <input type="hidden" name="request_id" value="<?php echo esc_attr($request['id']); ?>">
                                         <input type="hidden" name="po_id" value="<?php echo esc_attr($po['id']); ?>">
                                         <input type="hidden" name="po_airtable_id" value="<?php echo esc_attr((string) ($po['airtable_id'] ?? '')); ?>">
                                         <?php wp_nonce_field('cleg_procurement_update_po_tracking'); ?>
                                         <?php echo cleg_procurement_render_shipment_status_select($po['shipment_status'] ?? null, !empty($po['shipment_exists'])); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-                <label>Tracking (opcional)<input type="text" name="tracking" value="<?php echo esc_attr((string) ($po['tracking'] ?? '')); ?>" placeholder="Aún no disponible"></label>
-                                        <label>ETA opcional<input type="text" name="eta" value="<?php echo esc_attr((string) ($po['eta'] ?? '')); ?>" placeholder="ETA opcional"></label>
-                                        <button class="cleg-proc-btn is-secondary" type="submit">Guardar tracking</button>
+                                        <label>Número de tracking <input type="text" name="tracking" value="<?php echo esc_attr((string) ($po['tracking'] ?? '')); ?>" autocomplete="off" placeholder="Se puede dejar en blanco"></label>
+                                        <label>ETA o fecha estimada <input type="text" name="eta" value="<?php echo esc_attr((string) ($po['eta'] ?? '')); ?>" autocomplete="off" placeholder="Ej. 2026-10-15 o 2 semanas"></label>
+                                        <button class="cleg-proc-btn is-secondary" type="submit" data-proc-saving-label="Guardando envío…">Guardar cambios del envío</button>
+                                        <small class="cleg-proc-submit-status" data-proc-saving role="status" aria-live="polite"></small>
                                     </form>
-                                    <?php else : ?>
+                                    </details>
+                                    <?php elseif (is_wp_error($tracking_target_guard)) : ?>
                                         <?php if ($tracking_target_guard->get_error_code() !== 'cleg_procurement_po_cancelled_read_only') : ?>
                                         <small role="status"><?php echo esc_html($tracking_target_guard->get_error_message()); ?></small>
                                         <?php endif; ?>
                                     <?php endif; ?>
-                                    <?php if (!$po_receipt_ledger_review) : ?>
-                                        <?php echo cleg_procurement_render_receipt_forms($data, $po, $request['id']); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                                    <?php if (!$po_receipt_action_blocked) : ?>
+                                        <?php if ($po_receipt_complete) : ?>
+                                            <div class="cleg-proc-flow-complete" role="status"><strong>3 · Recepción completa</strong><small><?php echo esc_html(number_format($po_receipt_received, 2, '.', '') . ' de ' . number_format($po_receipt_quantity, 2, '.', '') . ' unidades conciliadas.'); ?></small></div>
+                                        <?php else : ?>
+                                            <details class="cleg-proc-flow-step cleg-proc-receipt-step" <?php echo $po_receipt_step_open ? 'open' : ''; ?>>
+                                                <summary><strong>3 · Registrar recepción</strong><small><?php echo esc_html(number_format($po_receipt_remaining, 2, '.', '') . ' unidades pendientes · Puedes recibir sin tracking'); ?></small></summary>
+                                                <p>Registra solo la cantidad que llegó ahora; las entregas parciales quedan abiertas.</p>
+                                                <?php echo cleg_procurement_render_receipt_forms($data, $po, $request['id']); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                                            </details>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                     <?php else : ?>
                                         <small>Asigna el PO real de QuickBooks antes de guardar tracking o recepcion.</small>
@@ -43951,18 +44017,23 @@ if (!function_exists('cleg_procurement_render_detail')) {
                     <?php if (is_wp_error($po_line_form_plan)) : ?>
                         <p class="cleg-proc-notice is-warn cleg-proc-po-setup-message" role="status"><?php echo esc_html($po_line_form_plan->get_error_message()); ?><?php echo $related_pos ? ' Las órdenes existentes se conservan.' : ''; ?></p>
                     <?php else : ?>
-                    <form class="cleg-proc-quote-form cleg-proc-create-po-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <?php if (!$related_pos) : ?>
+                        <ol class="cleg-proc-purchase-progress is-new-order" aria-label="Progreso de compra"><li class="is-current"><span>1</span><strong>Registrar PO</strong><small>Paso actual</small></li><li><span>2</span><strong>Envío</strong><small>Después de guardar</small></li><li><span>3</span><strong>Recepción</strong><small>Al llegar</small></li></ol>
+                        <p class="cleg-proc-po-next-action"><strong>Primero:</strong> anota el número de PO creado en QuickBooks. Luego podrás actualizar el envío y registrar llegadas parciales desde este mismo expediente.</p>
+                    <?php endif; ?>
+                    <form class="cleg-proc-quote-form cleg-proc-create-po-form cleg-proc-workflow-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                         <input type="hidden" name="action" value="cleg_proc_create_po">
                         <input type="hidden" name="request_id" value="<?php echo esc_attr($request['id']); ?>">
                         <?php wp_nonce_field('cleg_procurement_create_po'); ?>
                         <div class="cleg-proc-po-source">
-                            <strong>Registrar PO real de QuickBooks</strong>
-                            <small><?php echo esc_html(($po_creation_quote['vendor'] ?? 'Proveedor') . ' · Cotizacion global ' . cleg_procurement_money($po_creation_quote['amount'] ?? 0) . ' (no es precio unitario).'); ?></small>
+                            <strong>1 · Registrar la PO de QuickBooks</strong>
+                            <small>La cotización seleccionada: <?php echo esc_html(($po_creation_quote['vendor'] ?? 'Proveedor') . ' · ' . cleg_procurement_money($po_creation_quote['amount'] ?? 0) . ' total.'); ?> Ese total no se reparte como precio unitario.</small>
                         </div>
                         <?php echo cleg_procurement_render_po_line_quantity_inputs($po_line_form_plan); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-                        <label>PO QuickBooks<input type="text" name="quickbooks_po" placeholder="Ej. QB-PO-12345" required></label>
-                        <label>ETA / llegada<input type="text" name="eta" value="<?php echo esc_attr($selected_quote_eta); ?>" placeholder="Fecha o lead time"></label>
-                        <button class="cleg-proc-btn" type="submit">Asignar PO QuickBooks</button>
+                        <label>Número de PO <input type="text" name="quickbooks_po" autocomplete="off" placeholder="Ej. 1055" required></label>
+                        <label>Fecha estimada de llegada <input type="text" name="eta" value="<?php echo esc_attr($selected_quote_eta); ?>" autocomplete="off" placeholder="Ej. 2026-10-15 o 2 semanas"></label>
+                        <button class="cleg-proc-btn" type="submit" data-proc-saving-label="Registrando PO…">Guardar PO y continuar</button>
+                        <small class="cleg-proc-submit-status" data-proc-saving role="status" aria-live="polite"></small>
                     </form>
                     <?php endif; ?>
                 <?php endif; ?>
@@ -45108,6 +45179,41 @@ if (!function_exists('cleg_procurement_styles')) {
                 body .cleg-procurement .cleg-proc-detail-panel #ordenes .cleg-proc-po>summary small{font-size:10px!important;line-height:1.2!important;color:#65707c!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
                 body .cleg-procurement .cleg-proc-detail-panel #ordenes .cleg-proc-po-body{padding-top:7px!important;margin-top:7px!important;border-top:1px solid #e6ebf0!important}
             }
+            /* PO → shipment → receipt: one compact, responsive workflow with progressive disclosure. */
+            body .cleg-procurement .cleg-proc-purchase-progress{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important;margin:0 0 10px!important;padding:0!important;list-style:none!important}
+            body .cleg-procurement .cleg-proc-purchase-progress li{display:grid!important;grid-template-columns:30px minmax(0,1fr)!important;align-items:center!important;gap:2px 8px!important;min-width:0!important;padding:9px!important;border:1px solid #d8e0e7!important;border-radius:9px!important;background:#f7f9fb!important;color:#183044!important}
+            body .cleg-procurement .cleg-proc-purchase-progress li>span{grid-row:1 / span 2!important;display:grid!important;place-items:center!important;width:28px!important;height:28px!important;border-radius:50%!important;background:#e8edf2!important;font-weight:900!important}
+            body .cleg-procurement .cleg-proc-purchase-progress li strong{font-size:12px!important;line-height:1.2!important}
+            body .cleg-procurement .cleg-proc-purchase-progress li small{font-size:11px!important;line-height:1.25!important;color:#566575!important;overflow-wrap:anywhere!important}
+            body .cleg-procurement .cleg-proc-purchase-progress li.is-current{border-color:#cb5a00!important;background:#fff7ed!important}
+            body .cleg-procurement .cleg-proc-purchase-progress li.is-current>span{background:#cb5a00!important;color:#fff!important}
+            body .cleg-procurement .cleg-proc-purchase-progress li.is-complete>span{background:#16734b!important;color:#fff!important}
+            body .cleg-procurement .cleg-proc-po-next-action{margin:0 0 10px!important;padding:10px 12px!important;border-left:4px solid #cb5a00!important;border-radius:6px!important;background:#fff8ef!important;color:#27384a!important;line-height:1.45!important}
+            body .cleg-procurement .cleg-proc-flow-step{min-width:0!important;margin:8px 0!important;border:1px solid #d8e0e7!important;border-radius:9px!important;background:#fff!important;overflow:hidden!important}
+            body .cleg-procurement .cleg-proc-flow-step>summary,body .cleg-procurement .cleg-proc-receipt-context>summary{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;min-height:48px!important;padding:10px 12px!important;cursor:pointer!important;color:#183044!important;background:#f7f9fb!important;list-style:none!important}
+            body .cleg-procurement .cleg-proc-flow-step>summary::-webkit-details-marker,body .cleg-procurement .cleg-proc-receipt-context>summary::-webkit-details-marker{display:none!important}
+            body .cleg-procurement .cleg-proc-flow-step>summary:after,body .cleg-procurement .cleg-proc-receipt-context>summary:after{content:"+"!important;flex:0 0 auto!important;font-size:18px!important;font-weight:800!important}
+            body .cleg-procurement .cleg-proc-flow-step[open]>summary:after,body .cleg-procurement .cleg-proc-receipt-context[open]>summary:after{content:"−"!important}
+            body .cleg-procurement .cleg-proc-flow-step>summary small{color:#566575!important;text-align:right!important;overflow-wrap:anywhere!important}
+            body .cleg-procurement .cleg-proc-flow-step>summary:focus-visible,body .cleg-procurement .cleg-proc-receipt-context>summary:focus-visible{outline:3px solid #cb5a00!important;outline-offset:-3px!important}
+            body .cleg-procurement .cleg-proc-flow-step>form,body .cleg-procurement .cleg-proc-flow-step>p,body .cleg-procurement .cleg-proc-flow-step>.cleg-proc-receipt-form{margin:10px!important}
+            body .cleg-procurement .cleg-proc-receipt-context{margin:8px 0!important;border:1px solid #d8e0e7!important;border-radius:8px!important;overflow:hidden!important}
+            body .cleg-procurement .cleg-proc-receipt-context-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;padding:10px!important}
+            body .cleg-procurement .cleg-proc-submit-status{display:block!important;min-height:0!important;color:#425467!important}
+            body .cleg-procurement .cleg-proc-submit-status:empty{display:none!important}
+            body .cleg-procurement .cleg-proc-workflow-form[aria-busy="true"]{opacity:.75!important}
+            body .cleg-procurement .cleg-proc-flow-complete{display:flex!important;flex-direction:column!important;gap:4px!important;margin-top:8px!important;padding:12px!important;border:1px solid #b7dfca!important;border-radius:8px!important;background:#f0faf4!important;color:#145c3c!important}
+            @media(max-width:720px){
+                body .cleg-procurement .cleg-proc-purchase-progress{gap:5px!important}
+                body .cleg-procurement .cleg-proc-purchase-progress li{grid-template-columns:24px minmax(0,1fr)!important;gap:2px 5px!important;padding:7px 5px!important}
+                body .cleg-procurement .cleg-proc-purchase-progress li>span{width:22px!important;height:22px!important;font-size:11px!important}
+                body .cleg-procurement .cleg-proc-purchase-progress li strong{font-size:11px!important}
+                body .cleg-procurement .cleg-proc-purchase-progress li small{font-size:10px!important}
+                body .cleg-procurement .cleg-proc-flow-step>summary{align-items:flex-start!important;flex-wrap:wrap!important;min-height:48px!important}
+                body .cleg-procurement .cleg-proc-flow-step>summary small{flex:1 1 100%!important;text-align:left!important}
+                body .cleg-procurement .cleg-proc-receipt-context-grid{grid-template-columns:minmax(0,1fr)!important}
+                body .cleg-procurement .cleg-proc-flow-step form .cleg-proc-btn{width:100%!important;min-height:46px!important}
+            }
             </style>';
     }
 }
@@ -45751,6 +45857,25 @@ if (!function_exists('cleg_procurement_upload_preview_script')) {
                     event.preventDefault();
                 }
             }, true);
+            document.addEventListener("submit",function(event){
+                var form = event.target.closest(".cleg-proc-workflow-form");
+                if (!form) return;
+                if (form.getAttribute("data-proc-submitting") === "1") {
+                    event.preventDefault();
+                    return;
+                }
+                form.setAttribute("data-proc-submitting","1");
+                form.setAttribute("aria-busy","true");
+                var submitter = event.submitter || form.querySelector('button[type="submit"]');
+                var savingLabel = submitter && submitter.getAttribute("data-proc-saving-label");
+                var status = form.querySelector("[data-proc-saving]");
+                if (submitter) {
+                    if (!submitter.getAttribute("data-proc-original-label")) submitter.setAttribute("data-proc-original-label",submitter.textContent.trim());
+                    submitter.disabled = true;
+                    if (savingLabel) submitter.textContent = savingLabel;
+                }
+                if (status) status.textContent = savingLabel || "Guardando…";
+            },true);
         })();
         </script>
 HTML;
