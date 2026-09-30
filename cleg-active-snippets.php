@@ -36961,6 +36961,94 @@ if (!function_exists('cleg_procurement_tracking_target_guard')) {
     }
 }
 
+if (!function_exists('cleg_procurement_legacy_po_reconciliation_plan')) {
+    /** Build a narrowly-scoped plan for restoring one missing line on an already-issued PO. */
+    function cleg_procurement_legacy_po_reconciliation_plan($data, $request_id, $po_airtable_id) {
+        $request = cleg_procurement_po_source_guard($data, $request_id);
+        if (is_wp_error($request)) return $request;
+        if (($data['po_lines_quality'] ?? '') !== 'complete' || empty($data['po_lines_schema_verified'])
+            || ($data['receipts_quality'] ?? '') !== 'complete' || empty($data['receipts_schema_verified'])) {
+            return new WP_Error('cleg_procurement_legacy_po_schema_unverified', 'No se puede reparar la PO mientras las partidas y recibos no tengan lectura y esquema verificados.');
+        }
+        $po_airtable_id = sanitize_text_field((string) $po_airtable_id);
+        $po_record = cleg_procurement_find_airtable_record($data['airtable_pos'] ?? array(), $po_airtable_id);
+        if (!$po_record || !cleg_procurement_receipt_is_record_id($po_airtable_id)) {
+            return new WP_Error('cleg_procurement_legacy_po_untrusted', 'No se encontró una PO Airtable única.');
+        }
+        $po_fields = (array) ($po_record['fields'] ?? array());
+        $po_request_links = isset($po_fields['Procurement Requests']) && is_array($po_fields['Procurement Requests']) ? array_values(array_unique($po_fields['Procurement Requests'])) : array();
+        if (count($po_request_links) !== 1 || $po_request_links[0] !== ($request['airtable_id'] ?? '')) {
+            return new WP_Error('cleg_procurement_legacy_po_request_mismatch', 'La PO no pertenece de forma única a esta requisición.');
+        }
+        if (cleg_procurement_status_is_cancelled(cleg_procurement_airtable_scalar($po_fields, 'PO Status', ''))) {
+            return new WP_Error('cleg_procurement_legacy_po_cancelled', 'Una PO cancelada no se puede reabrir desde este flujo.');
+        }
+        $quote_links = isset($po_fields['Procurement Quotes']) && is_array($po_fields['Procurement Quotes']) ? array_values(array_unique($po_fields['Procurement Quotes'])) : array();
+        if (count($quote_links) !== 1) return new WP_Error('cleg_procurement_legacy_po_quote_ambiguous', 'La PO no identifica una sola cotización.');
+        $quote_record = cleg_procurement_find_airtable_record($data['airtable_quotes_raw'] ?? array(), (string) $quote_links[0]);
+        if (!$quote_record) return new WP_Error('cleg_procurement_legacy_po_quote_missing', 'No se encontró la cotización enlazada a la PO.');
+        $quote_fields = (array) ($quote_record['fields'] ?? array());
+        $quote_requests = isset($quote_fields['Procurement Requests']) && is_array($quote_fields['Procurement Requests']) ? array_values(array_unique($quote_fields['Procurement Requests'])) : array();
+        if (count($quote_requests) !== 1 || $quote_requests[0] !== ($request['airtable_id'] ?? '')) {
+            return new WP_Error('cleg_procurement_legacy_po_quote_mismatch', 'La cotización no pertenece de forma única a esta requisición.');
+        }
+        $items = array();
+        foreach ((array) ($data['airtable_items'] ?? array()) as $item) {
+            $fields = (array) ($item['fields'] ?? array());
+            $links = isset($fields['Procurement Requests']) && is_array($fields['Procurement Requests']) ? array_values(array_unique($fields['Procurement Requests'])) : array();
+            if (count($links) === 1 && $links[0] === ($request['airtable_id'] ?? '')) $items[(string) ($item['id'] ?? '')] = $item;
+        }
+        $quote_items = isset($quote_fields['Procurement Items']) && is_array($quote_fields['Procurement Items']) ? array_values(array_unique($quote_fields['Procurement Items'])) : array();
+        if (!$quote_items && count($items) === 1) $quote_items = array_keys($items);
+        if (count($quote_items) !== 1 || !isset($items[$quote_items[0]])) {
+            return new WP_Error('cleg_procurement_legacy_po_item_ambiguous', 'La cotización no permite identificar un único artículo y cantidad. Requiere conciliación manual.');
+        }
+        $item_id = (string) $quote_items[0];
+        $item_fields = (array) ($items[$item_id]['fields'] ?? array());
+        $quantity = $item_fields['Quantity'] ?? null;
+        if (!cleg_procurement_receipt_is_record_id($item_id) || !cleg_procurement_quantity_is_cents($quantity)) {
+            return new WP_Error('cleg_procurement_legacy_po_quantity_invalid', 'El artículo no tiene cantidad verificable a dos decimales.');
+        }
+        foreach ((array) ($data['airtable_po_lines'] ?? array()) as $line) {
+            $fields = (array) ($line['fields'] ?? array());
+            $po_links = isset($fields['Procurement POs']) && is_array($fields['Procurement POs']) ? $fields['Procurement POs'] : array();
+            if (in_array($po_airtable_id, $po_links, true)) {
+                // Permit only the exact deterministic line so an interrupted retry is safe.
+                $line_items = isset($fields['Procurement Items']) && is_array($fields['Procurement Items']) ? array_values(array_unique($fields['Procurement Items'])) : array();
+                $line_quotes = isset($fields['Procurement Quotes']) && is_array($fields['Procurement Quotes']) ? array_values(array_unique($fields['Procurement Quotes'])) : array();
+                if (count($po_links) !== 1 || count($line_items) !== 1 || $line_items[0] !== $item_id
+                    || count($line_quotes) !== 1 || $line_quotes[0] !== $quote_links[0]
+                    || (float) ($fields['Ordered Quantity'] ?? -1) !== (float) $quantity) {
+                    return new WP_Error('cleg_procurement_legacy_po_line_conflict', 'La PO ya tiene partidas distintas o ambiguas; no se modificó.');
+                }
+            }
+        }
+        foreach ((array) ($data['airtable_receipts'] ?? array()) as $receipt) {
+            $fields = (array) ($receipt['fields'] ?? array());
+            $po_links = isset($fields['Procurement POs']) && is_array($fields['Procurement POs']) ? $fields['Procurement POs'] : array();
+            $line_links = isset($fields['Procurement PO Lines']) && is_array($fields['Procurement PO Lines']) ? $fields['Procurement PO Lines'] : array();
+            if (in_array($po_airtable_id, $po_links, true)) return new WP_Error('cleg_procurement_legacy_po_has_receipts', 'La PO ya tiene recibos sin conciliar; no se creará otra partida automáticamente.');
+            foreach ($line_links as $linked_line_id) {
+                $linked_line = cleg_procurement_find_airtable_record($data['airtable_po_lines'] ?? array(), (string) $linked_line_id);
+                $linked_pos = is_array($linked_line) && is_array($linked_line['fields']['Procurement POs'] ?? null) ? $linked_line['fields']['Procurement POs'] : array();
+                if (in_array($po_airtable_id, $linked_pos, true)) return new WP_Error('cleg_procurement_legacy_po_has_receipts', 'La PO ya tiene recibos enlazados; requiere conciliación manual.');
+            }
+        }
+        if (!empty($data['legacy_receipts'][$po_airtable_id])) return new WP_Error('cleg_procurement_legacy_po_has_receipts', 'La PO tiene recepciones antiguas; requiere conciliación manual.');
+
+        $description = sanitize_text_field(cleg_procurement_airtable_scalar($item_fields, 'Item Description', 'Item'));
+        $unit = sanitize_text_field(cleg_procurement_airtable_scalar($item_fields, 'Unit', 'Unidad'));
+        return array(
+            'quote_airtable_id' => (string) $quote_links[0],
+            'items' => array(array('item_airtable_id' => $item_id, 'description' => $description, 'unit' => $unit, 'ordered_quantity' => (float) $quantity)),
+            'ordered_total' => (float) $quantity,
+            'po_number' => sanitize_text_field(cleg_procurement_airtable_scalar($po_fields, 'PO Number', '')),
+            'po_status' => sanitize_text_field(cleg_procurement_airtable_scalar($po_fields, 'PO Status', '')),
+            'item_id' => $item_id,
+        );
+    }
+}
+
 if (!function_exists('cleg_procurement_receipt_status_conflicts_with_balance')) {
     function cleg_procurement_receipt_status_conflicts_with_balance($status, $remaining_quantity) {
         $normalized = strtolower(trim(remove_accents(sanitize_text_field((string) $status))));
@@ -40497,6 +40585,69 @@ if (!function_exists('cleg_procurement_handle_receive_po')) {
 }
 add_action('admin_post_cleg_proc_receive_po', 'cleg_procurement_handle_receive_po');
 
+if (!function_exists('cleg_procurement_handle_reconcile_legacy_po')) {
+    function cleg_procurement_handle_reconcile_legacy_po() {
+        cleg_procurement_guard();
+        cleg_procurement_require_manage_action();
+        check_admin_referer('cleg_procurement_reconcile_legacy_po');
+        $request_id = sanitize_text_field(wp_unslash($_POST['request_id'] ?? ''));
+        $po_id = sanitize_text_field(wp_unslash($_POST['po_airtable_id'] ?? ''));
+        $reason = sanitize_textarea_field(wp_unslash($_POST['reconcile_reason'] ?? ''));
+        $notice = 'legacy_po_reconcile_failed';
+        if (strlen($reason) < 10 || strlen($reason) > 500 || !cleg_procurement_receipt_is_record_id($po_id)) {
+            $notice = 'legacy_po_reconcile_invalid';
+        } else {
+            $data = cleg_procurement_get_data();
+            if (is_array($data) && isset($data['requests'][$request_id])) {
+                cleg_procurement_require_request_edit_by_id($data, $request_id);
+                $plan = cleg_procurement_legacy_po_reconciliation_plan($data, $request_id, $po_id);
+                if (!is_wp_error($plan) && $plan['po_number'] !== '') {
+                    $line_result = cleg_procurement_sync_po_lines($po_id, $plan['po_number'], $plan);
+                    if (!is_wp_error($line_result)) {
+                        $raw_status = strtolower(trim(remove_accents($plan['po_status'])));
+                        $fields = array();
+                        if (in_array($raw_status, array('received', 'received complete', 'closed', 'delivered complete', 'recibido', 'cerrado'), true)) {
+                            $actor = wp_get_current_user();
+                            $actor_name = $actor && $actor->ID ? sanitize_text_field($actor->display_name) : 'Administrador';
+                            $audit_note = '[' . current_time('mysql') . '] ' . $actor_name . ' reabrió ' . $plan['po_number'] . ' para conciliar su recepción. Motivo: ' . $reason;
+                            $po_record = cleg_procurement_find_airtable_record($data['airtable_pos'] ?? array(), $po_id);
+                            $current_notes = cleg_procurement_airtable_scalar((array) ($po_record['fields'] ?? array()), 'Notes', '');
+                            $fields['PO Status'] = 'Ordered';
+                            $fields['Notes'] = trim($current_notes . "\n" . $audit_note);
+                        }
+                        if ($fields) {
+                            $response = cleg_admin_request('PATCH', CLEG_PROC_AIRTABLE_POS_TABLE, array('body' => array(
+                                'typecast' => true,
+                                'records' => array(array('id' => $po_id, 'fields' => $fields)),
+                            )));
+                            if (!cleg_procurement_airtable_response_ok($response)) {
+                                $notice = 'legacy_po_reconcile_pending';
+                            } else {
+                                $verify = cleg_admin_records(CLEG_PROC_AIRTABLE_POS_TABLE, array('pageSize' => 100));
+                                $updated = !is_wp_error($verify) ? cleg_procurement_find_airtable_record($verify, $po_id) : null;
+                                $updated_fields = is_array($updated) ? (array) ($updated['fields'] ?? array()) : array();
+                                $notes_saved = strpos(cleg_procurement_airtable_scalar($updated_fields, 'Notes', ''), $audit_note) !== false;
+                                if (cleg_procurement_airtable_scalar($updated_fields, 'PO Status', '') !== 'Ordered' || !$notes_saved) {
+                                    $notice = 'legacy_po_reconcile_pending';
+                                } else {
+                                    cleg_procurement_add_audit($data, 'PO antigua reabierta para conciliación de recepción', $plan['po_number'], $reason);
+                                    cleg_procurement_save_data($data);
+                                    $notice = 'legacy_po_reconciled';
+                                }
+                            }
+                        } else {
+                            $notice = 'legacy_po_reconciled';
+                        }
+                    }
+                }
+            }
+        }
+        wp_safe_redirect(add_query_arg(array('proc_view' => 'detalle', 'proc_request' => rawurlencode($request_id), 'proc_notice' => $notice), home_url('/admin-procurement/')));
+        exit;
+    }
+}
+add_action('admin_post_cleg_proc_reconcile_legacy_po', 'cleg_procurement_handle_reconcile_legacy_po');
+
 if (!function_exists('cleg_procurement_handle_update_history_row')) {
     function cleg_procurement_handle_update_history_row() {
         cleg_procurement_guard();
@@ -40803,6 +40954,10 @@ if (!function_exists('cleg_procurement_render_notice')) {
             'received_error' => 'No se pudo confirmar la recepcion. No se marco como guardada.',
             'received_blocked' => 'Recepcion bloqueada: falta una PO Line/cantidad autoritativa o el ledger requiere revision. No se confirmo ningun recibo.',
             'received_pending_reconciliation' => 'Recepcion enviada sin confirmacion concluyente. No reenvies: reconcilia el Receipt Code antes de continuar.',
+            'legacy_po_reconciled' => 'PO conciliada. La partida verificable ya está lista; registra ahora la cantidad que llegó, total o parcial.',
+            'legacy_po_reconcile_invalid' => 'Escribe un motivo de conciliación (10–500 caracteres). No se guardó ningún cambio.',
+            'legacy_po_reconcile_failed' => 'No se pudo conciliar la PO. No marques la recepción; verifica sus vínculos y estado antes de reintentar.',
+            'legacy_po_reconcile_pending' => 'La partida pudo guardarse, pero Airtable no confirmó la reapertura de la PO. Recarga y revisa antes de reintentar.',
             'history_created' => 'Historico creado.',
             'history_create_failed' => 'No se pudo crear el registro del historico. Revisa Airtable o intenta guardarlo de nuevo.',
             'airtable_create_failed' => 'No se pudo guardar la solicitud en Airtable. Revisa la conexion o intenta de nuevo; no se creo una copia local para evitar duplicados.',
@@ -42312,7 +42467,7 @@ if (!function_exists('cleg_procurement_history_merge_notes')) {
     function cleg_procurement_history_merge_notes($primary, $secondary) {
         $parts = array();
         foreach (array($primary, $secondary) as $notes) {
-            foreach (preg_split('/\r\n|\r|\n/', (string) $notes) as $line) {
+            foreach (preg_split('/\n|\r|\n/', (string) $notes) as $line) {
                 $line = trim($line);
                 if ($line !== '') {
                     $parts[] = $line;
@@ -43939,6 +44094,10 @@ if (!function_exists('cleg_procurement_render_detail')) {
             $po_receipt_in_progress = $po_receipt_received > 0 && !$po_receipt_complete;
             $po_receipt_status_conflict = cleg_procurement_receipt_status_conflicts_with_balance($po['status'] ?? '', $po_receipt_remaining);
             $po_receipt_action_blocked = $po_receipt_ledger_review || $po_receipt_status_conflict;
+            $po_legacy_reconcile_plan = ($po_receipt_action_blocked && $can_manage_request && !empty($po['airtable_id']))
+                ? cleg_procurement_legacy_po_reconciliation_plan($data, $request['id'], (string) $po['airtable_id'])
+                : new WP_Error('cleg_procurement_legacy_po_not_needed', '');
+            $po_can_reconcile_legacy = !is_wp_error($po_legacy_reconcile_plan);
             $po_tracking_step_open = !$po_tracking_terminal && !$po_receipt_complete && !$po_dispatch_confirmed && !$po_receipt_in_progress && !$is_internal_purchase;
             $po_receipt_step_open = !$po_receipt_ledger_review && !$po_receipt_complete && ($po_receipt_in_progress || $po_shipment_status_value === 'Out for delivery');
             $po_workflow_next = $po_receipt_complete ? 'Compra recibida y conciliada' : ($po_receipt_action_blocked ? 'Resolver la diferencia entre estado de PO y cantidades recibidas' : ($po_receipt_in_progress || $po_shipment_status_value === 'Out for delivery' ? 'Registrar lo que llegó; el tracking no es requisito para recibir' : ($po_tracking_step_open ? 'Actualizar envío cuando el proveedor confirme despacho' : 'Esperar la llegada y registrar cantidades recibidas')));
@@ -43957,9 +44116,9 @@ if (!function_exists('cleg_procurement_render_detail')) {
                                     <li aria-current="<?php echo $po_workflow_current_step === 3 ? 'step' : 'false'; ?>" class="<?php echo $po_receipt_complete ? 'is-complete' : ($po_workflow_current_step === 3 ? 'is-current' : ''); ?>"><span>3</span><strong>Recepción</strong><small><?php echo esc_html($po_receipt_complete ? 'Completa' : ($po_receipt_in_progress ? 'Parcial' : 'Pendiente')); ?></small></li>
                                 </ol>
                                 <p class="cleg-proc-po-next-action" role="status"><strong>Siguiente:</strong> <?php echo esc_html($po_workflow_next); ?></p>
-                                <?php if ($po_receipt_ledger_review) : ?>
+                                <?php if ($po_receipt_ledger_review && !$po_can_reconcile_legacy) : ?>
                                     <small class="cleg-proc-po-ledger-review" role="status">Recepción bloqueada: no hay una conciliación verificable del saldo; requiere revisión.</small>
-                                <?php elseif ($po_receipt_status_conflict) : ?>
+                                <?php elseif ($po_receipt_status_conflict && !$po_can_reconcile_legacy) : ?>
                                     <small class="cleg-proc-po-ledger-review" role="status">La PO figura como recibida o cerrada, pero quedan unidades sin conciliar. No registres otra llegada hasta revisar la orden.</small>
                                 <?php endif; ?>
                                 <?php if ($can_manage_request) : ?>
@@ -43986,7 +44145,19 @@ if (!function_exists('cleg_procurement_render_detail')) {
                                         <small role="status"><?php echo esc_html($tracking_target_guard->get_error_message()); ?></small>
                                         <?php endif; ?>
                                     <?php endif; ?>
-                                    <?php if (!$po_receipt_action_blocked) : ?>
+                                    <?php if ($po_can_reconcile_legacy) : ?>
+                                        <form class="cleg-proc-legacy-reconcile cleg-proc-workflow-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                                            <input type="hidden" name="action" value="cleg_proc_reconcile_legacy_po">
+                                            <input type="hidden" name="request_id" value="<?php echo esc_attr($request['id']); ?>">
+                                            <input type="hidden" name="po_airtable_id" value="<?php echo esc_attr((string) $po['airtable_id']); ?>">
+                                            <?php wp_nonce_field('cleg_procurement_reconcile_legacy_po'); ?>
+                                            <strong>Recuperar recepción de esta PO</strong>
+                                            <p>La orden tiene una cotización y un artículo únicos, pero falta su partida de recepción. Se creará la partida verificable y, si figura “Recibida/Cerrada” sin recibos, volverá a “Ordenada”. Después podrás registrar la cantidad real, incluso parcial. Esta acción no marca mercancía como recibida.</p>
+                                            <label>Motivo de conciliación<textarea name="reconcile_reason" rows="2" minlength="10" maxlength="500" required placeholder="Ej. PO importada como recibida antes de registrar la llegada en el portal"></textarea></label>
+                                            <button class="cleg-proc-btn is-secondary" type="submit" data-proc-saving-label="Reconciliando PO…">Habilitar recepción</button>
+                                            <small class="cleg-proc-submit-status" data-proc-saving role="status" aria-live="polite"></small>
+                                        </form>
+                                    <?php elseif (!$po_receipt_action_blocked) : ?>
                                         <?php if ($po_receipt_complete) : ?>
                                             <div class="cleg-proc-flow-complete" role="status"><strong>3 · Recepción completa</strong><small><?php echo esc_html(number_format($po_receipt_received, 2, '.', '') . ' de ' . number_format($po_receipt_quantity, 2, '.', '') . ' unidades conciliadas.'); ?></small></div>
                                         <?php else : ?>
@@ -45197,6 +45368,10 @@ if (!function_exists('cleg_procurement_styles')) {
             body .cleg-procurement .cleg-proc-flow-step>summary small{color:#566575!important;text-align:right!important;overflow-wrap:anywhere!important}
             body .cleg-procurement .cleg-proc-flow-step>summary:focus-visible,body .cleg-procurement .cleg-proc-receipt-context>summary:focus-visible{outline:3px solid #cb5a00!important;outline-offset:-3px!important}
             body .cleg-procurement .cleg-proc-flow-step>form,body .cleg-procurement .cleg-proc-flow-step>p,body .cleg-procurement .cleg-proc-flow-step>.cleg-proc-receipt-form{margin:10px!important}
+            body .cleg-procurement .cleg-proc-legacy-reconcile{display:grid!important;gap:10px!important;margin:12px 0!important;padding:14px!important;border:1px solid #e7a43b!important;border-radius:10px!important;background:#fff9ec!important;color:#183044!important}
+            body .cleg-procurement .cleg-proc-legacy-reconcile p{margin:0!important;line-height:1.5!important}
+            body .cleg-procurement .cleg-proc-legacy-reconcile label{display:grid!important;gap:6px!important;font-weight:750!important}
+            body .cleg-procurement .cleg-proc-legacy-reconcile textarea{width:100%!important;min-height:76px!important;box-sizing:border-box!important}
             body .cleg-procurement .cleg-proc-receipt-context{margin:8px 0!important;border:1px solid #d8e0e7!important;border-radius:8px!important;overflow:hidden!important}
             body .cleg-procurement .cleg-proc-receipt-context-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;padding:10px!important}
             body .cleg-procurement .cleg-proc-submit-status{display:block!important;min-height:0!important;color:#425467!important}
