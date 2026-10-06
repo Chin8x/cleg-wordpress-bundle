@@ -31586,9 +31586,6 @@ if (!function_exists('cleg_procurement_receipt_ordered_quantity')) {
             }
         }
 
-        foreach ((array) ($data['legacy_receipts'][$po_id] ?? array()) as $_legacy_receipt) {
-            return new WP_Error('cleg_procurement_receipt_legacy_unassigned', 'La PO tiene recepciones legacy sin asignacion demostrable a linea; requiere reconciliacion manual.');
-        }
         foreach ((array) ($data['legacy_receipts'] ?? array()) as $legacy_key => $legacy_rows) {
             if (strpos((string) $legacy_key, 'unmapped:') === 0 && !empty($legacy_rows)) {
                 return new WP_Error('cleg_procurement_receipt_legacy_unassigned', 'Hay recepciones legacy sin PO Airtable asignable; se bloquea el ledger hasta reconciliarlas.');
@@ -31646,6 +31643,23 @@ if (!function_exists('cleg_procurement_receipt_ordered_quantity')) {
         if (($received < (float) $ordered - 0.000001 && $complete_events > 0)
             || ($received >= (float) $ordered - 0.000001 && $received > 0 && $complete_events !== 1)) {
             return new WP_Error('cleg_procurement_receipt_ledger_ambiguous', 'Los estados historicos no concuerdan con la cantidad acumulada de la PO Line.');
+        }
+        $legacy_receipts = (array) ($data['legacy_receipts'][$po_id] ?? array());
+        if ($legacy_receipts) {
+            // A legacy aggregate may coexist with a newer, complete receipt ledger.
+            // It is safe to treat it as a duplicate projection only for a one-line PO
+            // and only when the saved quantity exactly matches the canonical ledger.
+            $po_line_count = 0;
+            foreach ((array) ($data['airtable_po_lines'] ?? array()) as $candidate_line) {
+                $candidate_pos = (array) ($candidate_line['fields']['Procurement POs'] ?? array());
+                if (in_array($po_id, $candidate_pos, true)) {
+                    $po_line_count++;
+                }
+            }
+            $legacy_qty = count($legacy_receipts) === 1 ? ($legacy_receipts[0]['received_qty'] ?? null) : null;
+            if ($po_line_count !== 1 || !is_numeric($legacy_qty) || abs((float) $legacy_qty - $received) > 0.000001) {
+                return new WP_Error('cleg_procurement_receipt_legacy_unassigned', 'La recepción antigua no coincide inequívocamente con el ledger actual; requiere conciliación manual.');
+            }
         }
         return array(
             'quantity' => (float) $ordered,
@@ -32130,7 +32144,7 @@ if (!function_exists('cleg_procurement_refresh_receipt_projection')) {
             }
             unset($data['pos'][$po_key]['receipt_lines'], $data['pos'][$po_key]['receipt_status_derived'], $data['pos'][$po_key]['receipt_ledger_source']);
             $line_states = array();
-            $review = !empty($po['legacy_received_qty']);
+            $review = false;
             foreach ((array) ($data['airtable_po_lines'] ?? array()) as $line) {
                 $fields = (array) ($line['fields'] ?? array());
                 $po_links = isset($fields['Procurement POs']) && is_array($fields['Procurement POs']) ? $fields['Procurement POs'] : array();
@@ -32149,6 +32163,14 @@ if (!function_exists('cleg_procurement_refresh_receipt_projection')) {
             if ($review || !$line_states) {
                 $data['pos'][$po_key]['receipt_ledger_review'] = true;
                 continue;
+            }
+            $legacy_received = is_numeric($po['legacy_received_qty'] ?? null) ? (float) $po['legacy_received_qty'] : 0.0;
+            if (abs($legacy_received) > 0.000001) {
+                $ledger_received = array_sum(array_map(function ($state) { return (float) ($state['received_quantity'] ?? 0); }, $line_states));
+                if (abs($legacy_received - $ledger_received) > 0.000001) {
+                    $data['pos'][$po_key]['receipt_ledger_review'] = true;
+                    continue;
+                }
             }
             unset($data['pos'][$po_key]['receipt_ledger_review']);
             $data['pos'][$po_key]['receipt_ledger_source'] = 'airtable_verified';
@@ -48718,7 +48740,19 @@ if (!function_exists('cleg_admin_handle_receipt_action')) {
                 exit;
             }
             $audit = cleg_admin_audit_line($actor_name, 'Receipt correction', wp_json_encode($before), wp_json_encode($after), $reason . ' | Evidencia: ' . $evidence);
+            // Airtable number/currency fields reject numeric strings. Keep the audit
+            // payload human-readable, but send typed numeric values to the API.
             $fields = $after;
+            if ($after['Quantity'] === '' && (string) $before['Quantity'] === '') {
+                unset($fields['Quantity']);
+            } else {
+                $fields['Quantity'] = $after['Quantity'] === '' ? null : (float) $after['Quantity'];
+            }
+            if ($after['Total'] === '' && (string) $before['Total'] === '') {
+                unset($fields['Total']);
+            } else {
+                $fields['Total'] = $after['Total'] === '' ? null : (float) $after['Total'];
+            }
             $fields['Reviewed By'] = $actor_name;
             $fields['Reviewed At'] = gmdate('c');
             $fields['Review Note'] = trim($current_note . "\n" . $audit);
