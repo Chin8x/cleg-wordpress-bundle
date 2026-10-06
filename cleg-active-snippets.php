@@ -37119,9 +37119,18 @@ if (!function_exists('cleg_procurement_related_po_duplicates')) {
             return array();
         }
         return array_values(array_filter((array) ($data['po_duplicates'] ?? array()), function ($duplicate) use ($request_id) {
-            return is_array($duplicate)
-                && (string) ($duplicate['request_id'] ?? '') === $request_id
-                && (string) ($duplicate['_duplicate_reason'] ?? '') === 'same_airtable_id_or_request_and_po_number';
+            if (!is_array($duplicate)
+                || (string) ($duplicate['request_id'] ?? '') !== $request_id
+                || (string) ($duplicate['_duplicate_reason'] ?? '') !== 'same_airtable_id_or_request_and_po_number') {
+                return false;
+            }
+            // A WordPress cache row mirroring the same PO number is not another
+            // purchase order. Only two distinct Airtable record IDs are ambiguous.
+            $duplicate_id = sanitize_text_field((string) ($duplicate['airtable_id'] ?? ''));
+            $canonical_id = sanitize_text_field((string) ($duplicate['_duplicate_of'] ?? ''));
+            return cleg_procurement_receipt_is_record_id($duplicate_id)
+                && cleg_procurement_receipt_is_record_id($canonical_id)
+                && $duplicate_id !== $canonical_id;
         }));
     }
 }
@@ -44092,6 +44101,9 @@ if (!function_exists('cleg_procurement_render_detail')) {
                              $po_dispatch_confirmed = cleg_procurement_shipment_confirms_dispatch($po_shipment_status_value);
             $po_receipt_complete = !$po_receipt_ledger_review && $po_receipt_quantity > 0 && $po_receipt_remaining <= 0;
             $po_receipt_in_progress = $po_receipt_received > 0 && !$po_receipt_complete;
+            // The verified receipt ledger is authoritative for fulfillment. Older PO rows
+            // can remain "Ordered" after a complete receipt was recorded in Airtable.
+            $po_display_status = $po_receipt_complete ? 'Recibida' : ($po_receipt_in_progress ? 'Recibida parcial' : (string) ($po['status'] ?? ''));
             $po_receipt_status_conflict = cleg_procurement_receipt_status_conflicts_with_balance($po['status'] ?? '', $po_receipt_remaining);
             $po_receipt_action_blocked = $po_receipt_ledger_review || $po_receipt_status_conflict;
             $po_legacy_reconcile_plan = ($po_receipt_action_blocked && $can_manage_request && !empty($po['airtable_id']))
@@ -44106,7 +44118,7 @@ if (!function_exists('cleg_procurement_render_detail')) {
                             <details class="cleg-proc-po" data-proc-po-airtable-id="<?php echo esc_attr((string) ($po['airtable_id'] ?? '')); ?>" <?php echo count($related_pos) === 1 && !$po_receipt_complete ? 'open' : ''; ?>>
                                 <summary class="cleg-proc-po-summary">
                                     <strong>PO QuickBooks: <?php echo esc_html($has_quickbooks_po ? $po['id'] : 'Pendiente'); ?></strong>
-                                    <span><?php echo esc_html($po['vendor']); ?> · <?php echo esc_html(cleg_procurement_money($po['amount'])); ?> · <?php echo esc_html($po['status']); ?></span>
+                                    <span><?php echo esc_html($po['vendor']); ?> · <?php echo esc_html(cleg_procurement_money($po['amount'])); ?> · <?php echo esc_html($po_display_status); ?></span>
                                     <small><?php echo esc_html($po_receipt_summary); ?><?php if ($po_tracking_summary) : ?> · <?php echo esc_html(implode(' · ', $po_tracking_summary)); ?><?php endif; ?></small>
                                 </summary>
                                 <div class="cleg-proc-po-body">
@@ -48518,6 +48530,20 @@ if (!function_exists('cleg_admin_receipt_action_allowed')) {
     }
 }
 
+if (!function_exists('cleg_admin_receipt_values_match')) {
+    function cleg_admin_receipt_values_match($field, $actual, $expected) {
+        if (in_array($field, array('Quantity', 'Total'), true) && is_numeric($actual) && is_numeric($expected)) {
+            return abs((float) $actual - (float) $expected) < 0.00001;
+        }
+        if ($field === 'Reviewed At') {
+            $actual_time = is_scalar($actual) ? strtotime((string) $actual) : false;
+            $expected_time = is_scalar($expected) ? strtotime((string) $expected) : false;
+            return $actual_time !== false && $expected_time !== false && abs($actual_time - $expected_time) <= 1;
+        }
+        return (string) $actual === (string) $expected;
+    }
+}
+
 if (!function_exists('cleg_admin_receipts_filter_formula')) {
     function cleg_admin_receipts_filter_formula($date = '', $job_site = '', $employee = '', $status = '', $amount = '') {
         $parts = array();
@@ -48736,14 +48762,7 @@ if (!function_exists('cleg_admin_handle_receipt_action')) {
         }
         foreach ($fields as $field => $expected) {
             $actual = cleg_admin_field($verified, $field);
-            if (in_array($field, array('Quantity', 'Total'), true) && is_numeric($actual) && is_numeric($expected)) {
-                if ((float) $actual !== (float) $expected) {
-                    wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('Airtable no confirmo todos los campos del recibo.'), remove_query_arg(array('_wp_http_referer'))));
-                    exit;
-                }
-                continue;
-            }
-            if ((string) $actual !== (string) $expected) {
+            if (!cleg_admin_receipt_values_match($field, $actual, $expected)) {
                 wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('Airtable no confirmo todos los campos del recibo.'), remove_query_arg(array('_wp_http_referer'))));
                 exit;
             }
