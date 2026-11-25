@@ -7679,6 +7679,105 @@ if (!function_exists('cleg_hr_core_records')) {
     }
 }
 
+if (!function_exists('cleg_hr_paid_sick_prefix')) {
+    function cleg_hr_paid_sick_prefix() {
+        return 'CLEG-PAID-SICK-';
+    }
+}
+
+if (!function_exists('cleg_hr_is_paid_sick_adjustment')) {
+    function cleg_hr_is_paid_sick_adjustment($record) {
+        return strpos((string) ($record['fields']['Leave Code'] ?? ''), cleg_hr_paid_sick_prefix()) === 0;
+    }
+}
+
+if (!function_exists('cleg_hr_paid_sick_records')) {
+    function cleg_hr_paid_sick_records($employee_id = '') {
+        $prefix = cleg_hr_paid_sick_prefix();
+        if ($employee_id !== '') {
+            $prefix .= preg_replace('/[^a-zA-Z0-9]/', '', $employee_id) . '-';
+        }
+        $query = array(
+            'filterByFormula' => "AND({Status}='Approved',LEFT({Leave Code}," . strlen($prefix) . ")='{$prefix}')",
+            'pageSize' => 100,
+        );
+        $records = array();
+        do {
+            $page = cleg_hr_core_request('GET', CLEG_AIRTABLE_LEAVE_LEDGER_TABLE, array('query' => $query));
+            if (is_wp_error($page)) {
+                return $page;
+            }
+            if (!isset($page['records']) || !is_array($page['records'])) {
+                return new WP_Error('cleg_paid_sick_invalid_response', 'No se pudo verificar el historial de enfermedad.');
+            }
+            $records = array_merge($records, $page['records']);
+            $query['offset'] = $page['offset'] ?? '';
+        } while ($query['offset'] !== '');
+
+        return $records;
+    }
+}
+
+if (!function_exists('cleg_hr_paid_sick_totals')) {
+    function cleg_hr_paid_sick_totals($records) {
+        $totals = array();
+        foreach ($records as $record) {
+            $fields = $record['fields'] ?? array();
+            $employee_id = $fields['Employee'][0] ?? '';
+            if ($employee_id !== '' && ($fields['Status'] ?? '') === 'Approved' && cleg_hr_is_paid_sick_adjustment($record)) {
+                $totals[$employee_id] = ($totals[$employee_id] ?? 0) + (float) ($fields['Used Hours'] ?? 0);
+            }
+        }
+        return $totals;
+    }
+}
+
+if (!function_exists('cleg_hr_check_sick_adjustment_overlap')) {
+    function cleg_hr_check_sick_adjustment_overlap($employee_id, $start, $end) {
+        $records = cleg_hr_paid_sick_records($employee_id);
+        if (is_wp_error($records)) {
+            return $records;
+        }
+        foreach ($records as $record) {
+            $date = $record['fields']['Start Date'] ?? '';
+            if ($date >= $start && $date <= $end) {
+                return new WP_Error('cleg_paid_sick_overlap', 'La fecha ' . $date . ' ya tiene un ajuste de enfermedad pagada.');
+            }
+        }
+        return true;
+    }
+}
+
+if (!function_exists('cleg_hr_current_sick_balance')) {
+    function cleg_hr_current_sick_balance($employee) {
+        $employee_id = $employee['id'] ?? '';
+        if ($employee_id === '') {
+            return new WP_Error('cleg_hr_employee_missing', 'Falta el empleado solicitado.');
+        }
+        $records = cleg_hr_paid_sick_records($employee_id);
+        if (is_wp_error($records)) {
+            return $records;
+        }
+        $baseline = (float) ($employee['fields']['PTO Sick Balance Hours'] ?? 0);
+        return max(0, round($baseline - (cleg_hr_paid_sick_totals($records)[$employee_id] ?? 0), 2));
+    }
+}
+
+if (!function_exists('cleg_hr_with_pto_lock')) {
+    function cleg_hr_with_pto_lock($callback) {
+        global $wpdb;
+        $lock = 'cleg-pto-' . md5(DB_NAME . ':' . $wpdb->prefix);
+        if ((int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 5)', $lock)) !== 1) {
+            return new WP_Error('cleg_pto_busy', 'El saldo está ocupado. Vuelve a intentarlo en unos segundos.');
+        }
+        try {
+            return $callback();
+        } finally {
+            $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
+        }
+    }
+}
+
 if (!function_exists('cleg_hr_get_employee_profile')) {
     function cleg_hr_get_employee_profile($employee_id, $tenant_key = '') {
         if (!defined('CLEG_AIRTABLE_EMPLOYEES_TABLE')) {
@@ -7763,6 +7862,7 @@ if (!function_exists('cleg_hr_get_approved_leave_for_period')) {
         $parts = array(
             "{Employee ID}='" . str_replace("'", "\\'", $employee_id) . "'",
             "{Status}='Approved'",
+            "LEFT({Leave Code}," . strlen(cleg_hr_paid_sick_prefix()) . ")!='" . cleg_hr_paid_sick_prefix() . "'",
         );
         if ($tenant_key !== '') {
             $parts[] = "{Tenant Key}='" . str_replace("'", "\\'", sanitize_key((string) $tenant_key)) . "'";
@@ -12325,11 +12425,14 @@ if (!function_exists('cleg_admin_employee_leave_balance_field')) {
 }
 
 if (!function_exists('cleg_admin_employee_leave_preview')) {
-    function cleg_admin_employee_leave_preview($employee, $record) {
+    function cleg_admin_employee_leave_preview($employee, $record, $sick_balance = null) {
         $leave_type = cleg_admin_field($record, 'Leave Type');
         $requested = cleg_admin_employee_amount(cleg_admin_employee_raw_field($record, 'Hours Count'), 0);
         $balance_field = cleg_admin_employee_leave_balance_field($leave_type);
         $primary_balance = $balance_field !== '' ? cleg_admin_employee_amount(cleg_admin_employee_raw_field($employee, $balance_field), 0) : 0;
+        if ($leave_type === 'Sick' && is_numeric($sick_balance)) {
+            $primary_balance = $sick_balance;
+        }
         $admin_note = cleg_admin_field($record, 'Admin Note');
         $allow_vacation = strpos($admin_note, '[use_vacation_overflow=yes]') !== false;
         $vacation_balance = cleg_admin_employee_amount(cleg_admin_employee_raw_field($employee, 'PTO Vacation Balance Hours'), 0);
@@ -12349,16 +12452,21 @@ if (!function_exists('cleg_admin_employee_leave_preview')) {
 }
 
 if (!function_exists('cleg_admin_employee_leave_records')) {
-    function cleg_admin_employee_leave_records($employee) {
+    function cleg_admin_employee_leave_records($employee, $start = '', $end = '', $type = 'Sick') {
         $employee_id = is_array($employee) && !empty($employee['id']) ? sanitize_text_field($employee['id']) : '';
         $employee_name = is_array($employee) ? cleg_admin_field($employee, 'Employee Name') : '';
         if ($employee_id === '' || $employee_name === '' || !function_exists('cleg_hr_core_records')) {
             return array();
         }
 
+        $formula = "FIND('" . cleg_admin_formula_text($employee_name) . "',ARRAYJOIN({Employee}))";
+        if ($start !== '' && $end !== '') {
+            $type = cleg_admin_formula_text($type);
+            $formula = "AND({$formula},{Status}='Approved',{Leave Type}='{$type}',DATETIME_FORMAT({Start Date},'YYYY-MM-DD')<='{$end}',DATETIME_FORMAT({End Date},'YYYY-MM-DD')>='{$start}')";
+        }
         return cleg_hr_core_records(CLEG_AIRTABLE_LEAVE_LEDGER_TABLE, array(
-            'pageSize' => 20,
-            'filterByFormula' => "FIND('" . cleg_admin_formula_text($employee_name) . "',ARRAYJOIN({Employee}))",
+            'pageSize' => $start === '' ? 20 : 100,
+            'filterByFormula' => $formula,
             'sort[0][field]' => 'Start Date',
             'sort[0][direction]' => 'desc',
         ));
@@ -12378,11 +12486,11 @@ if (!function_exists('cleg_admin_employee_leave_panel')) {
             $regular_hours = 8;
         }
 
-        $sick_balance = cleg_admin_employee_amount(cleg_admin_employee_raw_field($employee, 'PTO Sick Balance Hours'), 0);
+        $sick_balance = cleg_hr_current_sick_balance($employee);
         $vacation_balance = cleg_admin_employee_amount(cleg_admin_employee_raw_field($employee, 'PTO Vacation Balance Hours'), 0);
         $records = cleg_admin_employee_leave_records($employee);
 
-        $html = '<div class="cleg-panel cleg-employee-leave-panel"><div class="cleg-leave-head"><div><h2>Licencias y ausencias</h2><p>Registra enfermedad, vacaciones o ausencias manuales desde el expediente. El descuento final ocurre al cerrar payroll.</p></div><div class="cleg-leave-balances"><span>Enfermedad: <strong>' . esc_html(number_format($sick_balance, 2)) . ' h</strong></span><span>Vacaciones: <strong>' . esc_html(number_format($vacation_balance, 2)) . ' h</strong></span></div></div>';
+        $html = '<div class="cleg-panel cleg-employee-leave-panel"><div class="cleg-leave-head"><div><h2>Licencias y ausencias</h2><p>Registra ausencias para Payroll o descuenta del saldo enfermedad ya pagada.</p></div><div class="cleg-leave-balances"><span>Enfermedad: <strong>' . esc_html(is_wp_error($sick_balance) ? 'No disponible' : number_format($sick_balance, 2) . ' h') . '</strong></span><span>Vacaciones: <strong>' . esc_html(number_format($vacation_balance, 2)) . ' h</strong></span></div></div>';
 
         $html .= '<details class="cleg-admin-create-drawer cleg-leave-drawer"><summary><span>Registrar ausencia</span><b>Desplegar</b></summary><form class="cleg-admin-form cleg-leave-form" method="post">'
             . wp_nonce_field('cleg_admin_employee_action', 'cleg_admin_employee_nonce', true, false)
@@ -12402,6 +12510,12 @@ if (!function_exists('cleg_admin_employee_leave_panel')) {
             . '<button type="submit">Guardar ausencia</button>'
             . '</form></details>';
 
+        if (is_wp_error($sick_balance)) {
+            $html .= '<p role="alert">No se pudo verificar el saldo para descontar enfermedad ya pagada.</p>';
+        } else {
+            $html .= cleg_admin_paid_sick_form($employee_id);
+        }
+
         if (is_wp_error($records)) {
             $html .= cleg_admin_error($records);
         } else {
@@ -12410,9 +12524,20 @@ if (!function_exists('cleg_admin_employee_leave_panel')) {
                 $html .= '<tr><td colspan="8">Sin movimientos de licencias o ausencias.</td></tr>';
             }
             foreach ((array) $records as $record) {
+                if (!in_array($employee_id, $record['fields']['Employee'] ?? array(), true)) {
+                    continue;
+                }
                 $range = cleg_admin_field($record, 'Start Date') . ' - ' . cleg_admin_field($record, 'End Date');
-                $preview = cleg_admin_employee_leave_preview($employee, $record);
-                $html .= '<tr><td>' . esc_html($range) . '</td><td>' . esc_html(cleg_admin_field($record, 'Leave Type')) . '</td><td>' . esc_html(cleg_admin_field($record, 'Status')) . '</td><td>' . esc_html(number_format($preview['requested'], 2)) . ' h</td><td>' . esc_html(number_format($preview['covered'], 2)) . ' h</td><td>' . esc_html(number_format($preview['uncovered'], 2)) . ' h</td><td>' . esc_html(number_format($preview['balance_after'], 2)) . ' h</td><td>' . esc_html(cleg_admin_field($record, 'Employee Note', cleg_admin_field($record, 'Admin Note'))) . '</td></tr>';
+                $paid_sick = cleg_hr_is_paid_sick_adjustment($record);
+                $preview = $paid_sick ? array(
+                    'requested' => (float) ($record['fields']['Hours Count'] ?? 0),
+                    'covered' => (float) ($record['fields']['Used Hours'] ?? 0),
+                    'uncovered' => 0,
+                    'balance_after' => (float) ($record['fields']['Balance After'] ?? 0),
+                ) : cleg_admin_employee_leave_preview($employee, $record, $sick_balance);
+                $type = $paid_sick ? 'Enfermedad ya pagada' : cleg_admin_field($record, 'Leave Type');
+                $note = $paid_sick ? cleg_admin_field($record, 'Admin Note') . ' · ' . cleg_admin_field($record, 'Created By') : cleg_admin_field($record, 'Employee Note', cleg_admin_field($record, 'Admin Note'));
+                $html .= '<tr><td>' . esc_html($range) . '</td><td>' . esc_html($type) . '</td><td>' . esc_html(cleg_admin_field($record, 'Status')) . '</td><td>' . esc_html(number_format($preview['requested'], 2)) . ' h</td><td>' . esc_html(number_format($preview['covered'], 2)) . ' h</td><td>' . esc_html(number_format($preview['uncovered'], 2)) . ' h</td><td>' . esc_html(number_format($preview['balance_after'], 2)) . ' h</td><td>' . esc_html($note) . '</td></tr>';
             }
             $html .= '</tbody></table></div>';
         }
@@ -12421,8 +12546,242 @@ if (!function_exists('cleg_admin_employee_leave_panel')) {
     }
 }
 
+if (!function_exists('cleg_admin_paid_sick_form')) {
+    function cleg_admin_paid_sick_form($employee_id, $from_payroll = false) {
+        $preview = $GLOBALS['cleg_admin_paid_sick_preview'] ?? array();
+        $confirm = ($preview['employee_id'] ?? '') === $employee_id;
+        $html = '<details class="cleg-admin-create-drawer cleg-leave-drawer"' . ($confirm ? ' open' : '') . '><summary>Enfermedad ya pagada</summary>'
+            . '<form class="cleg-admin-form cleg-leave-form" method="post">'
+            . wp_nonce_field($from_payroll ? 'cleg_payroll_worker_leave' : 'cleg_admin_employee_action', 'cleg_admin_employee_nonce', true, false)
+            . '<input type="hidden" name="cleg_admin_employee_action" value="' . ($confirm ? 'confirm_paid_sick' : 'preview_paid_sick') . '">'
+            . '<input type="hidden" name="employee_record_id" value="' . esc_attr($employee_id) . '">';
+        if ($from_payroll) {
+            $html .= '<input type="hidden" name="cleg_payroll_leave_context" value="1">';
+        }
+
+        if ($confirm) {
+            $display_dates = array_map(function ($date) {
+                return implode('/', array_reverse(explode('-', $date)));
+            }, $preview['dates']);
+            $html .= '<p>Fechas: ' . esc_html(implode(', ', $display_dates)) . ' · ' . esc_html(number_format($preview['hours'], 2)) . ' h por día.</p>'
+                . '<p>Saldo antes: ' . esc_html(number_format($preview['before'], 2)) . ' h · Saldo después: ' . esc_html(number_format($preview['after'], 2)) . ' h.</p>'
+                . '<p>Motivo: ' . esc_html($preview['note']) . '</p>'
+                . '<input type="hidden" name="paid_sick_dates" value="' . esc_attr(implode(',', $preview['dates'])) . '">'
+                . '<input type="hidden" name="paid_sick_hours" value="' . esc_attr($preview['hours']) . '">'
+                . '<input type="hidden" name="paid_sick_note" value="' . esc_attr($preview['note']) . '">'
+                . '<input type="hidden" name="paid_sick_balance" value="' . esc_attr($preview['before']) . '">'
+                . '<button type="submit">Confirmar descuento del saldo</button>'
+                . '<a href="' . esc_url(remove_query_arg(array('cleg_saved', 'cleg_admin_error'))) . '">Cancelar</a>';
+        } else {
+            $html .= '<p>Descuenta horas del saldo de enfermedad para días que ya se pagaron.</p>'
+                . '<label>Fechas (DD/MM/AAAA, una por línea, hasta 10)<textarea name="paid_sick_dates" rows="3" required></textarea></label>'
+                . '<label>Horas por día<input name="paid_sick_hours" type="number" min="0.01" max="24" step="0.01" value="8" required></label>'
+                . '<label>Motivo del ajuste<input name="paid_sick_note" type="text" required></label>'
+                . '<button type="submit">Revisar descuento</button>';
+        }
+
+        return $html . '</form></details>';
+    }
+}
+
+if (!function_exists('cleg_admin_paid_sick_payroll_overlap')) {
+    function cleg_admin_paid_sick_payroll_overlap($employee_id, $dates, $void_type = '') {
+        $start = reset($dates);
+        $end = end($dates);
+        $lines = cleg_payroll_records(CLEG_AIRTABLE_PAYROLL_LINES_TABLE, array(
+            'filterByFormula' => "AND(DATETIME_FORMAT({Period Start},'YYYY-MM-DD')<='{$end}',DATETIME_FORMAT({Period End},'YYYY-MM-DD')>='{$start}')",
+        ));
+        if (is_wp_error($lines)) {
+            return $lines;
+        }
+        foreach ($lines as $line) {
+            $fields = $line['fields'] ?? array();
+            if (!in_array($employee_id, $fields['Employee'] ?? array(), true)) {
+                continue;
+            }
+            $detail = json_decode((string) ($fields['Calculation Detail JSON'] ?? ''), true);
+            if ($void_type !== '' && !is_array($detail)) {
+                return new WP_Error('cleg_leave_close_details', 'El cierre no tiene detalle suficiente para verificar la anulación.');
+            }
+            $leave = $detail['leave'] ?? array();
+            $rows = $leave['rows'] ?? array();
+            // Older calculations may have a period total without a daily breakdown.
+            if ($void_type !== '' && empty($rows) && (float) ($leave['requested_hours'] ?? 0) > 0) {
+                return new WP_Error('cleg_leave_close_details', 'El cierre tiene licencias sin fechas detalladas. Revisa el cierre antes de anular.');
+            }
+            if (empty($rows) && (float) ($leave['sick_used_hours'] ?? $detail['pto']['sick_used'] ?? 0) > 0) {
+                $rows = array(array('sick_paid' => 1, 'start' => $fields['Period Start'], 'end' => $fields['Period End']));
+            }
+            foreach ($rows as $row) {
+                if ($void_type !== '' && ($row['type'] ?? '') === $void_type && ($row['start'] ?? '') <= $end && ($row['end'] ?? '') >= $start) {
+                    return new WP_Error('cleg_leave_in_closed_payroll', 'La licencia ya figura en un cierre de Payroll.');
+                }
+                if ($void_type !== '') {
+                    continue;
+                }
+                if ((float) ($row['sick_paid'] ?? 0) <= 0) {
+                    continue;
+                }
+                foreach ($dates as $date) {
+                    if ($date >= ($row['start'] ?? '') && $date <= ($row['end'] ?? '')) {
+                        return new WP_Error('cleg_paid_sick_already_used', 'Payroll ya refleja horas cubiertas por enfermedad para ' . $date . '. Revisa el cierre antes de aplicar el descuento.');
+                    }
+                }
+            }
+        }
+        return true;
+    }
+}
+
+if (!function_exists('cleg_admin_can_void_worker_leave')) {
+    function cleg_admin_can_void_worker_leave($record, $employee_id) {
+        $fields = $record['fields'] ?? array();
+        return !empty($record['id']) && in_array($employee_id, $fields['Employee'] ?? array(), true)
+            && in_array($fields['Status'] ?? '', array('Approved', 'Pending', 'Draft'), true)
+            && ($fields['Source'] ?? '') === 'Admin Manual Entry'
+            && in_array($fields['Leave Type'] ?? '', array('Sick', 'Vacation'), true)
+            && (float) ($fields['Accrued Hours'] ?? 0) === 0.0
+            && !cleg_hr_is_paid_sick_adjustment($record);
+    }
+}
+
+if (!function_exists('cleg_admin_void_worker_leave')) {
+    function cleg_admin_void_worker_leave($employee_id) {
+        $record_id = sanitize_text_field(wp_unslash($_POST['leave_record_id'] ?? ''));
+        if ($record_id === '' || ($_POST['confirm_void'] ?? '') !== '1') {
+            return new WP_Error('cleg_leave_void_confirm', 'Confirma la anulación de la licencia.');
+        }
+        return cleg_hr_with_pto_lock(function () use ($record_id, $employee_id) {
+            $records = cleg_hr_core_records(CLEG_AIRTABLE_LEAVE_LEDGER_TABLE, array(
+                'filterByFormula' => "RECORD_ID()='" . cleg_admin_formula_text($record_id) . "'",
+                'maxRecords' => 1,
+            ));
+            if (is_wp_error($records)) {
+                return $records;
+            }
+            $record = $records[0] ?? array();
+            if (!cleg_admin_can_void_worker_leave($record, $employee_id)) {
+                return new WP_Error('cleg_leave_void_unavailable', 'Esta licencia no está disponible para anular.');
+            }
+            $fields = $record['fields'];
+            $processed = cleg_admin_paid_sick_payroll_overlap($employee_id, array($fields['Start Date'], $fields['End Date']), $fields['Leave Type']);
+            if (is_wp_error($processed)) {
+                return $processed;
+            }
+            $note = trim(($fields['Admin Note'] ?? '') . "\nAnulada por " . wp_get_current_user()->user_login . ' el ' . wp_date('d/m/Y') . '.');
+            return cleg_hr_core_request('PATCH', CLEG_AIRTABLE_LEAVE_LEDGER_TABLE, array('body' => array(
+                'records' => array(array('id' => $record_id, 'fields' => array('Status' => 'Rejected', 'Admin Note' => $note))),
+                'typecast' => true,
+            )));
+        });
+    }
+}
+
+if (!function_exists('cleg_admin_paid_sick_action')) {
+    function cleg_admin_paid_sick_action($confirm) {
+        $employee_id = sanitize_text_field(wp_unslash($_POST['employee_record_id'] ?? ''));
+        $submitted_dates = trim(sanitize_textarea_field(wp_unslash($_POST['paid_sick_dates'] ?? '')));
+        $submitted_hours = $_POST['paid_sick_hours'] ?? '';
+        $hours = is_numeric($submitted_hours) ? round((float) $submitted_hours, 2) : 0;
+        $note = sanitize_text_field(wp_unslash($_POST['paid_sick_note'] ?? ''));
+        $dates = array();
+        foreach (preg_split('/[\r\n,]+/', $submitted_dates) as $value) {
+            $value = trim($value);
+            if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $value, $parts)) {
+                $value = $parts[3] . '-' . $parts[2] . '-' . $parts[1];
+            }
+            $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+            if (!$date || $date->format('Y-m-d') !== $value || $value < '0001-01-01' || $value > wp_date('Y-m-d')) {
+                return new WP_Error('cleg_paid_sick_date', 'Usa fechas válidas de hoy o anteriores.');
+            }
+            $dates[] = $value;
+        }
+        if (count($dates) > 10 || count(array_unique($dates)) !== count($dates) || $hours <= 0 || $hours > 24 || $note === '') {
+            return new WP_Error('cleg_paid_sick_input', 'Indica hasta 10 fechas distintas, las horas por día y el motivo del ajuste.');
+        }
+        sort($dates);
+
+        $prepare = function () use ($employee_id, $dates, $hours, $note, $confirm) {
+            $employee = cleg_admin_employee_record_by_id($employee_id);
+            if (empty($employee)) {
+                return new WP_Error('cleg_paid_sick_employee', 'No se encontró el expediente del trabajador.');
+            }
+            $adjustments = cleg_hr_paid_sick_records($employee_id);
+            $existing_leave = cleg_admin_employee_leave_records($employee, reset($dates), end($dates));
+            if (is_wp_error($adjustments) || is_wp_error($existing_leave)) {
+                return new WP_Error('cleg_paid_sick_read', 'No se pudo verificar el historial de enfermedad. Intenta nuevamente.');
+            }
+            foreach (array_merge($adjustments, $existing_leave) as $record) {
+                $fields = $record['fields'] ?? array();
+                if (!in_array($employee_id, $fields['Employee'] ?? array(), true) || ($fields['Status'] ?? '') !== 'Approved' || ($fields['Leave Type'] ?? '') !== 'Sick') {
+                    continue;
+                }
+                foreach ($dates as $date) {
+                    if ($date >= ($fields['Start Date'] ?? '') && $date <= ($fields['End Date'] ?? '')) {
+                        return new WP_Error('cleg_paid_sick_duplicate', 'Ya existe un registro de enfermedad aprobado para ' . $date . '. Revisa el historial antes de aplicar el descuento.');
+                    }
+                }
+            }
+            $before = round(cleg_admin_employee_amount(cleg_admin_employee_raw_field($employee, 'PTO Sick Balance Hours'), 0) - (cleg_hr_paid_sick_totals($adjustments)[$employee_id] ?? 0), 2);
+            $after = round($before - count($dates) * $hours, 2);
+            if ($after < 0) {
+                return new WP_Error('cleg_paid_sick_balance', 'Saldo insuficiente. Faltan ' . number_format(-$after, 2) . ' h de enfermedad.');
+            }
+            $payroll_check = cleg_admin_paid_sick_payroll_overlap($employee_id, $dates);
+            if (is_wp_error($payroll_check)) {
+                return $payroll_check;
+            }
+            if (!$confirm) {
+                return compact('employee_id', 'dates', 'hours', 'note', 'before', 'after');
+            }
+            if (!is_numeric($_POST['paid_sick_balance'] ?? null) || (float) $_POST['paid_sick_balance'] !== $before) {
+                return new WP_Error('cleg_paid_sick_changed', 'El saldo cambió. Revisa el descuento nuevamente.');
+            }
+
+            $records = array();
+            $balance = $before;
+            foreach ($dates as $date) {
+                $remaining = round($balance - $hours, 2);
+                $records[] = array('fields' => array(
+                    'Leave Code' => cleg_hr_paid_sick_prefix() . $employee_id . '-' . $date,
+                    'Employee' => array($employee_id),
+                    'Leave Type' => 'Sick',
+                    'Source' => 'Admin Manual Entry',
+                    'Status' => 'Approved',
+                    'Start Date' => $date,
+                    'End Date' => $date,
+                    'Work Days Count' => 1,
+                    'Hours Count' => $hours,
+                    'Used Hours' => $hours,
+                    'Balance Before' => $balance,
+                    'Balance After' => $remaining,
+                    'Accrued Hours' => 0,
+                    'Uncovered Hours' => 0,
+                    'Visible on Paystub' => false,
+                    'Admin Note' => $note,
+                    'Employee Note' => 'Enfermedad ya pagada.',
+                    'Created By' => wp_get_current_user()->user_login,
+                    'Created At' => gmdate('c'),
+                ));
+                $balance = $remaining;
+            }
+            $result = cleg_hr_core_request('PATCH', CLEG_AIRTABLE_LEAVE_LEDGER_TABLE, array('body' => array(
+                'performUpsert' => array('fieldsToMergeOn' => array('Leave Code')),
+                'records' => $records,
+                'typecast' => true,
+            )));
+            if (is_wp_error($result) || count($result['records'] ?? array()) !== count($records)) {
+                return new WP_Error('cleg_paid_sick_save', 'No se pudo confirmar el descuento. Revisa el historial antes de reintentar.');
+            }
+            return true;
+        };
+
+        return $confirm ? cleg_hr_with_pto_lock($prepare) : $prepare();
+    }
+}
+
 if (!function_exists('cleg_admin_handle_employee_leave_action')) {
-    function cleg_admin_handle_employee_leave_action() {
+    function cleg_admin_handle_employee_leave_action($payroll_period = array()) {
         if (!function_exists('cleg_hr_core_request')) {
             return new WP_Error('cleg_leave_missing_request', 'No esta disponible la conexion interna con Airtable.');
         }
@@ -12446,10 +12805,19 @@ if (!function_exists('cleg_admin_handle_employee_leave_action')) {
         }
 
         $start_date = isset($_POST['leave_start_date']) ? cleg_admin_employee_iso_date(wp_unslash($_POST['leave_start_date'])) : '';
-        $end_date = isset($_POST['leave_end_date']) ? cleg_admin_employee_iso_date(wp_unslash($_POST['leave_end_date'])) : '';
+        $end_date = !empty($payroll_period) ? $start_date : (isset($_POST['leave_end_date']) ? cleg_admin_employee_iso_date(wp_unslash($_POST['leave_end_date'])) : '');
         $work_days = cleg_admin_employee_workdays_between($start_date, $end_date);
-        $hours_per_day = isset($_POST['leave_hours_per_day']) ? max(0, (float) sanitize_text_field(wp_unslash($_POST['leave_hours_per_day']))) : 0;
-        if ($start_date === '' || $end_date === '' || $work_days <= 0 || $hours_per_day <= 0) {
+        if (!empty($payroll_period)) {
+            list($period_start, $period_end) = $payroll_period;
+            $date = DateTimeImmutable::createFromFormat('!Y-m-d', $start_date);
+            if (!in_array($leave_type, array('Sick', 'Vacation'), true) || !$date || $date->format('Y-m-d') !== $start_date || $start_date < $period_start || $start_date > $period_end || $status !== 'Approved') {
+                return new WP_Error('cleg_payroll_leave_date', 'Elige una fecha de la semana seleccionada y un tipo de licencia válido.');
+            }
+            $work_days = 1;
+        }
+        $submitted_hours = sanitize_text_field(wp_unslash($_POST['leave_hours_per_day'] ?? ''));
+        $hours_per_day = is_numeric($submitted_hours) ? max(0, (float) $submitted_hours) : 0;
+        if ($start_date === '' || $end_date === '' || $work_days <= 0 || $hours_per_day <= 0 || (!empty($payroll_period) && $hours_per_day > 24)) {
             return new WP_Error('cleg_leave_invalid_dates', 'Verifica fechas y horas por dia.');
         }
 
@@ -12495,12 +12863,42 @@ if (!function_exists('cleg_admin_handle_employee_leave_action')) {
             $fields['Employee Note'] = 'Ausencia registrada para el periodo del ' . $start_date . ' al ' . $end_date . '.';
         }
 
-        $created = cleg_hr_core_request('POST', CLEG_AIRTABLE_LEAVE_LEDGER_TABLE, array(
-            'body' => array(
-                'records' => array(array('fields' => $fields)),
-                'typecast' => true,
-            ),
-        ));
+        $create = function () use ($fields) {
+            return cleg_hr_core_request('POST', CLEG_AIRTABLE_LEAVE_LEDGER_TABLE, array(
+                'body' => array('records' => array(array('fields' => $fields)), 'typecast' => true),
+            ));
+        };
+        if (!empty($payroll_period)) {
+            $created = cleg_hr_with_pto_lock(function () use ($employee, $employee_id, $start_date, $leave_type, $period_start, $period_end, $create) {
+                $closed = cleg_payroll_period_is_closed($period_start, $period_end);
+                if (is_wp_error($closed)) {
+                    return $closed;
+                }
+                if ($closed || !cleg_payroll_is_work_week($period_end)) {
+                    return new WP_Error('cleg_payroll_leave_closed', 'La semana no está abierta para registrar licencias en Payroll.');
+                }
+                foreach (array('Sick', 'Vacation') as $type) {
+                    $existing = cleg_admin_employee_leave_records($employee, $start_date, $start_date, $type);
+                    if (is_wp_error($existing)) {
+                        return $existing;
+                    }
+                    foreach ($existing as $leave) {
+                        if (in_array($employee_id, $leave['fields']['Employee'] ?? array(), true)) {
+                            return new WP_Error('cleg_payroll_leave_duplicate', 'Este trabajador ya tiene una licencia aprobada en esa fecha.');
+                        }
+                    }
+                }
+                $overlap = cleg_hr_check_sick_adjustment_overlap($employee_id, $start_date, $start_date);
+                return is_wp_error($overlap) ? $overlap : $create();
+            });
+        } else {
+            $created = $leave_type === 'Sick' && $status === 'Approved'
+                ? cleg_hr_with_pto_lock(function () use ($employee_id, $start_date, $end_date, $create) {
+                    $overlap = cleg_hr_check_sick_adjustment_overlap($employee_id, $start_date, $end_date);
+                    return is_wp_error($overlap) ? $overlap : $create();
+                })
+                : $create();
+        }
 
         if (is_wp_error($created)) {
             return $created;
@@ -12975,23 +13373,49 @@ if (!function_exists('cleg_admin_handle_employee_action')) {
             return;
         }
 
-        if (!cleg_admin_user_allowed()) {
+        $from_payroll = ($_POST['cleg_payroll_leave_context'] ?? '') === '1';
+        if ($from_payroll ? !cleg_payroll_can_manage() : !cleg_admin_user_allowed()) {
             return;
         }
 
-        if (!isset($_POST['cleg_admin_employee_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['cleg_admin_employee_nonce'])), 'cleg_admin_employee_action')) {
+        $nonce_action = $from_payroll ? 'cleg_payroll_worker_leave' : 'cleg_admin_employee_action';
+        if (!isset($_POST['cleg_admin_employee_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['cleg_admin_employee_nonce'])), $nonce_action)) {
             return;
         }
 
         $employee_action = sanitize_text_field(wp_unslash($_POST['cleg_admin_employee_action']));
 
-        if ($employee_action === 'create_leave') {
-            $result = cleg_admin_handle_employee_leave_action();
-            $redirect_args = array('cleg_saved' => is_wp_error($result) ? '' : 'leave');
+        $leave_actions = array('create_leave', 'preview_paid_sick', 'confirm_paid_sick');
+        if ($from_payroll) {
+            $leave_actions[] = 'void_worker_leave';
+            if (!in_array($employee_action, $leave_actions, true)) {
+                return;
+            }
+        }
+        if (in_array($employee_action, $leave_actions, true)) {
+            $employee_id = sanitize_text_field(wp_unslash($_POST['employee_record_id'] ?? ''));
+            if ($from_payroll && !cleg_payroll_can_register_worker_leave(cleg_admin_employee_record_by_id($employee_id))) {
+                $result = new WP_Error('cleg_payroll_leave_worker', 'Selecciona un trabajador activo que acumule licencias.');
+            } elseif ($employee_action === 'create_leave') {
+                $result = cleg_admin_handle_employee_leave_action($from_payroll ? cleg_payroll_period() : array());
+            } elseif ($employee_action === 'void_worker_leave') {
+                $result = cleg_admin_void_worker_leave($employee_id);
+            } else {
+                $result = cleg_admin_paid_sick_action($employee_action === 'confirm_paid_sick');
+            }
+            if ($employee_action === 'preview_paid_sick' && !is_wp_error($result)) {
+                $GLOBALS['cleg_admin_paid_sick_preview'] = $result;
+                return;
+            }
+            $notices = array('confirm_paid_sick' => 'paid_sick', 'void_worker_leave' => 'void_leave', 'create_leave' => 'leave');
+            $redirect_args = array('cleg_saved' => is_wp_error($result) ? '' : ($notices[$employee_action] ?? 'leave'));
             if (is_wp_error($result)) {
                 $redirect_args['cleg_admin_error'] = $result->get_error_message();
             }
-            wp_safe_redirect(add_query_arg($redirect_args, remove_query_arg(array('_wp_http_referer'))));
+            if ($from_payroll) {
+                $redirect_args['payroll_leave_employee'] = $employee_id;
+            }
+            wp_safe_redirect(add_query_arg($redirect_args, remove_query_arg(array('_wp_http_referer', 'cleg_admin_error'))));
             exit;
         }
 
@@ -16421,13 +16845,16 @@ if (!function_exists('cleg_payroll_leave_uses_vacation_overflow')) {
 
 if (!function_exists('cleg_payroll_leave_records')) {
     function cleg_payroll_leave_records($start, $end) {
+        $adjustment_prefix = cleg_hr_paid_sick_prefix();
         $records = cleg_payroll_records(CLEG_AIRTABLE_LEAVE_LEDGER_TABLE, array(
-            'filterByFormula' => "AND({Status}='Approved',IS_BEFORE({Start Date},'{$end}T23:59:59.000Z'),IS_AFTER({End Date},'{$start}T00:00:00.000Z'))",
+            'filterByFormula' => "AND({Status}='Approved',LEFT({Leave Code}," . strlen($adjustment_prefix) . ")!='{$adjustment_prefix}',DATETIME_FORMAT({Start Date},'YYYY-MM-DD')<='{$end}',DATETIME_FORMAT({End Date},'YYYY-MM-DD')>='{$start}')",
             'sort[0][field]' => 'Start Date',
             'sort[0][direction]' => 'asc',
         ));
 
-        return is_wp_error($records) ? array() : $records;
+        return is_wp_error($records) ? array() : array_values(array_filter($records, function ($record) {
+            return !cleg_hr_is_paid_sick_adjustment($record);
+        }));
     }
 }
 
@@ -16519,6 +16946,7 @@ if (!function_exists('cleg_payroll_apply_leave_records')) {
             $legacy_balance_before = cleg_payroll_number(cleg_payroll_raw_field($leave, 'Balance Before'), 0);
 
             if ($type === 'Sick') {
+                $legacy_balance_before = max(0, $legacy_balance_before - ($row['pto_paid_sick_adjustments'] ?? 0));
                 if ($legacy_balance_before > $sick_balance) {
                     $sick_balance = $legacy_balance_before;
                 }
@@ -16578,12 +17006,10 @@ if (!function_exists('cleg_payroll_apply_leave_records')) {
 
 if (!function_exists('cleg_payroll_line_snapshots')) {
     function cleg_payroll_line_snapshots($start, $end) {
-        $lines = cleg_payroll_records(CLEG_AIRTABLE_PAYROLL_LINES_TABLE, array(
-            'filterByFormula' => "AND({Period Start}='{$start}',{Period End}='{$end}')",
-        ));
+        $lines = cleg_payroll_period_lines($start, $end);
 
         if (is_wp_error($lines)) {
-            return array();
+            return $lines;
         }
 
         $snapshots = array();
@@ -16949,8 +17375,24 @@ if (!function_exists('cleg_payroll_data')) {
         $ytd_sinot_paid = cleg_payroll_ytd_sinot_paid($start);
         $manual_extras = cleg_payroll_manual_extras($start, $end);
         $leave_map = cleg_payroll_leave_map($start, $end);
-        $closed_entries = cleg_payroll_closed_entries($start, $end);
-        $line_snapshots = !is_wp_error($closed_entries) && !empty($closed_entries) ? cleg_payroll_line_snapshots($start, $end) : array();
+        $line_snapshots = cleg_payroll_line_snapshots($start, $end);
+        if (is_wp_error($line_snapshots)) {
+            return $line_snapshots;
+        }
+        $adjustments = empty($line_snapshots) ? cleg_hr_paid_sick_records() : array();
+        if (is_wp_error($adjustments)) {
+            return $adjustments;
+        }
+        $adjusted_hours = cleg_hr_paid_sick_totals($adjustments);
+        foreach ($adjustments as $adjustment) {
+            $fields = $adjustment['fields'];
+            $date = $fields['Start Date'] ?? '';
+            foreach ($leave_map[$fields['Employee'][0] ?? ''] ?? array() as $leave) {
+                if (cleg_payroll_field($leave, 'Leave Type') === 'Sick' && $date >= cleg_payroll_field($leave, 'Start Date') && $date <= cleg_payroll_field($leave, 'End Date')) {
+                    return new WP_Error('cleg_payroll_duplicate_sick_date', 'Hay una ausencia de enfermedad que coincide con un ajuste de enfermedad ya pagada (' . $date . '). Revisa el expediente antes de cerrar Payroll.');
+                }
+            }
+        }
 
         $employees = cleg_payroll_records(CLEG_AIRTABLE_EMPLOYEES_TABLE, array(
             'sort[0][field]' => 'Employee Name',
@@ -16981,7 +17423,8 @@ if (!function_exists('cleg_payroll_data')) {
             $employee_id = sanitize_text_field($employee['id']);
             $employee_start_date = cleg_payroll_employee_start_date($employee);
             $pto_vacation_balance = cleg_payroll_number(cleg_payroll_raw_field($employee, 'PTO Vacation Balance Hours'), 0);
-            $pto_sick_balance = cleg_payroll_number(cleg_payroll_raw_field($employee, 'PTO Sick Balance Hours'), 0);
+            $pto_paid_sick_adjustments = $adjusted_hours[$employee_id] ?? 0;
+            $pto_sick_balance = max(0, cleg_payroll_number(cleg_payroll_raw_field($employee, 'PTO Sick Balance Hours'), 0) - $pto_paid_sick_adjustments);
             $pto_vacation_rate = cleg_payroll_number(cleg_payroll_raw_field($employee, 'PTO Vacation Accrual Rate Hours'), cleg_payroll_default_vacation_accrual_rate());
             $pto_sick_rate = cleg_payroll_number(cleg_payroll_raw_field($employee, 'PTO Sick Accrual Rate Hours'), cleg_payroll_default_sick_accrual_rate());
             $regular_hours_per_day = cleg_payroll_number(cleg_payroll_raw_field($employee, 'Regular Hours Per Day'), cleg_payroll_regular_hours_per_day());
@@ -17039,6 +17482,7 @@ if (!function_exists('cleg_payroll_data')) {
                 'leave_use_vacation_overflow' => $leave_use_vacation_overflow,
                 'pto_vacation_balance' => $pto_vacation_balance,
                 'pto_sick_balance' => $pto_sick_balance,
+                'pto_paid_sick_adjustments' => $pto_paid_sick_adjustments,
                 'pto_vacation_rate' => $pto_vacation_rate,
                 'pto_sick_rate' => $pto_sick_rate,
                 'pto_vacation_accrued' => 0,
@@ -17270,6 +17714,17 @@ if (!function_exists('cleg_payroll_closed_entries')) {
     }
 }
 
+if (!function_exists('cleg_payroll_period_is_closed')) {
+    function cleg_payroll_period_is_closed($start, $end) {
+        $entries = cleg_payroll_closed_entries($start, $end);
+        if (is_wp_error($entries) || !empty($entries)) {
+            return is_wp_error($entries) ? $entries : true;
+        }
+        $lines = cleg_payroll_period_lines($start, $end);
+        return is_wp_error($lines) ? $lines : !empty($lines);
+    }
+}
+
 if (!function_exists('cleg_payroll_pending_summary')) {
     function cleg_payroll_pending_summary($entries) {
         if (empty($entries) || !is_array($entries)) {
@@ -17314,8 +17769,8 @@ if (!function_exists('cleg_payroll_update_rates')) {
         $period_pr_notes = isset($_POST['period_pr_note']) && is_array($_POST['period_pr_note']) ? wp_unslash($_POST['period_pr_note']) : array();
         $leave_vacation_overflow = isset($_POST['leave_use_vacation_overflow']) && is_array($_POST['leave_use_vacation_overflow']) ? wp_unslash($_POST['leave_use_vacation_overflow']) : array();
         list($start, $end) = cleg_payroll_period();
-        $closed_entries = cleg_payroll_closed_entries($start, $end);
-        if (!is_wp_error($closed_entries) && !empty($closed_entries)) {
+        $closed = cleg_payroll_period_is_closed($start, $end);
+        if (is_wp_error($closed) || $closed) {
             wp_safe_redirect(add_query_arg('payroll_locked', '1', wp_get_referer() ?: home_url('/payroll-rrhh/')));
             exit;
         }
@@ -17690,7 +18145,8 @@ if (!function_exists('cleg_payroll_update_employee_pto_balances')) {
                 'id' => $employee_id,
                 'fields' => array(
                     'PTO Vacation Balance Hours' => round((float) ($row['pto_vacation_balance_after'] ?? 0), 2),
-                    'PTO Sick Balance Hours' => round((float) ($row['pto_sick_balance_after'] ?? 0), 2),
+                    // Keep the Airtable baseline before adjustments. The ledger supplies the offset on every read.
+                    'PTO Sick Balance Hours' => round((float) ($row['pto_sick_balance_after'] ?? 0) + (float) ($row['pto_paid_sick_adjustments'] ?? 0), 2),
                 ),
             );
         }
@@ -18943,6 +19399,93 @@ HTML;
     }
 }
 
+if (!function_exists('cleg_payroll_can_register_worker_leave')) {
+    function cleg_payroll_can_register_worker_leave($employee) {
+        return !empty($employee['id']) && cleg_payroll_is_payroll_employee($employee)
+            && cleg_payroll_field($employee, 'Status', 'Active') === 'Active'
+            && cleg_payroll_default_tax_type(cleg_payroll_field($employee, 'Payroll Tax Type')) === 'Employee - Full Payroll'
+            && cleg_admin_employee_role_tracks_time(cleg_payroll_field($employee, 'Role'));
+    }
+}
+
+if (!function_exists('cleg_payroll_worker_leave_panel')) {
+    function cleg_payroll_worker_leave_panel($start, $end, $can_create) {
+        if (!cleg_payroll_can_manage()) {
+            return '';
+        }
+        $selected_id = sanitize_text_field(wp_unslash($_GET['payroll_leave_employee'] ?? ''));
+        $employees = cleg_hr_core_records(CLEG_AIRTABLE_EMPLOYEES_TABLE, array('sort[0][field]' => 'Employee Name'));
+        if (is_wp_error($employees)) {
+            return '<p role="alert">No se pudo cargar la lista de trabajadores para registrar licencias.</p>';
+        }
+        $workers = array();
+        foreach (array_filter($employees, 'cleg_payroll_can_register_worker_leave') as $employee) {
+            $workers[$employee['id']] = $employee;
+        }
+        $employee = $workers[$selected_id] ?? null;
+        $notice = sanitize_text_field(wp_unslash($_GET['cleg_admin_error'] ?? ''));
+        $saved = sanitize_text_field(wp_unslash($_GET['cleg_saved'] ?? ''));
+        $success = array('leave' => 'Licencia agregada a Payroll.', 'paid_sick' => 'Descuento aplicado al saldo de enfermedad.', 'void_leave' => 'Licencia anulada.');
+        $html = '<details class="cleg-admin-create-drawer cleg-leave-drawer"' . ($selected_id !== '' ? ' open' : '') . '><summary>Agregar vacaciones o enfermedad</summary>';
+        if ($notice !== '') {
+            $html .= '<p class="cleg-payroll-blocked" role="alert">' . esc_html($notice) . '</p>';
+        } elseif (isset($success[$saved])) {
+            $html .= '<p class="cleg-payroll-notice" role="status">' . esc_html($success[$saved]) . '</p>';
+        }
+        $html .= '<form class="cleg-payroll-filters" method="get"><input type="hidden" name="payroll_week" value="' . esc_attr($end) . '">'
+            . '<label>Trabajador<select name="payroll_leave_employee" required><option value="">Seleccionar</option>';
+        foreach ($workers as $id => $worker) {
+            $html .= '<option value="' . esc_attr($id) . '"' . selected($selected_id, $id, false) . '>' . esc_html(cleg_payroll_field($worker, 'Employee Name')) . '</option>';
+        }
+        $html .= '</select></label><button type="submit">Ver licencias</button></form>';
+        if (!$employee) {
+            return $html . '</details>';
+        }
+
+        $nonce = wp_nonce_field('cleg_payroll_worker_leave', 'cleg_admin_employee_nonce', true, false);
+        $context = '<input type="hidden" name="cleg_payroll_leave_context" value="1"><input type="hidden" name="employee_record_id" value="' . esc_attr($selected_id) . '">';
+        $sick_balance = cleg_hr_current_sick_balance($employee);
+        $vacation_balance = cleg_payroll_number(cleg_payroll_raw_field($employee, 'PTO Vacation Balance Hours'), 0);
+        $html .= '<p>Saldo de enfermedad: <strong>' . esc_html(is_wp_error($sick_balance) ? 'No disponible' : number_format($sick_balance, 2) . ' h') . '</strong> · Vacaciones: <strong>' . esc_html(number_format($vacation_balance, 2) . ' h') . '</strong></p>';
+        if ($can_create) {
+            $html .= '<form class="cleg-admin-form cleg-leave-form" method="post">' . $nonce . $context
+                . '<input type="hidden" name="cleg_admin_employee_action" value="create_leave"><input type="hidden" name="leave_use_balance" value="1"><input type="hidden" name="leave_visible_paystub" value="1">'
+                . '<label>Tipo<select name="leave_type"><option value="Vacation">Vacaciones</option><option value="Sick">Enfermedad</option></select></label>'
+                . '<label>Fecha<input name="leave_start_date" type="date" min="' . esc_attr($start) . '" max="' . esc_attr($end) . '" required></label>'
+                . '<label>Horas<input name="leave_hours_per_day" type="number" min="0.01" max="24" step="0.01" value="' . esc_attr(cleg_payroll_regular_hours_per_day(array('regular_hours_per_day' => cleg_payroll_raw_field($employee, 'Regular Hours Per Day')))) . '" required></label>'
+                . '<button type="submit">Agregar día a Payroll</button></form>';
+        }
+        if (!is_wp_error($sick_balance)) {
+            $html .= cleg_admin_paid_sick_form($selected_id, true);
+        }
+
+        $records = cleg_admin_employee_leave_records($employee);
+        if (is_wp_error($records)) {
+            return $html . '<p role="alert">No se pudo cargar el historial de licencias.</p></details>';
+        }
+        $html .= '<h3>Historial de licencias</h3><ul>';
+        foreach ($records as $record) {
+            $fields = $record['fields'] ?? array();
+            $type = $fields['Leave Type'] ?? '';
+            if (!in_array($selected_id, $fields['Employee'] ?? array(), true) || !in_array($type, array('Sick', 'Vacation'), true)) {
+                continue;
+            }
+            $start_date = $fields['Start Date'] ?? '';
+            $end_date = $fields['End Date'] ?? '';
+            $label = cleg_hr_is_paid_sick_adjustment($record) ? 'Enfermedad ya pagada' : ($type === 'Sick' ? 'Enfermedad' : 'Vacaciones');
+            $status = ($fields['Status'] ?? '') === 'Rejected' ? 'Anulada' : ($fields['Status'] ?? '');
+            $html .= '<li>' . esc_html($start_date . ($end_date !== $start_date ? ' a ' . $end_date : '') . ' · ' . $label . ' · ' . number_format((float) ($fields['Hours Count'] ?? 0), 2) . ' h · ' . $status);
+            if (cleg_admin_can_void_worker_leave($record, $selected_id)) {
+                $html .= '<details><summary>Anular licencia</summary><form method="post">' . $nonce . $context
+                    . '<input type="hidden" name="cleg_admin_employee_action" value="void_worker_leave"><input type="hidden" name="leave_record_id" value="' . esc_attr($record['id']) . '">'
+                    . '<label><input type="checkbox" name="confirm_void" value="1" required> Confirmo que se registró por error</label> <button type="submit">Confirmar anulación</button></form></details>';
+            }
+            $html .= '</li>';
+        }
+        return $html . '</ul></details>';
+    }
+}
+
 if (!function_exists('cleg_admin_payroll_shortcode')) {
     function cleg_admin_payroll_shortcode() {
         if (!cleg_payroll_allowed()) {
@@ -18957,7 +19500,7 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
         $period_lines = cleg_payroll_period_lines($start, $end);
 
         if (is_wp_error($data)) {
-            return '<section class="cleg-payroll"><div class="cleg-payroll-empty"><h2>Error</h2><p>' . esc_html($data->get_error_message()) . '</p></div>' . cleg_payroll_styles() . '</section>';
+            return '<section class="cleg-payroll cleg-admin-ui"><div class="cleg-payroll-empty"><h2>Error</h2><p>' . esc_html($data->get_error_message()) . '</p>' . cleg_payroll_worker_leave_panel($start, $end, false) . '</div>' . cleg_payroll_styles() . '</section>';
         }
 
         if (is_wp_error($pending_entries)) {
@@ -19037,6 +19580,8 @@ if (!function_exists('cleg_admin_payroll_shortcode')) {
                         <a download href="<?php echo esc_url($closed_pdf_url); ?>">Descargar PDF</a>
                     <?php endif; ?>
                 </form>
+
+                <?php echo cleg_payroll_worker_leave_panel($start, $end, $can_edit_payroll); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 
                 <?php if ($has_pending_entries) : ?>
                     <div class="cleg-payroll-blocked">
@@ -19294,39 +19839,39 @@ if (!function_exists('cleg_payroll_close')) {
         }
 
         list($start, $end) = cleg_payroll_period();
-        $pending_entries = cleg_payroll_pending_entries($start, $end);
+        $result = cleg_hr_with_pto_lock(function () use ($start, $end) {
+            $pending_entries = cleg_payroll_pending_entries($start, $end);
+            if (is_wp_error($pending_entries)) {
+                return $pending_entries;
+            }
+            if (!empty($pending_entries)) {
+                return new WP_Error('cleg_payroll_pending', 'No se puede cerrar esta semana: quedan horas pendientes dentro del periodo. Revisa o elimina esas horas antes de payroll.');
+            }
 
-        if (is_wp_error($pending_entries)) {
-            wp_die(esc_html($pending_entries->get_error_message()));
+            $closed = cleg_payroll_period_is_closed($start, $end);
+            if (is_wp_error($closed)) {
+                return $closed;
+            }
+            if ($closed) {
+                return 'already_closed';
+            }
+
+            $data = cleg_payroll_data($start, $end);
+            if (is_wp_error($data)) {
+                return $data;
+            }
+            cleg_payroll_sync_calculation_lines($data, $start, $end);
+            cleg_payroll_update_employee_pto_balances($data);
+            cleg_payroll_close_time_entries($data);
+            return 'closed';
+        });
+        if (is_wp_error($result)) {
+            wp_die(esc_html($result->get_error_message()));
         }
-
-        if (!empty($pending_entries)) {
-            wp_die('No se puede cerrar esta semana: quedan horas pendientes dentro del periodo. Revisa o elimina esas horas antes de payroll.');
-        }
-
-        $closed_entries = cleg_payroll_closed_entries($start, $end);
-        if (!is_wp_error($closed_entries) && !empty($closed_entries)) {
-            $redirect = wp_get_referer() ?: home_url('/payroll-rrhh/');
-            wp_safe_redirect(add_query_arg(array(
-                'payroll_week' => $end,
-                'payroll_closed' => '1',
-            ), remove_query_arg(array('payroll_saved'), $redirect)));
-            exit;
-        }
-
-        $data = cleg_payroll_data($start, $end);
-
-        if (is_wp_error($data)) {
-            wp_die(esc_html($data->get_error_message()));
-        }
-
-        cleg_payroll_sync_calculation_lines($data, $start, $end);
-        cleg_payroll_update_employee_pto_balances($data);
-        cleg_payroll_close_time_entries($data);
 
         $redirect = wp_get_referer();
         if (!$redirect) {
-            $redirect = home_url('/panel/');
+            $redirect = home_url($result === 'already_closed' ? '/payroll-rrhh/' : '/panel/');
         }
 
         $redirect = remove_query_arg(array('payroll_saved', 'payroll_closed'), $redirect);
@@ -21744,9 +22289,12 @@ if (!function_exists('cleg_center_leave_records')) {
 if (!function_exists('cleg_center_leave_panel')) {
     function cleg_center_leave_panel($employee) {
         $employee_id = sanitize_text_field($employee['id'] ?? '');
-        $sick_balance = cleg_center_number_value(cleg_center_raw($employee, 'PTO Sick Balance Hours', 0));
+        $sick_balance = cleg_hr_current_sick_balance($employee);
         $vacation_balance = cleg_center_number_value(cleg_center_raw($employee, 'PTO Vacation Balance Hours', 0));
         $records = cleg_center_leave_records($employee);
+        $records = array_values(array_filter($records, function ($record) use ($employee_id) {
+            return in_array($employee_id, $record['fields']['Employee'] ?? array(), true);
+        }));
 
         ob_start();
         ?>
@@ -21757,7 +22305,7 @@ if (!function_exists('cleg_center_leave_panel')) {
                     <p>Registra enfermedad, vacaciones o ausencias manuales desde el expediente. Payroll calcula el descuento final al cerrar periodo.</p>
                 </div>
                 <div class="leave-balances">
-                    <span>Enfermedad <strong><?php echo esc_html(number_format($sick_balance, 2)); ?> h</strong></span>
+                    <span>Enfermedad <strong><?php echo esc_html(is_wp_error($sick_balance) ? 'No disponible' : number_format($sick_balance, 2) . ' h'); ?></strong></span>
                     <span>Vacaciones <strong><?php echo esc_html(number_format($vacation_balance, 2)); ?> h</strong></span>
                 </div>
             </div>
@@ -21824,7 +22372,7 @@ if (!function_exists('cleg_center_leave_panel')) {
                                     ?>
                                     <tr>
                                         <td><?php echo esc_html($start . ($end !== '' && $end !== $start ? ' a ' . $end : '')); ?></td>
-                                        <td><?php echo esc_html(cleg_center_field($record, 'Leave Type')); ?></td>
+                                        <td><?php echo esc_html(cleg_hr_is_paid_sick_adjustment($record) ? 'Enfermedad ya pagada' : cleg_center_field($record, 'Leave Type')); ?></td>
                                         <td><?php echo esc_html(number_format(cleg_center_number_value(cleg_center_raw($record, 'Hours Count', 0)), 2)); ?></td>
                                         <td><?php echo esc_html(number_format(cleg_center_number_value(cleg_center_raw($record, 'Used Hours', 0)), 2)); ?></td>
                                         <td><?php echo esc_html(number_format(cleg_center_number_value(cleg_center_raw($record, 'Uncovered Hours', 0)), 2)); ?></td>
@@ -22099,7 +22647,7 @@ if (!function_exists('cleg_center_handle_save')) {
                 $admin_note = trim($admin_note . "\n[use_vacation_overflow=yes]");
             }
 
-            cleg_center_request('POST', CLEG_AIRTABLE_LEAVE_LEDGER_TABLE, array(
+            $leave_request = array(
                 'body' => array(
                     'records' => array(array(
                         'fields' => array(
@@ -22126,7 +22674,19 @@ if (!function_exists('cleg_center_handle_save')) {
                     )),
                     'typecast' => true,
                 ),
-            ));
+            );
+            $create = function () use ($leave_request) {
+                return cleg_center_request('POST', CLEG_AIRTABLE_LEAVE_LEDGER_TABLE, $leave_request);
+            };
+            $created = $leave_type === 'Sick' && $status === 'Approved'
+                ? cleg_hr_with_pto_lock(function () use ($employee_id, $start_date, $end_date, $create) {
+                    $overlap = cleg_hr_check_sick_adjustment_overlap($employee_id, $start_date, $end_date);
+                    return is_wp_error($overlap) ? $overlap : $create();
+                })
+                : $create();
+            if (is_wp_error($created)) {
+                wp_die(esc_html($created->get_error_message()));
+            }
 
             wp_safe_redirect(add_query_arg(array('employee_id' => $employee_id, 'center_saved' => 'leave'), home_url('/empleados/')));
             exit;
@@ -23322,6 +23882,7 @@ if (!function_exists('cleg_employee_documents_shortcode')) {
         $name = cleg_docs_field($employee, 'Employee Name');
         $tax_type = cleg_docs_field($employee, 'Payroll Tax Type', 'Employee - Full Payroll');
         $is_employee = $tax_type === 'Employee - Full Payroll';
+        $sick_balance = $is_employee ? cleg_hr_current_sick_balance($employee) : 0;
         $retention_percent = cleg_docs_number(cleg_docs_raw($employee, 'Payroll Retention Percent'), 0);
         if ($retention_percent > 0 && $retention_percent <= 1) {
             $retention_percent *= 100;
@@ -23365,7 +23926,7 @@ if (!function_exists('cleg_employee_documents_shortcode')) {
                     </div>
                     <div class="pto-simple">
                         <span><small>Vacaciones disponibles</small><strong><?php echo esc_html(number_format(cleg_docs_number(cleg_docs_raw($employee, 'PTO Vacation Balance Hours'), 0), 2)); ?> h</strong></span>
-                        <span><small>Enfermedad disponible</small><strong><?php echo esc_html(number_format(cleg_docs_number(cleg_docs_raw($employee, 'PTO Sick Balance Hours'), 0), 2)); ?> h</strong></span>
+                        <span><small>Enfermedad disponible</small><strong><?php echo esc_html(is_wp_error($sick_balance) ? 'No disponible' : number_format($sick_balance, 2) . ' h'); ?></strong></span>
                     </div>
                     <?php else : ?>
                     <div class="empty"><h2>Payroll aún no publicado</h2><p>La oficina todavía no ha publicado un cierre de nómina para tu cuenta.</p></div>
