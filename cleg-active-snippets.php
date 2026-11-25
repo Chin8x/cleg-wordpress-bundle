@@ -49305,12 +49305,37 @@ if (!function_exists('cleg_admin_receipt_values_match')) {
     }
 }
 
+if (!function_exists('cleg_admin_receipts_valid_date')) {
+    function cleg_admin_receipts_valid_date($date) {
+        return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D', $date, $parts)
+            && checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1]);
+    }
+}
+
 if (!function_exists('cleg_admin_receipts_filter_formula')) {
-    function cleg_admin_receipts_filter_formula($date = '', $job_site = '', $employee = '', $status = '', $amount = '') {
+    function cleg_admin_receipts_filter_formula($date = '', $job_site = '', $employee = '', $status = '', $amount = '', $from = '', $to = '') {
         $parts = array();
 
-        if ($date !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-            $parts[] = "IS_SAME({Purchase Date}, '{$date}', 'day')";
+        if ($from === '' && $to === '' && $date !== '') {
+            $from = $to = $date;
+        }
+        if ($from !== '' || $to !== '') {
+            if (($from !== '' && !cleg_admin_receipts_valid_date($from)) || ($to !== '' && !cleg_admin_receipts_valid_date($to))) {
+                return new WP_Error('cleg_receipt_date_invalid', 'Introduce fechas válidas para filtrar los recibos.');
+            }
+            if ($from !== '' && $to !== '' && $from > $to) {
+                return new WP_Error('cleg_receipt_date_order', 'La fecha Desde debe ser anterior o igual a la fecha Hasta.');
+            }
+            $purchase_day = "DATETIME_FORMAT({Purchase Date}, 'YYYY-MM-DD')";
+            $days = array();
+            if ($from !== '') {
+                $days[] = "{$purchase_day}>='{$from}'";
+            }
+            if ($to !== '') {
+                $days[] = "{$purchase_day}<='{$to}'";
+            }
+            $bounds = count($days) === 1 ? $days[0] : 'AND(' . implode(',', $days) . ')';
+            $parts[] = "IF({Purchase Date},{$bounds},FALSE())";
         }
 
         if ($job_site !== '') {
@@ -49584,7 +49609,7 @@ if (!function_exists('cleg_admin_receipt_preview')) {
 if (!function_exists('cleg_admin_receipts_filter_args')) {
     function cleg_admin_receipts_filter_args() {
         $args = array();
-        foreach (array('receipt_date', 'receipt_job', 'receipt_employee', 'receipt_status', 'receipt_amount', 'receipt_category') as $key) {
+        foreach (array('receipt_date', 'receipt_from', 'receipt_to', 'receipt_job', 'receipt_employee', 'receipt_status', 'receipt_amount', 'receipt_category') as $key) {
             $value = sanitize_text_field(wp_unslash($_GET[$key] ?? ''));
             if ($value !== '') {
                 $args[$key] = $value;
@@ -49613,9 +49638,11 @@ if (!function_exists('cleg_admin_receipts_categories')) {
 }
 
 if (!function_exists('cleg_admin_receipts_filters')) {
-    function cleg_admin_receipts_filters($date, $job_site, $employee, $status, $amount, $job_sites = array(), $category = '', $categories = array()) {
+    function cleg_admin_receipts_filters($from, $to, $job_site, $employee, $status, $amount, $job_sites = array(), $category = '', $categories = array()) {
         $statuses = array('', 'Archivado', 'Revisar', 'Resuelto');
-        $html = '<form class="cleg-review-filters cleg-receipt-filters" method="get"><label><span>Dia</span><input type="date" name="receipt_date" value="' . esc_attr($date) . '"></label>';
+        $html = '<form class="cleg-review-filters cleg-receipt-filters" method="get">'
+            . '<label><span>Desde</span><input type="date" name="receipt_from" value="' . esc_attr($from) . '"></label>'
+            . '<label><span>Hasta</span><input type="date" name="receipt_to" value="' . esc_attr($to) . '"></label>';
 
         $html .= '<label><span>Proyecto</span><select name="receipt_job"><option value="">Todos</option>';
         foreach ((array) $job_sites as $site) {
@@ -49745,6 +49772,10 @@ if (!function_exists('cleg_admin_receipts_table')) {
             $employee = cleg_admin_field($record, 'Employee Name', cleg_admin_field($record, 'Portal Username', 'Sin persona'));
             $username = cleg_admin_field($record, 'Portal Username');
             $date = cleg_admin_field($record, 'Purchase Date');
+            $calendar_day = substr($date, 0, 10);
+            $date_label = cleg_admin_receipts_valid_date($calendar_day)
+                ? implode('/', array_reverse(explode('-', $calendar_day)))
+                : cleg_admin_date($date);
             $project = cleg_admin_field($record, 'Job Site Name', 'Sin proyecto');
             $category = cleg_admin_field($record, 'Purchase Category', 'Compra');
             $quantity = cleg_admin_field($record, 'Quantity');
@@ -49753,9 +49784,9 @@ if (!function_exists('cleg_admin_receipts_table')) {
             $amount = cleg_admin_field($record, 'Total', '0');
             $status = cleg_admin_field($record, 'Status', 'Archivado');
 
-            $mobile .= '<article class="cleg-receipt-mobile-card"><div class="cleg-receipt-mobile-head"><div><strong>' . esc_html($code) . '</strong><small>' . esc_html(cleg_admin_date($date !== '' ? $date : cleg_admin_field($record, 'Submitted At'))) . '</small></div>' . cleg_admin_receipt_status_pill($status) . '</div><div class="cleg-receipt-mobile-facts"><div><small>Persona</small><strong>' . esc_html($employee) . '</strong></div><div><small>Proyecto</small><strong>' . esc_html($project) . '</strong></div><div><small>Compra</small><strong>' . esc_html($category) . '</strong>' . $quantity_label . '</div><div><small>Total</small><strong>$' . esc_html(number_format((float) $amount, 2)) . '</strong></div></div><p class="cleg-receipt-mobile-description">' . esc_html($description !== '' ? $description : 'Sin descripcion') . '</p><div class="cleg-receipt-mobile-actions">' . cleg_admin_receipt_action_form($record) . cleg_admin_receipt_preview($record) . '</div></article>';
+            $mobile .= '<article class="cleg-receipt-mobile-card"><div class="cleg-receipt-mobile-head"><div><strong>' . esc_html($code) . '</strong><small>' . esc_html($date !== '' ? $date_label : cleg_admin_date(cleg_admin_field($record, 'Submitted At'))) . '</small></div>' . cleg_admin_receipt_status_pill($status) . '</div><div class="cleg-receipt-mobile-facts"><div><small>Persona</small><strong>' . esc_html($employee) . '</strong></div><div><small>Proyecto</small><strong>' . esc_html($project) . '</strong></div><div><small>Compra</small><strong>' . esc_html($category) . '</strong>' . $quantity_label . '</div><div><small>Total</small><strong>$' . esc_html(number_format((float) $amount, 2)) . '</strong></div></div><p class="cleg-receipt-mobile-description">' . esc_html($description !== '' ? $description : 'Sin descripcion') . '</p><div class="cleg-receipt-mobile-actions">' . cleg_admin_receipt_action_form($record) . cleg_admin_receipt_preview($record) . '</div></article>';
             $table .= '<tr><td><strong>' . esc_html($code) . '</strong><small>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Submitted At'))) . '</small></td>'
-                . '<td>' . esc_html($date !== '' ? cleg_admin_date($date) : 'Pendiente') . '</td>'
+                . '<td>' . esc_html($date_label) . '</td>'
                 . '<td><strong>' . esc_html($employee) . '</strong><small>' . esc_html($username) . '</small></td>'
                 . '<td>' . esc_html($project) . '</td>'
                 . '<td><strong>' . esc_html($category) . '</strong>' . $quantity_label . '<small>' . esc_html($description) . '</small></td>'
@@ -49877,13 +49908,19 @@ if (!function_exists('cleg_admin_recibos_shortcode')) {
 
         $filters = cleg_admin_receipts_filter_args();
         $date = $filters['receipt_date'] ?? '';
+        $from = $filters['receipt_from'] ?? '';
+        $to = $filters['receipt_to'] ?? '';
+        if ($from === '' && $to === '') {
+            $from = $to = $date;
+        }
         $job_site = $filters['receipt_job'] ?? '';
         $employee = $filters['receipt_employee'] ?? '';
         $status = $filters['receipt_status'] ?? '';
         $amount = $filters['receipt_amount'] ?? '';
         $category = $filters['receipt_category'] ?? '';
         $job_sites = cleg_admin_job_sites();
-        $records = cleg_admin_receipt_records(cleg_admin_receipts_filter_formula($date, $job_site, $employee, $status, $amount));
+        $formula = cleg_admin_receipts_filter_formula('', $job_site, $employee, $status, $amount, $from, $to);
+        $records = is_wp_error($formula) ? array() : cleg_admin_receipt_records($formula);
 
         if (is_wp_error($records) || is_wp_error($job_sites)) {
             return cleg_admin_receipts_procurement_shell_open(0) . cleg_admin_error($records, $job_sites) . cleg_admin_receipts_styles() . cleg_admin_receipts_procurement_shell_close();
@@ -49896,9 +49933,13 @@ if (!function_exists('cleg_admin_recibos_shortcode')) {
             }));
         }
         $html = cleg_admin_receipts_procurement_shell_open(cleg_admin_receipts_review_count($records));
-        $html .= '<details class="cleg-receipt-filter-drawer"' . ($category !== '' ? ' open' : '') . '><summary><span>Filtros</span><small>Día, proyecto, persona, tipo de compra, monto o estado</small></summary>'
-            . cleg_admin_receipts_filters($date, $job_site, $employee, $status, $amount, $job_sites, $category, $categories)
+        $html .= '<details class="cleg-receipt-filter-drawer"' . ($category !== '' || $from !== '' || $to !== '' ? ' open' : '') . '><summary><span>Filtros</span><small>Fechas, proyecto, persona, tipo de compra, monto o estado</small></summary>'
+            . cleg_admin_receipts_filters($from, $to, $job_site, $employee, $status, $amount, $job_sites, $category, $categories)
             . '</details>';
+        if (is_wp_error($formula)) {
+            return $html . '<div class="cleg-receipt-workspace"><p class="cleg-receipt-notice is-bad" role="alert">'
+                . esc_html($formula->get_error_message()) . '</p></div>' . cleg_admin_receipts_styles() . cleg_admin_receipts_procurement_shell_close();
+        }
         $per_page = 25;
         $pages = max(1, (int) ceil(count($records) / $per_page));
         $page = min($pages, max(1, absint($_GET['receipt_page'] ?? 1)));
@@ -49929,7 +49970,7 @@ if (!function_exists('cleg_admin_receipts_styles')) {
             body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary small{margin-left:auto!important;color:#65707c!important;-webkit-text-fill-color:#65707c!important;font-size:12px!important;font-weight:850!important;line-height:1.2!important}
             body .cleg-proc-receipts-screen .cleg-receipt-workspace{width:100%!important;max-width:min(1320px,calc(100vw - 24px))!important;margin:0 auto!important;display:block!important}
             body .cleg-proc-receipts-screen .cleg-receipt-table-zone{min-width:0!important;width:100%!important}
-            body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:10px!important;align-items:end!important;margin:0!important;padding:0 16px 16px!important}
+            body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;gap:10px!important;align-items:end!important;margin:0!important;padding:0 16px 16px!important}
             .cleg-receipt-filter-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
             .cleg-receipt-filters label,.cleg-receipt-filters select{min-width:0}
             .cleg-receipt-filters select{width:100%}
