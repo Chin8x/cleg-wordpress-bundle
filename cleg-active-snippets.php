@@ -28362,13 +28362,10 @@ if (!defined('ABSPATH')) {
  * Source path: modulos/10-field-ops/19a-cleg-17a-worker-location-pings-protected.php
  */
 /**
- * CLEG 17A - Worker Location Pings Protected v1.3
+ * CLEG 17A - Shared GPS helpers and retired ping endpoints
  *
- * Captura pings GPS del trabajador solo durante jornada abierta.
- * Protegido: toca /panel/ y no debe mezclarse con pantallas admin.
- * v1.1 evita tratar registros Deleted/Payroll Closed/Rejected como jornadas abiertas.
- * v1.2 para Tiempo real/GPS considera abierta toda fila sin salida; el estado se corrige en revision.
- * v1.3 ajusta el intervalo operativo de pings a 15 minutos.
+ * El GPS de entrada y salida se guarda en el registro de la jornada.
+ * Las acciones antiguas de rastreo solo responden a pestañas en caché.
  */
 
 if (!defined('ABSPATH')) {
@@ -28377,14 +28374,6 @@ if (!defined('ABSPATH')) {
 
 if (!defined('CLEG_RRHH_TABLE_LOCATION_PINGS')) {
     define('CLEG_RRHH_TABLE_LOCATION_PINGS', 'Worker Location Pings');
-}
-
-if (!defined('CLEG_LOCATION_PING_INTERVAL_SECONDS')) {
-    define('CLEG_LOCATION_PING_INTERVAL_SECONDS', 900); // 15 minutos.
-}
-
-if (!defined('CLEG_LOCATION_PING_MIN_ACCURACY_METERS')) {
-    define('CLEG_LOCATION_PING_MIN_ACCURACY_METERS', 100);
 }
 
 function cleg17_airtable_base_id() {
@@ -28465,34 +28454,6 @@ function cleg17_airtable_request($method, $table, $args = array(), $body = null)
     return is_array($data) ? $data : array();
 }
 
-function cleg17_formula_text($value) {
-    return str_replace("'", "\\'", strtolower((string) $value));
-}
-
-function cleg17_open_shift_formula($identity_clause = '') {
-    $parts = array('{Clock Out Time}=BLANK()');
-
-    if ($identity_clause !== '') {
-        $parts[] = $identity_clause;
-    }
-
-    return 'AND(' . implode(',', $parts) . ')';
-}
-
-function cleg17_current_user_identity() {
-    $user = wp_get_current_user();
-    if (!$user || !$user->ID) {
-        return null;
-    }
-
-    return array(
-        'wp_user_id' => (int) $user->ID,
-        'login'      => (string) $user->user_login,
-        'email'      => (string) $user->user_email,
-        'display'    => (string) $user->display_name,
-    );
-}
-
 function cleg17_is_rrhh_admin() {
     if (!is_user_logged_in()) {
         return false;
@@ -28513,58 +28474,6 @@ function cleg17_is_rrhh_admin() {
     $user = wp_get_current_user();
     $roles = is_array($user->roles) ? $user->roles : array();
     return in_array('administrator', $roles, true) || in_array('trabajador_admin', $roles, true);
-}
-
-function cleg17_find_employee($identity) {
-    $employees_table = cleg17_airtable_table('CLEG_RRHH_TABLE_EMPLOYEES', 'Employees');
-    $parts = array('{WordPress User ID}=' . (int) $identity['wp_user_id']);
-
-    if (!empty($identity['login'])) {
-        $parts[] = "LOWER({Portal Username})='" . cleg17_formula_text($identity['login']) . "'";
-    }
-
-    if (!empty($identity['email'])) {
-        $parts[] = "LOWER({Email})='" . cleg17_formula_text($identity['email']) . "'";
-    }
-
-    $formula = 'OR(' . implode(',', $parts) . ')';
-    $data = cleg17_airtable_request('GET', $employees_table, array(
-        'maxRecords'      => 1,
-        'filterByFormula' => $formula,
-    ));
-
-    if (is_wp_error($data) || empty($data['records'][0])) {
-        return null;
-    }
-
-    return $data['records'][0];
-}
-
-function cleg17_find_open_time_entry($identity) {
-    $time_table = cleg17_airtable_table('CLEG_RRHH_TABLE_TIME_ENTRIES', 'Time Entries');
-    $parts = array('{WordPress User ID}=' . (int) $identity['wp_user_id']);
-
-    if (!empty($identity['login'])) {
-        $parts[] = "LOWER({Portal Username})='" . cleg17_formula_text($identity['login']) . "'";
-    }
-
-    if (!empty($identity['email'])) {
-        $parts[] = "LOWER({Employee Email})='" . cleg17_formula_text($identity['email']) . "'";
-    }
-
-    $formula = cleg17_open_shift_formula('OR(' . implode(',', $parts) . ')');
-    $data = cleg17_airtable_request('GET', $time_table, array(
-        'maxRecords'      => 1,
-        'filterByFormula' => $formula,
-        'sort[0][field]'  => 'Clock In Time',
-        'sort[0][direction]' => 'desc',
-    ));
-
-    if (is_wp_error($data) || empty($data['records'][0])) {
-        return null;
-    }
-
-    return $data['records'][0];
 }
 
 function cleg17_airtable_list_all($table, $args = array(), $max_pages = 5) {
@@ -28667,282 +28576,16 @@ function cleg17_parse_airtable_time($value, $tz) {
     }
 }
 
-function cleg17_tracking_status($latest_dt, $now_dt, $is_open) {
-    if (!$latest_dt) {
-        return $is_open ? 'missing' : 'old';
-    }
-
-    $minutes = max(0, (int) floor(($now_dt->getTimestamp() - $latest_dt->getTimestamp()) / 60));
-    if ($minutes <= 15) {
-        return 'fresh';
-    }
-    if ($minutes <= 30) {
-        return 'stale';
-    }
-    return 'old';
-}
-
-function cleg17_should_ping() {
-    if (!is_user_logged_in()) {
-        return false;
-    }
-
-    $identity = cleg17_current_user_identity();
-    if (!$identity) {
-        return false;
-    }
-
-    return (bool) cleg17_find_open_time_entry($identity);
-}
-
+// Cached worker tabs can still call these legacy AJAX actions. They must make no Airtable requests.
 add_action('wp_ajax_cleg17_location_ping_status', function () {
     check_ajax_referer('cleg17_location_ping', 'nonce');
-
-    wp_send_json_success(array(
-        'should_ping' => cleg17_should_ping(),
-        'interval'    => (int) CLEG_LOCATION_PING_INTERVAL_SECONDS,
-    ));
+    wp_send_json_success(array('should_ping' => false));
 });
 
 add_action('wp_ajax_cleg17_location_ping_submit', function () {
     check_ajax_referer('cleg17_location_ping', 'nonce');
-
-    if (!is_user_logged_in()) {
-        wp_send_json_error(array('message' => 'No autorizado.'), 401);
-    }
-
-    $identity = cleg17_current_user_identity();
-    $employee = cleg17_find_employee($identity);
-    $open_entry = cleg17_find_open_time_entry($identity);
-
-    if (!$open_entry) {
-        wp_send_json_success(array('recorded' => false, 'reason' => 'no_open_shift'));
-    }
-
-    $lat = isset($_POST['lat']) ? (float) $_POST['lat'] : null;
-    $lng = isset($_POST['lng']) ? (float) $_POST['lng'] : null;
-    $accuracy = isset($_POST['accuracy']) ? (float) $_POST['accuracy'] : null;
-    $device_id = isset($_POST['device_id']) ? sanitize_text_field(wp_unslash($_POST['device_id'])) : '';
-
-    if (null === $lat || null === $lng || $lat < -90 || $lat > 90 || $lng < -180 || $lng > 180) {
-        wp_send_json_error(array('message' => 'GPS invalido.'), 400);
-    }
-
-    $tz = new DateTimeZone(defined('CLEG_RRHH_TZ') ? CLEG_RRHH_TZ : 'America/Puerto_Rico');
-    $now = new DateTime('now', $tz);
-    $ping_code = 'PING-' . $now->format('Ymd-His') . '-' . (int) $identity['wp_user_id'];
-    $map_link = 'https://www.google.com/maps?q=' . rawurlencode($lat . ',' . $lng);
-    $status = ($accuracy && $accuracy > (float) CLEG_LOCATION_PING_MIN_ACCURACY_METERS) ? 'Low Accuracy' : 'Recorded';
-
-    $open_fields = isset($open_entry['fields']) && is_array($open_entry['fields']) ? $open_entry['fields'] : array();
-    $employee_fields = $employee && !empty($employee['fields']) && is_array($employee['fields']) ? $employee['fields'] : array();
-    $employee_name = $open_fields['Employee Name'] ?? $employee_fields['Employee Name'] ?? $identity['display'];
-    $portal_username = $open_fields['Portal Username'] ?? $employee_fields['Portal Username'] ?? $identity['login'];
-
-    $fields = array(
-        'Ping Code'         => $ping_code,
-        'Employee Name'     => (string) $employee_name,
-        'Portal Username'   => (string) $portal_username,
-        'WordPress User ID' => (int) $identity['wp_user_id'],
-        'Ping Time'         => $now->format(DateTime::ATOM),
-        'Latitude'          => $lat,
-        'Longitude'         => $lng,
-        'Accuracy Meters'   => $accuracy,
-        'Map Link'          => $map_link,
-        'Device ID'         => $device_id,
-        'IP Address'        => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
-        'User Agent'        => sanitize_textarea_field($_SERVER['HTTP_USER_AGENT'] ?? ''),
-        'Source'            => 'Worker Portal',
-        'Status'            => $status,
-    );
-
-    if ($employee && !empty($employee['id'])) {
-        $fields['Employee'] = array($employee['id']);
-    }
-
-    if (!empty($open_entry['id'])) {
-        $fields['Time Entry'] = array($open_entry['id']);
-    }
-
-    $created = cleg17_airtable_request('POST', CLEG_RRHH_TABLE_LOCATION_PINGS, array(), array(
-        'records' => array(
-            array('fields' => $fields),
-        ),
-        'typecast' => true,
-    ));
-
-    if (is_wp_error($created)) {
-        wp_send_json_error(array('message' => 'No se pudo guardar el ping.'), 500);
-    }
-
-    wp_send_json_success(array('recorded' => true, 'status' => $status));
+    wp_send_json_success(array('recorded' => false, 'reason' => 'clock_events_only'));
 });
-
-add_action('wp_footer', function () {
-    if (!is_user_logged_in() || !is_page('panel')) {
-        return;
-    }
-
-    $interval_ms = max(60, (int) CLEG_LOCATION_PING_INTERVAL_SECONDS) * 1000;
-    ?>
-    <script>
-    (function () {
-        var CLEG17 = {
-            ajaxUrl: <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>,
-            nonce: <?php echo wp_json_encode(wp_create_nonce('cleg17_location_ping')); ?>,
-            intervalMs: <?php echo (int) $interval_ms; ?>,
-            maxAccuracy: <?php echo (float) CLEG_LOCATION_PING_MIN_ACCURACY_METERS; ?>,
-            settleMs: 12000
-        };
-
-        function getDeviceId() {
-            var key = 'cleg_device_id';
-            var existing = window.localStorage ? localStorage.getItem(key) : '';
-            if (existing) {
-                return existing;
-            }
-            var generated = 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
-            try {
-                localStorage.setItem(key, generated);
-            } catch (e) {}
-            return generated;
-        }
-
-        function post(action, payload) {
-            var body = new URLSearchParams();
-            body.set('action', action);
-            body.set('nonce', CLEG17.nonce);
-            Object.keys(payload || {}).forEach(function (key) {
-                body.set(key, payload[key]);
-            });
-            return fetch(CLEG17.ajaxUrl, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-                body: body.toString()
-            }).then(function (response) {
-                return response.json();
-            });
-        }
-
-        function showNotice() {
-            if (document.querySelector('.cleg-location-ping-notice')) {
-                return;
-            }
-            var app = document.querySelector('.cleg-worker-app') || document.querySelector('.entry-content');
-            if (!app) {
-                return;
-            }
-            var notice = document.createElement('div');
-            notice.className = 'cleg-location-ping-notice';
-            notice.textContent = 'Durante una jornada abierta, Vantrexor registra ubicacion periodica para validar proyecto y seguridad. No se registra fuera de jornada.';
-            notice.style.cssText = 'margin:10px 0;padding:10px 12px;border-radius:8px;background:#edf7f2;color:#123524;border:1px solid #b9e3cc;font-size:13px;line-height:1.35;';
-            app.insertBefore(notice, app.firstChild);
-        }
-
-        function isUsablePosition(position) {
-            if (!position || !position.coords) {
-                return false;
-            }
-            var lat = Number(position.coords.latitude);
-            var lng = Number(position.coords.longitude);
-            var accuracy = Number(position.coords.accuracy);
-            return Number.isFinite(lat) && Number.isFinite(lng) && Number.isFinite(accuracy) && accuracy > 0;
-        }
-
-        function getFreshAccuratePosition(onSuccess, onFail) {
-            var best = null;
-            var finished = false;
-            var watchId = null;
-            var startedAt = Date.now();
-            var options = {
-                enableHighAccuracy: true,
-                timeout: 20000,
-                maximumAge: 0
-            };
-
-            function clearWatch() {
-                if (watchId !== null) {
-                    navigator.geolocation.clearWatch(watchId);
-                    watchId = null;
-                }
-            }
-
-            function finish() {
-                if (finished) {
-                    return;
-                }
-                finished = true;
-                clearWatch();
-
-                if (best && best.coords.accuracy <= CLEG17.maxAccuracy) {
-                    onSuccess(best);
-                    return;
-                }
-
-                if (typeof onFail === 'function') {
-                    onFail();
-                }
-            }
-
-            function consider(position) {
-                if (finished || !isUsablePosition(position)) {
-                    return;
-                }
-
-                if (!best || position.coords.accuracy < best.coords.accuracy || (
-                    position.coords.accuracy === best.coords.accuracy && position.timestamp > best.timestamp
-                )) {
-                    best = position;
-                }
-
-                if (position.coords.accuracy <= Math.max(25, CLEG17.maxAccuracy / 2) && Date.now() - startedAt > 2500) {
-                    finish();
-                }
-            }
-
-            try {
-                watchId = navigator.geolocation.watchPosition(consider, function () {}, options);
-                navigator.geolocation.getCurrentPosition(consider, function () {}, options);
-                window.setTimeout(finish, CLEG17.settleMs);
-            } catch (e) {
-                finish();
-            }
-        }
-
-        function sendPingIfNeeded() {
-            if (document.hidden || !navigator.geolocation) {
-                return;
-            }
-
-            post('cleg17_location_ping_status', {}).then(function (status) {
-                if (!status || !status.success || !status.data || !status.data.should_ping) {
-                    return;
-                }
-
-                showNotice();
-
-                getFreshAccuratePosition(function (position) {
-                    post('cleg17_location_ping_submit', {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude,
-                        accuracy: position.coords.accuracy || '',
-                        device_id: getDeviceId()
-                    }).catch(function () {});
-                }, function () {
-                    // No se fuerza el GPS aqui para no crear registros falsos.
-                });
-            }).catch(function () {});
-        }
-
-        window.addEventListener('load', function () {
-            setTimeout(sendPingIfNeeded, 45000);
-            setInterval(sendPingIfNeeded, CLEG17.intervalMs);
-        });
-    })();
-    </script>
-    <?php
-}, 60);
 /**
  * END modulos/10-field-ops/19a-cleg-17a-worker-location-pings-protected.php
  */
@@ -29068,21 +28711,17 @@ function cleg17_build_admin_tracking_payload($date = '') {
     $tz = $bounds['tz'];
     $now = new DateTime('now', $tz);
 
-    $pings_table = CLEG_RRHH_TABLE_LOCATION_PINGS;
     $time_table = cleg17_airtable_table('CLEG_RRHH_TABLE_TIME_ENTRIES', 'Time Entries');
-    $ping_formula = "AND(IS_AFTER({Ping Time}, DATETIME_PARSE('" . $bounds['start_utc'] . "')), IS_BEFORE({Ping Time}, DATETIME_PARSE('" . $bounds['end_utc'] . "')))";
-    $pings = cleg17_airtable_list_all($pings_table, array(
-        'pageSize'          => 100,
-        'filterByFormula'   => $ping_formula,
-        'sort[0][field]'    => 'Ping Time',
-        'sort[0][direction]' => 'asc',
-    ), 10);
-
-    if (is_wp_error($pings)) {
-        return $pings;
+    $start = new DateTimeImmutable($bounds['start_utc']);
+    $end = new DateTimeImmutable($bounds['end_utc']);
+    $airtable_start = "DATETIME_PARSE('" . $bounds['start_utc'] . "')";
+    $airtable_end = "DATETIME_PARSE('" . $bounds['end_utc'] . "')";
+    $event_formulas = array();
+    foreach (array('Clock In Time', 'Clock Out Time') as $field) {
+        $value = '{' . $field . '}';
+        $event_formulas[] = "IF({$value},AND(NOT(IS_BEFORE({$value},{$airtable_start})),IS_BEFORE({$value},{$airtable_end})),FALSE())";
     }
-
-    $day_entry_formula = "AND(OR(IS_SAME({Clock In Time}, DATETIME_PARSE('" . $bounds['start_utc'] . "')), IS_AFTER({Clock In Time}, DATETIME_PARSE('" . $bounds['start_utc'] . "'))), OR(IS_SAME({Clock In Time}, DATETIME_PARSE('" . $bounds['end_utc'] . "')), IS_BEFORE({Clock In Time}, DATETIME_PARSE('" . $bounds['end_utc'] . "'))))";
+    $day_entry_formula = 'OR(' . implode(',', $event_formulas) . ')';
     $day_entries = cleg17_airtable_list_all($time_table, array(
         'pageSize'          => 100,
         'filterByFormula'   => $day_entry_formula,
@@ -29091,7 +28730,7 @@ function cleg17_build_admin_tracking_payload($date = '') {
     ), 10);
 
     if (is_wp_error($day_entries)) {
-        $day_entries = array();
+        return $day_entries;
     }
 
     $workers = array();
@@ -29114,9 +28753,7 @@ function cleg17_build_admin_tracking_payload($date = '') {
                 'open_shift'   => $open_shift,
                 'latest'       => null,
                 'route'        => array(),
-                'ping_count'   => 0,
                 'status'       => 'missing',
-                'minutes_ago'  => null,
             );
         } else {
             $workers[$key]['open_shift'] = !empty($workers[$key]['open_shift']) || $open_shift;
@@ -29134,99 +28771,38 @@ function cleg17_build_admin_tracking_payload($date = '') {
         ));
 
         foreach ($entry_points as $point) {
-            $workers[$key]['route'][] = $point;
-            $workers[$key]['latest'] = $point;
-            $workers[$key]['ping_count'] = count($workers[$key]['route']);
-        }
-
-        if (!empty($workers[$key]['latest'])) {
-            $point_dt = cleg17_parse_airtable_time($workers[$key]['latest']['datetime'] ?? '', $tz);
-            if (!$point_dt) {
-                $point_dt = cleg17_parse_airtable_time(cleg17_value_first($fields, array('Clock In Time'), ''), $tz);
-            }
-            if ($point_dt) {
-                $workers[$key]['minutes_ago'] = max(0, (int) floor(($now->getTimestamp() - $point_dt->getTimestamp()) / 60));
-                $workers[$key]['status'] = cleg17_tracking_status($point_dt, $now, !empty($workers[$key]['open_shift']));
-            } else {
-                $workers[$key]['status'] = !empty($workers[$key]['open_shift']) ? 'stale' : 'old';
+            $point_time = cleg17_parse_airtable_time($point['datetime'], $tz);
+            if ($point_time && $point_time >= $start && $point_time < $end) {
+                $workers[$key]['route'][] = $point;
             }
         }
     }
-
-    foreach ($pings as $ping) {
-        $fields = !empty($ping['fields']) && is_array($ping['fields']) ? $ping['fields'] : array();
-        $lat = cleg17_tracking_number_first($fields, array('Latitude', 'GPS Latitude', 'Clock In Latitude'));
-        $lng = cleg17_tracking_number_first($fields, array('Longitude', 'GPS Longitude', 'Clock In Longitude'));
-        if (!cleg17_tracking_valid_coords($lat, $lng)) {
-            continue;
-        }
-
-        $key = cleg17_worker_key_from_fields($fields);
-        if (empty($workers[$key])) {
-            continue;
-        }
-
-        $ping_dt = cleg17_parse_airtable_time(cleg17_value_first($fields, array('Ping Time'), ''), $tz);
-        $point = array(
-            'lat'       => $lat,
-            'lng'       => $lng,
-            'accuracy'  => isset($fields['Accuracy Meters']) ? round((float) $fields['Accuracy Meters'], 1) : (isset($fields['Accuracy']) ? round((float) $fields['Accuracy'], 1) : null),
-            'time'      => $ping_dt ? $ping_dt->format('g:i A') : '',
-            'datetime'  => $ping_dt ? $ping_dt->format(DateTime::ATOM) : '',
-            'status'    => (string) cleg17_value_first($fields, array('Status'), ''),
-            'source'    => 'Ping GPS',
-            'type'      => 'ping',
-            'label'     => 'Ping GPS',
-            'map_link'  => (string) cleg17_value_first($fields, array('Map Link'), ''),
-        );
-
-        $workers[$key]['route'][] = $point;
-        $workers[$key]['latest'] = $point;
-        $workers[$key]['ping_count'] = count($workers[$key]['route']);
-
-        if ($ping_dt) {
-            $workers[$key]['minutes_ago'] = max(0, (int) floor(($now->getTimestamp() - $ping_dt->getTimestamp()) / 60));
-            $workers[$key]['status'] = cleg17_tracking_status($ping_dt, $now, !empty($workers[$key]['open_shift']));
-        }
-    }
-
-    foreach ($workers as &$worker) {
-        if (!empty($worker['route'])) {
-            usort($worker['route'], function ($a, $b) {
-                return strcmp((string) ($a['datetime'] ?? ''), (string) ($b['datetime'] ?? ''));
-            });
-
-            $worker['latest'] = end($worker['route']);
-            $worker['ping_count'] = count($worker['route']);
-
-            $latest_dt = cleg17_parse_airtable_time($worker['latest']['datetime'] ?? '', $tz);
-            if ($latest_dt) {
-                $worker['minutes_ago'] = max(0, (int) floor(($now->getTimestamp() - $latest_dt->getTimestamp()) / 60));
-                $worker['status'] = cleg17_tracking_status($latest_dt, $now, !empty($worker['open_shift']));
-            } else {
-                $worker['status'] = !empty($worker['open_shift']) ? 'stale' : 'old';
-            }
-        }
-    }
-    unset($worker);
 
     $summary = array(
         'workers' => count($workers),
         'active'  => 0,
-        'fresh'   => 0,
-        'stale'   => 0,
-        'old'     => 0,
+        'entrada' => 0,
+        'salida'  => 0,
         'missing' => 0,
-        'pings'   => 0,
+        'points'  => 0,
     );
 
     foreach ($workers as &$worker) {
-        $summary['pings'] += !empty($worker['route']) && is_array($worker['route']) ? count($worker['route']) : 0;
         if (!empty($worker['open_shift'])) {
             $summary['active']++;
         }
-        if (isset($summary[$worker['status']])) {
-            $summary[$worker['status']]++;
+        if (empty($worker['route'])) {
+            $summary['missing']++;
+            continue;
+        }
+        usort($worker['route'], function ($a, $b) {
+            return strcmp($a['datetime'], $b['datetime']);
+        });
+        $worker['latest'] = end($worker['route']);
+        $worker['status'] = $worker['latest']['type'];
+        $summary['points'] += count($worker['route']);
+        foreach ($worker['route'] as $point) {
+            $summary[$point['type']]++;
         }
     }
     unset($worker);
@@ -29255,6 +28831,11 @@ add_action('wp_ajax_cleg17_admin_tracking_data', function () {
         wp_send_json_error(array('message' => 'No autorizado.'), 403);
     }
 
+    // Cached admin tabs can still send the old automatic polling request.
+    if (($_POST['mode'] ?? '') !== 'clock_events') {
+        wp_send_json_error(array('message' => 'Recarga la página para ver los fichajes GPS.'), 409);
+    }
+
     $date = isset($_POST['date']) ? sanitize_text_field(wp_unslash($_POST['date'])) : '';
     $payload = cleg17_build_admin_tracking_payload($date);
 
@@ -29279,21 +28860,19 @@ function cleg17_admin_gps_tracking_shortcode() {
     <section id="cleg-campo-mapa" class="cleg17-gps-panel" data-cleg17-gps data-ajax-url="<?php echo esc_url($ajax_url); ?>" data-nonce="<?php echo esc_attr($nonce); ?>" data-date="<?php echo esc_attr($bounds['date']); ?>">
 <div class="cleg17-gps-head">
             <div>
-                <div class="cleg17-gps-kicker">Tracking GPS operativo</div>
+                <div class="cleg17-gps-kicker">GPS de entrada y salida</div>
                 <h2 class="cleg17-gps-title">Mapa del equipo</h2>
             </div>
             <div class="cleg17-gps-controls">
                 <label class="cleg17-gps-date-label" for="cleg17-gps-date">Fecha</label>
-                <input id="cleg17-gps-date" name="cleg17_gps_date" type="date" class="cleg17-gps-date" value="<?php echo esc_attr($bounds['date']); ?>" aria-label="Fecha de seguimiento GPS">
+                <input id="cleg17-gps-date" name="cleg17_gps_date" type="date" class="cleg17-gps-date" value="<?php echo esc_attr($bounds['date']); ?>" aria-label="Fecha de los fichajes GPS">
                 <div class="cleg17-gps-filterbar" role="group" aria-label="Filtrar trabajadores">
                     <button type="button" class="is-active" data-filter="all">Todos</button>
                     <button type="button" data-filter="active">Activos</button>
-                    <button type="button" data-filter="fresh">Reciente</button>
-                    <button type="button" data-filter="stale">Atrasada</button>
-                    <button type="button" data-filter="old">Vieja</button>
+                    <button type="button" data-filter="located">Con GPS</button>
                     <button type="button" data-filter="missing">Sin GPS</button>
                 </div>
-                <button type="button" class="cleg17-gps-toggle-points is-active" data-show-points="1">Ocultar todas las señales</button>
+                <button type="button" class="cleg17-gps-toggle-points is-active" data-show-points="1">Ocultar todos los fichajes</button>
                 <button type="button" class="cleg17-gps-fit-all">Ver todos</button>
                 <button type="button" class="cleg17-gps-refresh">Actualizar</button>
             </div>
@@ -29301,10 +28880,10 @@ function cleg17_admin_gps_tracking_shortcode() {
 
         <div class="cleg17-gps-stats" aria-live="polite">
             <div class="cleg17-gps-stat"><strong data-stat="active">0</strong><span>Jornadas abiertas</span></div>
-            <div class="cleg17-gps-stat"><strong data-stat="fresh">0</strong><span>Senal reciente</span></div>
-            <div class="cleg17-gps-stat"><strong data-stat="stale">0</strong><span>Atrasadas</span></div>
+            <div class="cleg17-gps-stat"><strong data-stat="entrada">0</strong><span>Entradas con GPS</span></div>
+            <div class="cleg17-gps-stat"><strong data-stat="salida">0</strong><span>Salidas con GPS</span></div>
             <div class="cleg17-gps-stat"><strong data-stat="missing">0</strong><span>Sin GPS</span></div>
-            <div class="cleg17-gps-stat"><strong data-stat="pings">0</strong><span>Senales del dia</span></div>
+            <div class="cleg17-gps-stat"><strong data-stat="points">0</strong><span>Fichajes con GPS</span></div>
         </div>
 
         <div class="cleg17-gps-layout">
@@ -29314,13 +28893,13 @@ function cleg17_admin_gps_tracking_shortcode() {
             </div>
             <aside class="cleg17-gps-side">
                 <div class="cleg17-gps-side-head">
-                    <strong>Trabajadores y recorridos</strong>
+                    <strong>Trabajadores y fichajes</strong>
                     <span class="cleg17-gps-generated">Esperando datos...</span>
                 </div>
                 <div class="cleg17-gps-list"></div>
                 <div class="cleg17-gps-detail">
                     <h4>Selecciona un trabajador</h4>
-                    <p class="cleg17-gps-status">Aquí se muestra la última señal, precisión y recorrido del día.</p>
+                    <p class="cleg17-gps-status">Aquí se muestran las entradas y salidas con su ubicación.</p>
                 </div>
             </aside>
         </div>
@@ -29372,12 +28951,10 @@ function cleg17_admin_gps_tracking_shortcode() {
     body .cleg17-gps-worker-meta{overflow-wrap:normal!important;word-break:normal!important;white-space:normal!important}
     body .cleg17-gps-worker-status{display:inline-flex!important;align-items:center!important;gap:6px!important;min-width:max-content!important;border-radius:8px!important;padding:6px 9px!important;font-size:12px!important;font-weight:950!important;line-height:1!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important;background:#eef3f8!important}
     body .cleg17-gps-worker-status:before{content:"";display:inline-block;width:8px;height:8px;border-radius:999px;background:#64748b}
-    body .cleg17-gps-worker-status.fresh{background:#e8f8ef!important;color:#107344!important;-webkit-text-fill-color:#107344!important}
-    body .cleg17-gps-worker-status.fresh:before{background:#107344}
-    body .cleg17-gps-worker-status.stale{background:#fff7d6!important;color:#875600!important;-webkit-text-fill-color:#875600!important}
-    body .cleg17-gps-worker-status.stale:before{background:#ca8a04}
-    body .cleg17-gps-worker-status.old{background:#ffe8e8!important;color:#9a1f1f!important;-webkit-text-fill-color:#9a1f1f!important}
-    body .cleg17-gps-worker-status.old:before{background:#9a1f1f}
+    body .cleg17-gps-worker-status.entrada{background:#e8f8ef!important;color:#107344!important;-webkit-text-fill-color:#107344!important}
+    body .cleg17-gps-worker-status.entrada:before{background:#107344}
+    body .cleg17-gps-worker-status.salida{background:#eff6ff!important;color:#1d4ed8!important;-webkit-text-fill-color:#1d4ed8!important}
+    body .cleg17-gps-worker-status.salida:before{background:#2563eb}
     body .cleg17-gps-worker-status.missing{background:#edf1f6!important;color:#475569!important;-webkit-text-fill-color:#475569!important}
     body .cleg17-gps-worker-status.missing:before{background:#64748b}
     body .cleg17-gps-panel .cleg17-gps-worker,
@@ -29429,7 +29006,7 @@ function cleg17_admin_gps_tracking_shortcode() {
         }
         root.dataset.ready = '1';
 
-        var state = {map:null, markers:{}, routes:{}, jobMarkers:[], pointMarker:null, pointMarkers:[], data:null, selected:null, selectedPointIndex:null, filter:'all', showAllPoints:true, started:false};
+        var state = {map:null, markers:{}, jobMarkers:[], pointMarker:null, pointMarkers:[], data:null, selected:null, selectedPointIndex:null, filter:'all', showAllPoints:true, started:false};
         var ajaxUrl = root.getAttribute('data-ajax-url');
         var nonce = root.getAttribute('data-nonce');
         var mapEl = root.querySelector('.cleg17-gps-map');
@@ -29459,16 +29036,16 @@ function cleg17_admin_gps_tracking_shortcode() {
         }
 
         function statusLabel(status) {
-            return {fresh:'Reciente', stale:'Atrasada', old:'Vieja', missing:'Sin GPS'}[status] || 'Sin datos';
+            return {entrada:'Entrada', salida:'Salida', missing:'Sin GPS'}[status] || 'Sin datos';
         }
 
         function statusColor(status) {
-            return {fresh:'#16a34a', stale:'#ca8a04', old:'#dc2626', missing:'#64748b'}[status] || '#64748b';
+            return {entrada:'#16a34a', salida:'#2563eb', missing:'#64748b'}[status] || '#64748b';
         }
 
         function pointLabel(point) {
             if (!point) {
-                return 'Senal';
+                return 'Fichaje';
             }
             if (point.label) {
                 return String(point.label);
@@ -29482,10 +29059,7 @@ function cleg17_admin_gps_tracking_shortcode() {
             if (point.type === 'salida') {
                 return 'Salida';
             }
-            if (point.type === 'ping') {
-                return 'Ping GPS';
-            }
-            return 'Senal';
+            return 'Fichaje';
         }
 
         function esc(value) {
@@ -29530,9 +29104,6 @@ function cleg17_admin_gps_tracking_shortcode() {
             Object.keys(state.markers).forEach(function (key) {
                 state.map.removeLayer(state.markers[key]);
             });
-            Object.keys(state.routes).forEach(function (key) {
-                state.map.removeLayer(state.routes[key]);
-            });
             state.jobMarkers.forEach(function (marker) {
                 state.map.removeLayer(marker);
             });
@@ -29540,7 +29111,6 @@ function cleg17_admin_gps_tracking_shortcode() {
                 state.map.removeLayer(marker);
             });
             state.markers = {};
-            state.routes = {};
             state.jobMarkers = [];
             state.pointMarkers = [];
             if (state.pointMarker) {
@@ -29555,7 +29125,7 @@ function cleg17_admin_gps_tracking_shortcode() {
             return data.filter(function (worker) {
                 if (filter === 'all') return true;
                 if (filter === 'active') return !!worker.open_shift;
-                return worker.status === filter;
+                return filter === 'located' ? !!worker.latest : worker.status === filter;
             });
         }
 
@@ -29583,7 +29153,7 @@ function cleg17_admin_gps_tracking_shortcode() {
                 var latest = worker.latest;
                 var popup = '<strong>' + esc(worker.name) + '</strong><br>' +
                     esc(worker.project || '') + '<br>' +
-                    'Ultima senal: ' + esc(pointLabel(latest)) + '<br>' +
+                    'Último fichaje: ' + esc(pointLabel(latest)) + '<br>' +
                     'Hora: ' + esc(latest.time || '-') + '<br>' +
                     'Precision: ' + esc(latest.accuracy || '-') + ' m<br>' +
                     'Estado: ' + statusLabel(worker.status);
@@ -29592,28 +29162,17 @@ function cleg17_admin_gps_tracking_shortcode() {
                 state.markers[worker.key] = marker;
                 bounds.push([latest.lat, latest.lng]);
 
-                var showRoute = !!state.showAllPoints || worker.key === state.selected;
-                if (showRoute && worker.route && worker.route.length > 1) {
-                    var points = worker.route.map(function (point) { return [point.lat, point.lng]; });
-                    state.routes[worker.key] = L.polyline(points, {
-                        color: statusColor(worker.status),
-                        weight: worker.key === state.selected ? 5 : 3,
-                        opacity: worker.key === state.selected ? .92 : .38
-                    }).addTo(state.map);
-                    bounds = bounds.concat(points);
-                }
-
                 if (state.showAllPoints && worker.route && worker.route.length) {
                     worker.route.forEach(function (point, index) {
                         var pointMarker = L.circleMarker([point.lat, point.lng], {
                             radius: index === worker.route.length - 1 ? 6 : 4,
                             color: '#ffffff',
                             weight: 2,
-                            fillColor: statusColor(worker.status),
+                            fillColor: statusColor(point.type),
                             fillOpacity: index === worker.route.length - 1 ? .96 : .62
                         }).addTo(state.map).bindPopup(
                             '<strong>' + esc(worker.name) + '</strong><br>' +
-                            'Senal ' + esc(index + 1) + ' de ' + esc(worker.route.length) + '<br>' +
+                            'Fichaje ' + esc(index + 1) + ' de ' + esc(worker.route.length) + '<br>' +
                             'Tipo: ' + esc(pointLabel(point)) + '<br>' +
                             'Hora: ' + esc(point.time || '-') + '<br>' +
                             'Precision: ' + esc(point.accuracy || '-') + ' m'
@@ -29660,7 +29219,7 @@ function cleg17_admin_gps_tracking_shortcode() {
 
         function renderStats() {
             var summary = (state.data && state.data.summary) || {};
-            ['active','fresh','stale','missing','pings'].forEach(function (key) {
+            ['active','entrada','salida','missing','points'].forEach(function (key) {
                 var el = root.querySelector('[data-stat="' + key + '"]');
                 if (!el) return;
                 var value = parseInt(summary[key] || 0, 10);
@@ -29670,7 +29229,7 @@ function cleg17_admin_gps_tracking_shortcode() {
             });
             [].slice.call(filterBarEl.querySelectorAll('[data-filter]')).forEach(function (button) {
                 var filter = button.getAttribute('data-filter') || 'all';
-                var value = filter === 'all' ? (summary.workers || 0) : (summary[filter] || 0);
+                var value = filter === 'all' ? (summary.workers || 0) : (filter === 'located' ? (summary.workers || 0) - (summary.missing || 0) : (summary[filter] || 0));
                 button.style.display = filter === 'all' || value > 0 ? '' : 'none';
                 if (button.classList.contains('is-active') && button.style.display === 'none') {
                     state.filter = 'all';
@@ -29689,12 +29248,11 @@ function cleg17_admin_gps_tracking_shortcode() {
                 return;
             }
             listEl.innerHTML = workers.map(function (worker) {
-                var last = worker.latest ? worker.latest.time : 'Sin señal';
-                var ago = worker.minutes_ago === null || worker.minutes_ago === undefined ? '' : ' - hace ' + worker.minutes_ago + ' min';
+                var last = worker.latest ? worker.latest.time : 'Sin GPS';
                 var lastType = worker.latest ? pointLabel(worker.latest) + ' ' : '';
                 return '<button type="button" class="cleg17-gps-worker ' + (worker.key === state.selected ? 'is-active' : '') + '" data-worker="' + esc(worker.key) + '">' +
                     '<span class="cleg17-gps-worker-mainline"><span class="cleg17-gps-worker-name">' + esc(worker.name) + '</span><span class="cleg17-gps-worker-status ' + worker.status + '">' + statusLabel(worker.status) + '</span></span>' +
-                    '<span class="cleg17-gps-worker-meta">' + esc(worker.project || 'Sin proyecto') + ' - Última señal: ' + esc(lastType + last) + esc(ago) + ' - ' + esc(worker.ping_count || 0) + ' señales</span>' +
+                    '<span class="cleg17-gps-worker-meta">' + esc(worker.project || 'Sin proyecto') + ' - Último fichaje: ' + esc(lastType + last) + ' - ' + esc(worker.route.length) + ' fichajes</span>' +
                     '</button>';
             }).join('');
         }
@@ -29732,7 +29290,7 @@ function cleg17_admin_gps_tracking_shortcode() {
                 fillOpacity: .95
             }).addTo(state.map).bindPopup(
                 '<strong>' + esc(worker.name) + '</strong><br>' +
-                'Senal ' + esc(state.selectedPointIndex + 1) + ' de ' + esc(worker.route.length) + '<br>' +
+                'Fichaje ' + esc(state.selectedPointIndex + 1) + ' de ' + esc(worker.route.length) + '<br>' +
                 'Tipo: ' + esc(pointLabel(point)) + '<br>' +
                 'Hora: ' + esc(point.time || '-') + '<br>' +
                 'Precision: ' + esc(point.accuracy || '-') + ' m'
@@ -29774,15 +29332,15 @@ function cleg17_admin_gps_tracking_shortcode() {
             var jump = total ? (
                 '<div class="cleg17-gps-jump">' +
                 '<button type="button" class="cleg17-gps-prev" ' + (current <= 0 ? 'disabled' : '') + '>Anterior</button>' +
-                '<input type="range" class="cleg17-gps-slider" min="0" max="' + esc(total - 1) + '" value="' + esc(current) + '" aria-label="Senales del recorrido">' +
+                '<input type="range" class="cleg17-gps-slider" min="0" max="' + esc(total - 1) + '" value="' + esc(current) + '" aria-label="Fichajes del día">' +
                 '<button type="button" class="cleg17-gps-next" ' + (current >= total - 1 ? 'disabled' : '') + '>Siguiente</button>' +
                 '</div>'
             ) : '';
 
             detailEl.innerHTML = '<h4>' + esc(worker.name) + '</h4>' +
-                '<p class="cleg17-gps-status">' + esc(worker.project || '-') + ' - ' + statusLabel(worker.status) + ' - ' + (total ? esc(total + ' señales') : 'Sin señales') + '</p>' +
+                '<p class="cleg17-gps-status">' + esc(worker.project || '-') + ' - ' + statusLabel(worker.status) + ' - ' + (total ? esc(total + ' fichajes') : 'Sin fichajes con GPS') + '</p>' +
                 jump +
-                '<div class="cleg17-gps-route">' + (routeItems || '<span class="cleg17-gps-status">No hay recorrido para esta fecha.</span>') + '</div>';
+                '<div class="cleg17-gps-route">' + (routeItems || '<span class="cleg17-gps-status">No hay fichajes con GPS para esta fecha.</span>') + '</div>';
         }
 
         function selectWorker(key, center) {
@@ -29824,11 +29382,14 @@ function cleg17_admin_gps_tracking_shortcode() {
             renderAll();
         }
 
+        var requestVersion = 0;
         function fetchData() {
+            var version = ++requestVersion;
             root.classList.add('cleg17-gps-loading');
             var body = new URLSearchParams();
             body.set('action', 'cleg17_admin_tracking_data');
             body.set('nonce', nonce);
+            body.set('mode', 'clock_events');
             body.set('date', dateEl.value || '');
             return fetch(ajaxUrl, {
                 method: 'POST',
@@ -29838,6 +29399,7 @@ function cleg17_admin_gps_tracking_shortcode() {
             }).then(function (response) {
                 return response.json();
             }).then(function (json) {
+                if (version !== requestVersion) return;
                 if (!json || !json.success) {
                     throw new Error(json && json.data && json.data.message ? json.data.message : 'No se pudo cargar el tracking.');
                 }
@@ -29847,10 +29409,11 @@ function cleg17_admin_gps_tracking_shortcode() {
                 }
                 renderAll();
             }).catch(function (error) {
+                if (version !== requestVersion) return;
                 emptyEl.style.display = 'flex';
                 emptyEl.textContent = error.message || 'No se pudo cargar el tracking GPS.';
             }).finally(function () {
-                root.classList.remove('cleg17-gps-loading');
+                if (version === requestVersion) root.classList.remove('cleg17-gps-loading');
             });
         }
 
@@ -29909,7 +29472,7 @@ function cleg17_admin_gps_tracking_shortcode() {
                 }
                 togglePointsEl.classList.toggle('is-active', state.showAllPoints);
                 togglePointsEl.setAttribute('data-show-points', state.showAllPoints ? '1' : '0');
-                togglePointsEl.textContent = state.showAllPoints ? 'Ocultar todas las señales' : 'Ver todas las señales';
+                togglePointsEl.textContent = state.showAllPoints ? 'Ocultar todos los fichajes' : 'Ver todos los fichajes';
                 renderAll();
                 if (state.map) {
                     setTimeout(function () { state.map.invalidateSize(); }, 120);
@@ -29929,7 +29492,6 @@ function cleg17_admin_gps_tracking_shortcode() {
             ensureLeaflet().then(function () {
                 initMap();
                 fetchData();
-                setInterval(fetchData, 60000);
             }).catch(function () {
                 emptyEl.style.display = 'flex';
                 emptyEl.textContent = 'No se pudo cargar Leaflet para mostrar el mapa.';
