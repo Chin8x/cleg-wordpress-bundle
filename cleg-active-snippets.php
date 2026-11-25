@@ -49451,6 +49451,9 @@ if (!function_exists('cleg_admin_handle_receipt_action')) {
             );
             $reason = sanitize_textarea_field(wp_unslash($_POST['cleg_receipt_reason'] ?? ''));
             $evidence = sanitize_text_field(wp_unslash($_POST['cleg_receipt_evidence'] ?? ''));
+            if ($evidence === '' && cleg_admin_receipt_attachment($record)['url'] !== '') {
+                $evidence = 'Archivo adjunto del recibo ' . cleg_admin_field($record, 'Receipt Code', $record_id);
+            }
             if ($reason === '' || $evidence === '') {
                 wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('La correccion requiere motivo y evidencia.'), remove_query_arg(array('_wp_http_referer'))));
                 exit;
@@ -49467,31 +49470,18 @@ if (!function_exists('cleg_admin_handle_receipt_action')) {
                 wp_safe_redirect(add_query_arg('receipt_error', rawurlencode('El total debe ser numerico, no negativo y tener maximo dos decimales.'), remove_query_arg(array('_wp_http_referer'))));
                 exit;
             }
-            $changed = false;
             foreach ($before as $field => $value) {
-                if ((string) $value !== (string) ($after[$field] ?? '')) {
-                    $changed = true;
-                    break;
+                if (!cleg_admin_receipt_values_match($field, $value, $after[$field])) {
+                    $fields[$field] = in_array($field, array('Quantity', 'Total'), true)
+                        ? ($after[$field] === '' ? null : (float) $after[$field])
+                        : $after[$field];
                 }
             }
-            if (!$changed) {
+            if (empty($fields)) {
                 wp_safe_redirect(add_query_arg('receipt_saved', '1', remove_query_arg(array('_wp_http_referer'))));
                 exit;
             }
             $audit = cleg_admin_audit_line($actor_name, 'Receipt correction', wp_json_encode($before), wp_json_encode($after), $reason . ' | Evidencia: ' . $evidence);
-            // Airtable number/currency fields reject numeric strings. Keep the audit
-            // payload human-readable, but send typed numeric values to the API.
-            $fields = $after;
-            if ($after['Quantity'] === '' && (string) $before['Quantity'] === '') {
-                unset($fields['Quantity']);
-            } else {
-                $fields['Quantity'] = $after['Quantity'] === '' ? null : (float) $after['Quantity'];
-            }
-            if ($after['Total'] === '' && (string) $before['Total'] === '') {
-                unset($fields['Total']);
-            } else {
-                $fields['Total'] = $after['Total'] === '' ? null : (float) $after['Total'];
-            }
             $fields['Reviewed By'] = $actor_name;
             $fields['Reviewed At'] = gmdate('c');
             $fields['Review Note'] = trim($current_note . "\n" . $audit);
@@ -49591,8 +49581,39 @@ if (!function_exists('cleg_admin_receipt_preview')) {
     }
 }
 
+if (!function_exists('cleg_admin_receipts_filter_args')) {
+    function cleg_admin_receipts_filter_args() {
+        $args = array();
+        foreach (array('receipt_date', 'receipt_job', 'receipt_employee', 'receipt_status', 'receipt_amount', 'receipt_category') as $key) {
+            $value = sanitize_text_field(wp_unslash($_GET[$key] ?? ''));
+            if ($value !== '') {
+                $args[$key] = $value;
+            }
+        }
+        return $args;
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_categories')) {
+    function cleg_admin_receipts_categories($records, $selected) {
+        $categories = array('Agua / comida');
+        foreach ($records as $record) {
+            $name = cleg_admin_field($record, 'Purchase Category');
+            if ($name !== '') {
+                $categories[] = $name;
+            }
+        }
+        if ($selected !== '') {
+            $categories[] = $selected;
+        }
+        $categories = array_unique($categories);
+        natcasesort($categories);
+        return $categories;
+    }
+}
+
 if (!function_exists('cleg_admin_receipts_filters')) {
-    function cleg_admin_receipts_filters($date, $job_site, $employee, $status, $amount, $job_sites = array()) {
+    function cleg_admin_receipts_filters($date, $job_site, $employee, $status, $amount, $job_sites = array(), $category = '', $categories = array()) {
         $statuses = array('', 'Archivado', 'Revisar', 'Resuelto');
         $html = '<form class="cleg-review-filters cleg-receipt-filters" method="get"><label><span>Dia</span><input type="date" name="receipt_date" value="' . esc_attr($date) . '"></label>';
 
@@ -49607,13 +49628,18 @@ if (!function_exists('cleg_admin_receipts_filters')) {
         $html .= '</select></label>';
 
         $html .= '<label><span>Persona</span><input type="search" name="receipt_employee" value="' . esc_attr($employee) . '" placeholder="Nombre, usuario o email"></label>';
+        $html .= '<label><span>Tipo de compra</span><select name="receipt_category"><option value="">Todos</option>';
+        foreach ($categories as $name) {
+            $html .= '<option value="' . esc_attr($name) . '" ' . selected($category, $name, false) . '>' . esc_html($name) . '</option>';
+        }
+        $html .= '</select></label>';
         $html .= '<label><span>Monto exacto</span><input type="number" step="0.01" min="0" name="receipt_amount" value="' . esc_attr($amount) . '" placeholder="0.00"></label>';
         $html .= '<label><span>Estado</span><select name="receipt_status">';
         foreach ($statuses as $item) {
             $label = $item !== '' ? $item : 'Todos';
             $html .= '<option value="' . esc_attr($item) . '" ' . selected($status, $item, false) . '>' . esc_html($label) . '</option>';
         }
-        $html .= '</select></label><button type="submit">Filtrar</button><a class="cleg-clear-filter" href="' . esc_url(home_url('/admin-recibos/')) . '">Limpiar filtro</a></form>';
+        $html .= '</select></label><div class="cleg-receipt-filter-actions"><button type="submit">Filtrar</button><a class="cleg-clear-filter" href="' . esc_url(home_url('/admin-recibos/')) . '">Limpiar filtro</a></div></form>';
 
         return $html;
     }
@@ -49645,18 +49671,22 @@ if (!function_exists('cleg_admin_receipt_action_form')) {
         }
         $html .= '</form>';
 
-        $html .= '<details class="cleg-receipt-edit"><summary>Corregir datos</summary><form method="post">'
+        $has_attachment = cleg_admin_receipt_attachment($record)['url'] !== '';
+        $html .= '<details class="cleg-receipt-edit"><summary>Corregir cantidad o total</summary><form method="post">'
             . wp_nonce_field('cleg_admin_receipt_action', 'cleg_receipt_nonce', true, false)
             . '<input type="hidden" name="cleg_receipt_record_id" value="' . esc_attr($record_id) . '">'
             . '<input type="hidden" name="cleg_receipt_action" value="edit">'
+            . '<label>Cantidad de unidades<input name="cleg_receipt_quantity" type="number" min="0" step="0.01" inputmode="decimal" value="' . esc_attr(cleg_admin_field($record, 'Quantity')) . '"></label>'
+            . '<label>Total pagado ($)<input name="cleg_receipt_total" type="number" min="0" step="0.01" inputmode="decimal" value="' . esc_attr(cleg_admin_field($record, 'Total')) . '"></label>'
+            . '<label>Motivo<textarea name="cleg_receipt_reason" required></textarea></label>'
+            . ($has_attachment
+                ? '<span class="cleg-receipt-edit-evidence">Evidencia: archivo adjunto del recibo</span>'
+                : '<label>Evidencia<input name="cleg_receipt_evidence" required placeholder="ID, enlace o referencia"></label>')
+            . '<details class="cleg-receipt-edit-more"><summary>Otros datos</summary>'
             . '<label>Persona<input name="cleg_receipt_employee" value="' . esc_attr(cleg_admin_field($record, 'Employee Name')) . '"></label>'
             . '<label>Proyecto<input name="cleg_receipt_project" value="' . esc_attr(cleg_admin_field($record, 'Job Site Name')) . '"></label>'
-            . '<label>Compra<input name="cleg_receipt_purchase" value="' . esc_attr(cleg_admin_field($record, 'Purchase Category')) . '"></label>'
-            . '<label>Cantidad<input name="cleg_receipt_quantity" type="number" min="0" step="0.01" value="' . esc_attr(cleg_admin_field($record, 'Quantity')) . '"></label>'
-            . '<label>Total<input name="cleg_receipt_total" type="number" min="0" step="0.01" inputmode="decimal" value="' . esc_attr(cleg_admin_field($record, 'Total')) . '"></label>'
-            . '<label>Motivo<textarea name="cleg_receipt_reason" required></textarea></label>'
-            . '<label>Evidencia<input name="cleg_receipt_evidence" required placeholder="ID, enlace o referencia"></label>'
-            . '<button type="submit">Guardar correccion</button></form></details>';
+            . '<label>Tipo de compra<input name="cleg_receipt_purchase" value="' . esc_attr(cleg_admin_field($record, 'Purchase Category')) . '"></label>'
+            . '</details><button type="submit">Guardar corrección</button></form></details>';
 
         return $html;
     }
@@ -49689,12 +49719,16 @@ if (!function_exists('cleg_admin_receipts_table')) {
             $html .= '<div class="cleg-receipt-notice is-bad" role="alert" aria-live="assertive">' . esc_html(sanitize_text_field(wp_unslash($_GET['receipt_error']))) . '</div>';
         }
 
-        $active_status = isset($_GET['receipt_status']) ? sanitize_text_field(wp_unslash($_GET['receipt_status'])) : '';
+        $filter_args = cleg_admin_receipts_filter_args();
+        $active_status = $filter_args['receipt_status'] ?? '';
+        unset($filter_args['receipt_status']);
+        $filter_url = add_query_arg($filter_args, home_url('/admin-recibos/'));
+        $total_label = isset($filter_args['receipt_category']) ? 'Total · ' . $filter_args['receipt_category'] : 'Total filtrado';
         $html .= '<nav class="cleg-proc-metrics cleg-receipt-kpis" aria-label="Resumen de recibos">'
-            . '<a class="' . esc_attr($active_status === '' ? 'is-active' : '') . '" href="' . esc_url(home_url('/admin-recibos/')) . '"><span>Recibos visibles</span><strong>' . esc_html(count($records)) . '</strong></a>'
-            . '<a href="' . esc_url(home_url('/admin-recibos/')) . '"><span>Total visible</span><strong>$' . esc_html(number_format($total, 2)) . '</strong></a>'
-            . '<a class="' . esc_attr($active_status === 'Revisar' ? 'is-active' : '') . '" href="' . esc_url(add_query_arg('receipt_status', 'Revisar', home_url('/admin-recibos/'))) . '"><span>Por revisar</span><strong>' . esc_html($review_count) . '</strong></a>'
-            . '<a class="' . esc_attr($active_status === 'Resuelto' ? 'is-active' : '') . '" href="' . esc_url(add_query_arg('receipt_status', 'Resuelto', home_url('/admin-recibos/'))) . '"><span>Resueltos</span><strong>' . esc_html($resolved_count) . '</strong></a>'
+            . '<a class="' . esc_attr($active_status === '' ? 'is-active' : '') . '" href="' . esc_url($filter_url) . '"><span>Recibos visibles</span><strong>' . esc_html(count($records)) . '</strong></a>'
+            . '<div class="cleg-receipt-total"><span>' . esc_html($total_label) . '</span><strong>$' . esc_html(number_format($total, 2)) . '</strong></div>'
+            . '<a class="' . esc_attr($active_status === 'Revisar' ? 'is-active' : '') . '" href="' . esc_url(add_query_arg('receipt_status', 'Revisar', $filter_url)) . '"><span>Por revisar</span><strong>' . esc_html($review_count) . '</strong></a>'
+            . '<a class="' . esc_attr($active_status === 'Resuelto' ? 'is-active' : '') . '" href="' . esc_url(add_query_arg('receipt_status', 'Resuelto', $filter_url)) . '"><span>Resueltos</span><strong>' . esc_html($resolved_count) . '</strong></a>'
             . '</nav>';
         $html .= '<div class="cleg-panel cleg-receipt-panel"><div class="cleg-panel-head"><div><h2>Recibos de compra</h2><p>Organizados por dia, proyecto, persona y monto desde Airtable.</p></div></div>';
         $mobile = '<div class="cleg-receipt-mobile-list" aria-label="Recibos en tarjetas">';
@@ -49713,16 +49747,18 @@ if (!function_exists('cleg_admin_receipts_table')) {
             $date = cleg_admin_field($record, 'Purchase Date');
             $project = cleg_admin_field($record, 'Job Site Name', 'Sin proyecto');
             $category = cleg_admin_field($record, 'Purchase Category', 'Compra');
+            $quantity = cleg_admin_field($record, 'Quantity');
+            $quantity_label = $quantity !== '' ? '<small>Cantidad: ' . esc_html($quantity) . '</small>' : '';
             $description = cleg_admin_field($record, 'Description');
             $amount = cleg_admin_field($record, 'Total', '0');
             $status = cleg_admin_field($record, 'Status', 'Archivado');
 
-            $mobile .= '<article class="cleg-receipt-mobile-card"><div class="cleg-receipt-mobile-head"><div><strong>' . esc_html($code) . '</strong><small>' . esc_html(cleg_admin_date($date !== '' ? $date : cleg_admin_field($record, 'Submitted At'))) . '</small></div>' . cleg_admin_receipt_status_pill($status) . '</div><div class="cleg-receipt-mobile-facts"><div><small>Persona</small><strong>' . esc_html($employee) . '</strong></div><div><small>Proyecto</small><strong>' . esc_html($project) . '</strong></div><div><small>Compra</small><strong>' . esc_html($category) . '</strong></div><div><small>Total</small><strong>$' . esc_html(number_format((float) $amount, 2)) . '</strong></div></div><p class="cleg-receipt-mobile-description">' . esc_html($description !== '' ? $description : 'Sin descripcion') . '</p><div class="cleg-receipt-mobile-actions">' . cleg_admin_receipt_action_form($record) . cleg_admin_receipt_preview($record) . '</div></article>';
+            $mobile .= '<article class="cleg-receipt-mobile-card"><div class="cleg-receipt-mobile-head"><div><strong>' . esc_html($code) . '</strong><small>' . esc_html(cleg_admin_date($date !== '' ? $date : cleg_admin_field($record, 'Submitted At'))) . '</small></div>' . cleg_admin_receipt_status_pill($status) . '</div><div class="cleg-receipt-mobile-facts"><div><small>Persona</small><strong>' . esc_html($employee) . '</strong></div><div><small>Proyecto</small><strong>' . esc_html($project) . '</strong></div><div><small>Compra</small><strong>' . esc_html($category) . '</strong>' . $quantity_label . '</div><div><small>Total</small><strong>$' . esc_html(number_format((float) $amount, 2)) . '</strong></div></div><p class="cleg-receipt-mobile-description">' . esc_html($description !== '' ? $description : 'Sin descripcion') . '</p><div class="cleg-receipt-mobile-actions">' . cleg_admin_receipt_action_form($record) . cleg_admin_receipt_preview($record) . '</div></article>';
             $table .= '<tr><td><strong>' . esc_html($code) . '</strong><small>' . esc_html(cleg_admin_date(cleg_admin_field($record, 'Submitted At'))) . '</small></td>'
                 . '<td>' . esc_html($date !== '' ? cleg_admin_date($date) : 'Pendiente') . '</td>'
                 . '<td><strong>' . esc_html($employee) . '</strong><small>' . esc_html($username) . '</small></td>'
                 . '<td>' . esc_html($project) . '</td>'
-                . '<td><strong>' . esc_html($category) . '</strong><small>' . esc_html($description) . '</small></td>'
+                . '<td><strong>' . esc_html($category) . '</strong>' . $quantity_label . '<small>' . esc_html($description) . '</small></td>'
                 . '<td><strong>$' . esc_html(number_format((float) $amount, 2)) . '</strong><small>' . esc_html(cleg_admin_field($record, 'Company Card')) . '</small></td>'
                 . '<td>' . cleg_admin_receipt_status_pill($status) . '</td>'
                 . '<td>' . cleg_admin_receipt_action_form($record) . '</td>'
@@ -49745,13 +49781,7 @@ if (!function_exists('cleg_admin_receipts_pagination')) {
 
         $page = isset($_GET['receipt_page']) ? max(1, absint($_GET['receipt_page'])) : 1;
         $page = min($page, $pages);
-        $args = array();
-        foreach (array('receipt_date', 'receipt_job', 'receipt_employee', 'receipt_status', 'receipt_amount') as $key) {
-            if (isset($_GET[$key]) && sanitize_text_field(wp_unslash($_GET[$key])) !== '') {
-                $args[$key] = sanitize_text_field(wp_unslash($_GET[$key]));
-            }
-        }
-        $base = add_query_arg($args, home_url('/admin-recibos/'));
+        $base = add_query_arg(cleg_admin_receipts_filter_args(), home_url('/admin-recibos/'));
         $html = '<nav class="cleg-receipt-pagination" aria-label="Paginacion de recibos"><span>Pagina ' . esc_html($page) . ' de ' . esc_html($pages) . ' · ' . esc_html($total) . ' recibos</span><div>';
         if ($page > 1) {
             $html .= '<a href="' . esc_url(add_query_arg('receipt_page', $page - 1, $base)) . '">Anterior</a>';
@@ -49845,25 +49875,33 @@ if (!function_exists('cleg_admin_recibos_shortcode')) {
             return '<section class="cleg-admin-ui"><div class="cleg-admin-empty"><h2>Acceso restringido</h2><p>Esta pantalla esta disponible solo para usuarios autorizados de Compras.</p></div></section>';
         }
 
-        $date = isset($_GET['receipt_date']) ? sanitize_text_field(wp_unslash($_GET['receipt_date'])) : '';
-        $job_site = isset($_GET['receipt_job']) ? sanitize_text_field(wp_unslash($_GET['receipt_job'])) : '';
-        $employee = isset($_GET['receipt_employee']) ? sanitize_text_field(wp_unslash($_GET['receipt_employee'])) : '';
-        $status = isset($_GET['receipt_status']) ? sanitize_text_field(wp_unslash($_GET['receipt_status'])) : '';
-        $amount = isset($_GET['receipt_amount']) ? sanitize_text_field(wp_unslash($_GET['receipt_amount'])) : '';
+        $filters = cleg_admin_receipts_filter_args();
+        $date = $filters['receipt_date'] ?? '';
+        $job_site = $filters['receipt_job'] ?? '';
+        $employee = $filters['receipt_employee'] ?? '';
+        $status = $filters['receipt_status'] ?? '';
+        $amount = $filters['receipt_amount'] ?? '';
+        $category = $filters['receipt_category'] ?? '';
         $job_sites = cleg_admin_job_sites();
         $records = cleg_admin_receipt_records(cleg_admin_receipts_filter_formula($date, $job_site, $employee, $status, $amount));
-        $review_count = is_wp_error($records) ? 0 : cleg_admin_receipts_review_count($records);
-        $html = cleg_admin_receipts_procurement_shell_open($review_count);
 
         if (is_wp_error($records) || is_wp_error($job_sites)) {
-            return $html . cleg_admin_error($records, $job_sites) . cleg_admin_receipts_styles() . cleg_admin_receipts_procurement_shell_close();
+            return cleg_admin_receipts_procurement_shell_open(0) . cleg_admin_error($records, $job_sites) . cleg_admin_receipts_styles() . cleg_admin_receipts_procurement_shell_close();
         }
 
-        $html .= '<details class="cleg-receipt-filter-drawer"><summary><span>Filtros</span><small>Dia, proyecto, persona, monto o estado</small></summary>'
-            . cleg_admin_receipts_filters($date, $job_site, $employee, $status, $amount, $job_sites)
+        $categories = cleg_admin_receipts_categories($records, $category);
+        if ($category !== '') {
+            $records = array_values(array_filter($records, function ($record) use ($category) {
+                return cleg_admin_field($record, 'Purchase Category') === $category;
+            }));
+        }
+        $html = cleg_admin_receipts_procurement_shell_open(cleg_admin_receipts_review_count($records));
+        $html .= '<details class="cleg-receipt-filter-drawer"' . ($category !== '' ? ' open' : '') . '><summary><span>Filtros</span><small>Día, proyecto, persona, tipo de compra, monto o estado</small></summary>'
+            . cleg_admin_receipts_filters($date, $job_site, $employee, $status, $amount, $job_sites, $category, $categories)
             . '</details>';
-        $page = isset($_GET['receipt_page']) ? max(1, absint($_GET['receipt_page'])) : 1;
         $per_page = 25;
+        $pages = max(1, (int) ceil(count($records) / $per_page));
+        $page = min($pages, max(1, absint($_GET['receipt_page'] ?? 1)));
         $display_records = array_slice((array) $records, ($page - 1) * $per_page, $per_page);
         $html .= '<div class="cleg-receipt-workspace">';
         $html .= '<section class="cleg-receipt-table-zone">' . cleg_admin_receipts_table($records, $display_records) . '</section>';
@@ -49892,6 +49930,12 @@ if (!function_exists('cleg_admin_receipts_styles')) {
             body .cleg-proc-receipts-screen .cleg-receipt-workspace{width:100%!important;max-width:min(1320px,calc(100vw - 24px))!important;margin:0 auto!important;display:block!important}
             body .cleg-proc-receipts-screen .cleg-receipt-table-zone{min-width:0!important;width:100%!important}
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:10px!important;align-items:end!important;margin:0!important;padding:0 16px 16px!important}
+            .cleg-receipt-filter-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
+            .cleg-receipt-filters label,.cleg-receipt-filters select{min-width:0}
+            .cleg-receipt-filters select{width:100%}
+            .cleg-proc-receipts-screen .cleg-receipt-edit-more[open]{display:grid;gap:8px}
+            .cleg-proc-receipts-screen .cleg-receipt-edit-evidence{color:var(--cleg-app-muted,#65707c);font-size:11px}
+            @media(max-width:720px){.cleg-receipt-filter-actions>*{flex:1 1 100%}}
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters label{display:grid;gap:6px;color:var(--cleg-app-muted,#65707c);font-size:12px;font-weight:850;text-transform:none}
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters input,body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters select{min-height:38px;border:1px solid var(--cleg-app-line,#d8e0e7);border-radius:8px;background:#fff;color:var(--cleg-app-ink,#20252b);padding:8px 10px;font:inherit;font-weight:750;text-transform:none;box-shadow:none}
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters button,body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters .cleg-clear-filter{min-height:42px;border:1px solid var(--cleg-app-orange,#c75000);border-radius:8px;background:var(--cleg-app-orange,#c75000);color:#fff!important;-webkit-text-fill-color:#fff!important;padding:10px 14px;font-weight:850;text-decoration:none!important;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 10px 22px rgba(199,80,0,.18)}
@@ -49901,7 +49945,7 @@ if (!function_exists('cleg_admin_receipts_styles')) {
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-panel h2{margin:0 0 6px;color:var(--cleg-app-ink,#20252b)}
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-panel p{margin:0;color:var(--cleg-app-muted,#65707c)}
             body .cleg-proc-receipts-screen .cleg-receipt-kpis{display:flex!important;align-items:stretch!important;gap:10px!important;flex-wrap:wrap!important;max-width:100%!important;margin:0 0 14px!important}
-            body .cleg-proc-receipts-screen .cleg-receipt-kpis a{flex:1 1 150px!important;display:grid!important;align-content:center!important;min-height:70px!important;border:1px solid rgba(6,24,45,.1)!important;border-radius:999px!important;background:#fff!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important;padding:12px 16px!important;text-decoration:none!important;box-shadow:0 14px 34px rgba(6,24,45,.06)!important}
+            body .cleg-proc-receipts-screen .cleg-receipt-kpis :is(a,.cleg-receipt-total){flex:1 1 150px!important;display:grid!important;align-content:center!important;min-height:70px!important;border:1px solid rgba(6,24,45,.1)!important;border-radius:999px!important;background:#fff!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important;padding:12px 16px!important;text-decoration:none!important;box-shadow:0 14px 34px rgba(6,24,45,.06)!important}
             body .cleg-proc-receipts-screen .cleg-receipt-kpis a.is-active{background:#06182d!important;border-color:#06182d!important;color:#fff!important;-webkit-text-fill-color:#fff!important}
             body .cleg-proc-receipts-screen .cleg-receipt-kpis span{display:block!important;color:#516579!important;-webkit-text-fill-color:#516579!important;font-size:12px!important;font-weight:950!important;line-height:1.15!important;text-transform:uppercase!important}
             body .cleg-proc-receipts-screen .cleg-receipt-kpis strong{display:block!important;color:#06182d!important;-webkit-text-fill-color:#06182d!important;font-size:27px!important;line-height:1!important;margin-top:7px!important;letter-spacing:0!important;font-weight:1000!important}
@@ -49961,8 +50005,8 @@ if (!function_exists('cleg_admin_receipts_styles')) {
             body .cleg-proc-receipts-screen .cleg-receipt-pagination div{display:flex;gap:8px;flex-wrap:wrap}
             body .cleg-proc-receipts-screen .cleg-receipt-pagination a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;border:1px solid var(--cleg-app-line);border-radius:999px;background:#fff;color:var(--cleg-app-ink);padding:8px 14px;text-decoration:none;font-weight:950}
             @media(max-width:1180px){body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
-            @media(max-width:720px){body .cleg-proc-receipts-screen .cleg-receipt-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow:visible!important;gap:8px!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis a{min-width:0!important;min-height:76px!important;padding:11px 12px!important;border-radius:14px!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis strong{font-size:23px!important;overflow-wrap:anywhere!important}}
-            @media(max-width:900px){body .cleg-proc-receipts-screen .cleg-receipt-kpis{flex-wrap:nowrap!important;overflow-x:auto!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis a{flex:0 0 152px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary{align-items:flex-start!important;flex-direction:column!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary small{margin-left:0!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary:after{position:absolute!important;right:12px!important;top:10px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer{position:relative!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{grid-template-columns:1fr!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters input,body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters select{min-height:44px!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters button,body .cleg-procurement.cleg-proc-receipts-screen .cleg-clear-filter{width:100%;min-height:44px!important}body .cleg-proc-receipts-screen .cleg-receipt-panel .cleg-receipt-desktop-table{display:none!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-list{display:block!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions{min-width:0;width:100%}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions button{flex:1 1 140px!important}body .cleg-proc-receipts-screen .cleg-receipt-panel th,body .cleg-proc-receipts-screen .cleg-receipt-panel td{white-space:nowrap!important}body .cleg-proc-receipts-screen .cleg-receipt-pagination{align-items:stretch;flex-direction:column}body .cleg-proc-receipts-screen .cleg-receipt-pagination div,body .cleg-proc-receipts-screen .cleg-receipt-pagination a{width:100%}}
+            @media(max-width:720px){body .cleg-proc-receipts-screen .cleg-receipt-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow:visible!important;gap:8px!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis :is(a,.cleg-receipt-total){min-width:0!important;min-height:76px!important;padding:11px 12px!important;border-radius:14px!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis strong{font-size:23px!important;overflow-wrap:anywhere!important}}
+            @media(max-width:900px){body .cleg-proc-receipts-screen .cleg-receipt-kpis{flex-wrap:nowrap!important;overflow-x:auto!important}body .cleg-proc-receipts-screen .cleg-receipt-kpis :is(a,.cleg-receipt-total){flex:0 0 152px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary{align-items:flex-start!important;flex-direction:column!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary small{margin-left:0!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary:after{position:absolute!important;right:12px!important;top:10px!important}body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer{position:relative!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{grid-template-columns:1fr!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters input,body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters select{min-height:44px!important}body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters button,body .cleg-procurement.cleg-proc-receipts-screen .cleg-clear-filter{width:100%;min-height:44px!important}body .cleg-proc-receipts-screen .cleg-receipt-panel .cleg-receipt-desktop-table{display:none!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-list{display:block!important}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions{min-width:0;width:100%}body .cleg-proc-receipts-screen .cleg-receipt-mobile-actions .cleg-receipt-actions button{flex:1 1 140px!important}body .cleg-proc-receipts-screen .cleg-receipt-panel th,body .cleg-proc-receipts-screen .cleg-receipt-panel td{white-space:nowrap!important}body .cleg-proc-receipts-screen .cleg-receipt-pagination{align-items:stretch;flex-direction:column}body .cleg-proc-receipts-screen .cleg-receipt-pagination div,body .cleg-proc-receipts-screen .cleg-receipt-pagination a{width:100%}}
         </style><script>(function(){function setZoom(detail,zoom){zoom=Math.max(.6,Math.min(3,zoom));detail.dataset.zoom=String(zoom);var img=detail.querySelector(".cleg-receipt-stage img");var label=detail.querySelector("[data-receipt-zoom-label]");if(img)img.style.setProperty("--receipt-zoom",zoom);if(label)label.textContent=Math.round(zoom*100)+"%";}document.addEventListener("toggle",function(event){var detail=event.target;if(detail.matches&&detail.matches(".cleg-receipt-preview")&&detail.open){setZoom(detail,1);}} ,true);document.addEventListener("click",function(event){var detail=event.target.closest(".cleg-receipt-preview");if(!detail)return;if(event.target.closest("[data-receipt-close]")){detail.open=false;return;}if(event.target.closest("[data-receipt-zoom-in]")){setZoom(detail,parseFloat(detail.dataset.zoom||"1")+.25);return;}if(event.target.closest("[data-receipt-zoom-out]")){setZoom(detail,parseFloat(detail.dataset.zoom||"1")-.25);}});document.addEventListener("submit",function(event){var form=event.target;if(!form.matches||!form.matches(".cleg-receipt-actions"))return;form.classList.add("is-submitting");var clicked=event.submitter||(document.activeElement&&document.activeElement.tagName==="BUTTON"?document.activeElement:null);form.querySelectorAll("button").forEach(function(button){if(button===clicked){button.classList.add("is-loading");button.dataset.originalText=button.textContent;button.textContent="Guardando...";}else{button.disabled=true;}});});})();</script>';
     }
 }
@@ -49970,7 +50014,7 @@ if (!function_exists('cleg_admin_receipts_styles')) {
 if (!function_exists('cleg_receipts_mobile_kpi_grid_styles')) {
     function cleg_receipts_mobile_kpi_grid_styles($content) {
         if (strpos((string) $content, 'class="cleg-proc-receipts-screen"') === false) return $content;
-        return '<style>@media(max-width:720px){.cleg-proc-receipts-screen .cleg-receipt-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow:visible!important;gap:8px!important}.cleg-proc-receipts-screen .cleg-receipt-kpis a{min-width:0!important;min-height:76px!important;padding:11px 12px!important;border-radius:14px!important}.cleg-proc-receipts-screen .cleg-receipt-kpis strong{font-size:23px!important;overflow-wrap:anywhere!important}}</style>' . $content;
+        return '<style>@media(max-width:720px){.cleg-proc-receipts-screen .cleg-receipt-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;overflow:visible!important;gap:8px!important}.cleg-proc-receipts-screen .cleg-receipt-kpis :is(a,.cleg-receipt-total){min-width:0!important;min-height:76px!important;padding:11px 12px!important;border-radius:14px!important}.cleg-proc-receipts-screen .cleg-receipt-kpis strong{font-size:23px!important;overflow-wrap:anywhere!important}}</style>' . $content;
     }
     add_filter('the_content', 'cleg_receipts_mobile_kpi_grid_styles', 100);
 }
