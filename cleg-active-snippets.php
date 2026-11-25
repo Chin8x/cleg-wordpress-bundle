@@ -49962,7 +49962,12 @@ if (!function_exists('cleg_admin_receipts_quickbooks_groups')) {
         foreach ($rows as $row) {
             $card = trim($row['card']);
             $last4 = preg_match('/^[0-9]{4}$/D', $row['last4']) ? $row['last4'] : '';
-            if ($row['date'] === '' || $row['total'] === '' || $row['total'] == 0 || ($card === '' && $last4 === '')) {
+            if ($row['date'] === '' || $row['total'] === '' || $row['total'] == 0) {
+                continue;
+            }
+            if ($card === '' && $last4 === '') {
+                $groups['unassigned']['label'] = 'Sin tarjeta identificada';
+                $groups['unassigned']['rows'][] = $row;
                 continue;
             }
             $key = substr(hash('sha256', strtolower($card) . '|' . $last4), 0, 16);
@@ -49996,17 +50001,20 @@ if (!function_exists('cleg_admin_receipts_export_menu')) {
             . $link('pdf', 'PDF') . $link('excel', 'Excel')
             . '<details class="cleg-receipt-export-cards"><summary>QuickBooks</summary>';
         if (empty($cards)) {
-            $html .= '<p>No hay recibos con fecha, tarjeta identificada e importe distinto de cero.</p>';
+            $html .= '<p>No hay recibos con fecha e importe distinto de cero.</p>';
         } else {
-            $html .= '<p>Descarga el CSV de la tarjeta que vas a seleccionar en QuickBooks.</p>';
+            $html .= '<p>Selecciona una tarjeta para descargar su CSV.</p>';
             foreach ($cards as $key => $card) {
                 $html .= $link('quickbooks', $card['label'] . ' · CSV', $key);
+            }
+            if (isset($cards['unassigned'])) {
+                $html .= '<p>Para los recibos sin tarjeta, verifica la cuenta de cada movimiento y separa los de cuentas distintas antes de importar.</p>';
             }
             $eligible_count = array_sum(array_map(function ($card) {
                 return count($card['rows']);
             }, $cards));
             if ($eligible_count < count($rows)) {
-                $html .= '<p>Recibos fuera del CSV por falta de fecha, tarjeta o importe: ' . esc_html(count($rows) - $eligible_count) . '.</p>';
+                $html .= '<p>Recibos fuera del CSV por falta de fecha o importe válido: ' . esc_html(count($rows) - $eligible_count) . '.</p>';
             }
         }
         return $html . '</details></div></details></div>';
@@ -50154,7 +50162,7 @@ if (!function_exists('cleg_admin_receipts_export')) {
             $card = sanitize_key(wp_unslash($_GET['receipt_card'] ?? ''));
             $group = cleg_admin_receipts_quickbooks_groups($rows)[$card] ?? null;
             if ($group === null) {
-                wp_die('Selecciona una tarjeta con recibos aptos para QuickBooks.', '', array('response' => 400));
+                wp_die('Selecciona uno de los CSV disponibles para QuickBooks.', '', array('response' => 400));
             }
             $content = cleg_admin_receipts_quickbooks_csv($group['rows']);
             if (count($group['rows']) > 1000 || strlen($content) > 350000) {
