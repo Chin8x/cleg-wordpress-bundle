@@ -12550,8 +12550,10 @@ if (!function_exists('cleg_admin_paid_sick_form')) {
     function cleg_admin_paid_sick_form($employee_id, $from_payroll = false) {
         $preview = $GLOBALS['cleg_admin_paid_sick_preview'] ?? array();
         $confirm = ($preview['employee_id'] ?? '') === $employee_id;
-        $html = '<details class="cleg-admin-create-drawer cleg-leave-drawer"' . ($confirm ? ' open' : '') . '><summary>Enfermedad ya pagada</summary>'
-            . '<form class="cleg-admin-form cleg-leave-form" method="post">'
+        $drawer_class = $from_payroll ? 'cleg-payroll-leave-paid' : 'cleg-admin-create-drawer cleg-leave-drawer';
+        $form_class = $from_payroll ? 'cleg-payroll-leave-paid-form' : 'cleg-admin-form cleg-leave-form';
+        $html = '<details class="' . $drawer_class . '"' . ($confirm ? ' open' : '') . '><summary>Enfermedad ya pagada</summary>'
+            . '<form class="' . $form_class . '" method="post">'
             . wp_nonce_field($from_payroll ? 'cleg_payroll_worker_leave' : 'cleg_admin_employee_action', 'cleg_admin_employee_nonce', true, false)
             . '<input type="hidden" name="cleg_admin_employee_action" value="' . ($confirm ? 'confirm_paid_sick' : 'preview_paid_sick') . '">'
             . '<input type="hidden" name="employee_record_id" value="' . esc_attr($employee_id) . '">';
@@ -19416,7 +19418,7 @@ if (!function_exists('cleg_payroll_worker_leave_panel')) {
         $selected_id = sanitize_text_field(wp_unslash($_GET['payroll_leave_employee'] ?? ''));
         $employees = cleg_hr_core_records(CLEG_AIRTABLE_EMPLOYEES_TABLE, array('sort[0][field]' => 'Employee Name'));
         if (is_wp_error($employees)) {
-            return '<p role="alert">No se pudo cargar la lista de trabajadores para registrar licencias.</p>';
+            return '<p class="cleg-payroll-blocked" role="alert">No se pudo cargar la lista de trabajadores para registrar licencias.</p>';
         }
         $workers = array();
         foreach (array_filter($employees, 'cleg_payroll_can_register_worker_leave') as $employee) {
@@ -19426,29 +19428,32 @@ if (!function_exists('cleg_payroll_worker_leave_panel')) {
         $notice = sanitize_text_field(wp_unslash($_GET['cleg_admin_error'] ?? ''));
         $saved = sanitize_text_field(wp_unslash($_GET['cleg_saved'] ?? ''));
         $success = array('leave' => 'Licencia agregada a Payroll.', 'paid_sick' => 'Descuento aplicado al saldo de enfermedad.', 'void_leave' => 'Licencia anulada.');
-        $html = '<details class="cleg-admin-create-drawer cleg-leave-drawer"' . ($selected_id !== '' ? ' open' : '') . '><summary>Agregar vacaciones o enfermedad</summary>';
+        $html = '<details class="cleg-payroll-panel cleg-payroll-leave"' . ($selected_id !== '' ? ' open' : '') . '>'
+            . '<summary>Agregar vacaciones o enfermedad</summary><div class="cleg-payroll-leave-content">';
         if ($notice !== '') {
             $html .= '<p class="cleg-payroll-blocked" role="alert">' . esc_html($notice) . '</p>';
         } elseif (isset($success[$saved])) {
             $html .= '<p class="cleg-payroll-notice" role="status">' . esc_html($success[$saved]) . '</p>';
         }
-        $html .= '<form class="cleg-payroll-filters" method="get"><input type="hidden" name="payroll_week" value="' . esc_attr($end) . '">'
+        $html .= '<form class="cleg-payroll-leave-picker" method="get"><input type="hidden" name="payroll_week" value="' . esc_attr($end) . '">'
             . '<label>Trabajador<select name="payroll_leave_employee" required><option value="">Seleccionar</option>';
         foreach ($workers as $id => $worker) {
             $html .= '<option value="' . esc_attr($id) . '"' . selected($selected_id, $id, false) . '>' . esc_html(cleg_payroll_field($worker, 'Employee Name')) . '</option>';
         }
         $html .= '</select></label><button type="submit">Ver licencias</button></form>';
         if (!$employee) {
-            return $html . '</details>';
+            return $html . '</div></details>';
         }
 
         $nonce = wp_nonce_field('cleg_payroll_worker_leave', 'cleg_admin_employee_nonce', true, false);
         $context = '<input type="hidden" name="cleg_payroll_leave_context" value="1"><input type="hidden" name="employee_record_id" value="' . esc_attr($selected_id) . '">';
         $sick_balance = cleg_hr_current_sick_balance($employee);
         $vacation_balance = cleg_payroll_number(cleg_payroll_raw_field($employee, 'PTO Vacation Balance Hours'), 0);
-        $html .= '<p>Saldo de enfermedad: <strong>' . esc_html(is_wp_error($sick_balance) ? 'No disponible' : number_format($sick_balance, 2) . ' h') . '</strong> · Vacaciones: <strong>' . esc_html(number_format($vacation_balance, 2) . ' h') . '</strong></p>';
+        $html .= '<dl class="cleg-payroll-leave-balances"><div><dt>Saldo de enfermedad</dt><dd>'
+            . esc_html(is_wp_error($sick_balance) ? 'No disponible' : number_format($sick_balance, 2) . ' h')
+            . '</dd></div><div><dt>Saldo de vacaciones</dt><dd>' . esc_html(number_format($vacation_balance, 2) . ' h') . '</dd></div></dl>';
         if ($can_create) {
-            $html .= '<form class="cleg-admin-form cleg-leave-form" method="post">' . $nonce . $context
+            $html .= '<form class="cleg-payroll-leave-entry" method="post">' . $nonce . $context
                 . '<input type="hidden" name="cleg_admin_employee_action" value="create_leave"><input type="hidden" name="leave_use_balance" value="1"><input type="hidden" name="leave_visible_paystub" value="1">'
                 . '<label>Tipo<select name="leave_type"><option value="Vacation">Vacaciones</option><option value="Sick">Enfermedad</option></select></label>'
                 . '<label>Fecha<input name="leave_start_date" type="date" min="' . esc_attr($start) . '" max="' . esc_attr($end) . '" required></label>'
@@ -19461,9 +19466,10 @@ if (!function_exists('cleg_payroll_worker_leave_panel')) {
 
         $records = cleg_admin_employee_leave_records($employee);
         if (is_wp_error($records)) {
-            return $html . '<p role="alert">No se pudo cargar el historial de licencias.</p></details>';
+            return $html . '<p class="cleg-payroll-blocked" role="alert">No se pudo cargar el historial de licencias.</p></div></details>';
         }
-        $html .= '<h3>Historial de licencias</h3><ul>';
+        $history = '';
+        $status_labels = array('Approved' => 'Aprobada', 'Pending' => 'Pendiente', 'Draft' => 'Borrador', 'Rejected' => 'Anulada');
         foreach ($records as $record) {
             $fields = $record['fields'] ?? array();
             $type = $fields['Leave Type'] ?? '';
@@ -19473,16 +19479,24 @@ if (!function_exists('cleg_payroll_worker_leave_panel')) {
             $start_date = $fields['Start Date'] ?? '';
             $end_date = $fields['End Date'] ?? '';
             $label = cleg_hr_is_paid_sick_adjustment($record) ? 'Enfermedad ya pagada' : ($type === 'Sick' ? 'Enfermedad' : 'Vacaciones');
-            $status = ($fields['Status'] ?? '') === 'Rejected' ? 'Anulada' : ($fields['Status'] ?? '');
-            $html .= '<li>' . esc_html($start_date . ($end_date !== $start_date ? ' a ' . $end_date : '') . ' · ' . $label . ' · ' . number_format((float) ($fields['Hours Count'] ?? 0), 2) . ' h · ' . $status);
+            $status = $fields['Status'] ?? '';
+            $dates = $end_date !== $start_date ? array($start_date, $end_date) : array($start_date);
+            $date_label = implode(' a ', array_map(function ($date) {
+                return implode('/', array_reverse(explode('-', $date)));
+            }, $dates));
+            $history .= '<li class="cleg-payroll-leave-record"><div><strong>' . esc_html($label) . '</strong><small>' . esc_html($date_label) . '</small></div>'
+                . '<span class="cleg-payroll-leave-hours">' . esc_html(number_format((float) ($fields['Hours Count'] ?? 0), 2) . ' h') . '</span>'
+                . '<span class="cleg-payroll-leave-status" data-status="' . esc_attr($status) . '">' . esc_html($status_labels[$status] ?? $status) . '</span>';
             if (cleg_admin_can_void_worker_leave($record, $selected_id)) {
-                $html .= '<details><summary>Anular licencia</summary><form method="post">' . $nonce . $context
+                $history .= '<details class="cleg-payroll-leave-void"><summary>Anular licencia</summary><form method="post">' . $nonce . $context
                     . '<input type="hidden" name="cleg_admin_employee_action" value="void_worker_leave"><input type="hidden" name="leave_record_id" value="' . esc_attr($record['id']) . '">'
                     . '<label><input type="checkbox" name="confirm_void" value="1" required> Confirmo que se registró por error</label> <button type="submit">Confirmar anulación</button></form></details>';
             }
-            $html .= '</li>';
+            $history .= '</li>';
         }
-        return $html . '</ul></details>';
+        $html .= '<section class="cleg-payroll-leave-history"><h3>Historial de licencias</h3>'
+            . ($history === '' ? '<p>Todavía no hay licencias registradas.</p>' : '<ul>' . $history . '</ul>') . '</section>';
+        return $html . '</div></details>';
     }
 }
 
@@ -20144,6 +20158,170 @@ if (!function_exists('cleg_payroll_styles')) {
 .cleg-payroll-blocked strong{display:block;margin-bottom:6px}
 .cleg-payroll-blocked small{display:block;margin-top:6px;color:#7a3a00}
 .cleg-payroll-notice{margin-bottom:14px;color:#107344;font-weight:900}
+.cleg-payroll .cleg-payroll-leave {
+    width:min(1320px,calc(100% - 24px));
+    margin:0 auto 14px;
+    border:1px solid rgba(6,24,45,.13);
+    border-radius:8px;
+    background:#fff;
+    box-shadow:0 14px 34px rgba(6,24,45,.07);
+}
+.cleg-payroll-leave > summary,
+.cleg-payroll-leave-paid > summary {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    min-height:48px;
+    padding:12px 16px;
+    color:#06182d;
+    font-weight:900;
+    list-style:none;
+    cursor:pointer;
+}
+.cleg-payroll-leave > summary::-webkit-details-marker,
+.cleg-payroll-leave-paid > summary::-webkit-details-marker {display:none}
+.cleg-payroll-leave > summary::after,
+.cleg-payroll-leave-paid > summary::after {
+    content:"";
+    width:7px;
+    height:7px;
+    flex:none;
+    margin-right:3px;
+    border:solid #516579;
+    border-width:0 2px 2px 0;
+    transform:rotate(45deg);
+}
+.cleg-payroll-leave[open] > summary::after,
+.cleg-payroll-leave-paid[open] > summary::after {transform:rotate(225deg)}
+.cleg-payroll-leave summary:focus-visible {
+    outline:2px solid #516579;
+    outline-offset:-3px;
+    border-radius:8px;
+}
+.cleg-payroll-leave-content {
+    display:grid;
+    gap:16px;
+    padding:16px;
+    border-top:1px solid rgba(6,24,45,.12);
+}
+body .cleg-payroll .cleg-payroll-leave form:not(.cleg-payroll-rollback) {
+    width:100%!important;
+    max-width:none!important;
+    margin:0!important;
+}
+body .cleg-payroll .cleg-payroll-leave-content > :is(.cleg-payroll-blocked,.cleg-payroll-notice) {
+    width:100%!important;
+    max-width:none!important;
+    min-width:0;
+    margin:0!important;
+}
+.cleg-payroll-leave-picker,
+.cleg-payroll-leave-entry,
+.cleg-payroll-leave-paid-form {
+    display:grid;
+    align-items:end;
+    gap:12px;
+}
+.cleg-payroll-leave-picker {grid-template-columns:minmax(0,340px) max-content}
+.cleg-payroll-leave-entry {
+    grid-template-columns:repeat(2,minmax(0,1fr)) minmax(80px,.48fr) max-content;
+    padding:14px;
+    border:1px solid rgba(6,24,45,.12);
+    border-radius:8px;
+    background:#f7f9fc;
+}
+.cleg-payroll-leave :is(.cleg-payroll-leave-picker,.cleg-payroll-leave-entry,.cleg-payroll-leave-paid-form) label {
+    display:grid;
+    gap:5px;
+    min-width:0;
+    margin:0;
+    color:#516579;
+    font-size:12px;
+    font-weight:900;
+}
+body .cleg-payroll .cleg-payroll-leave label :is(input:not([type=checkbox]),select,textarea) {
+    width:100%;
+    min-width:0!important;
+    max-width:100%;
+}
+.cleg-payroll-leave-balances {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:12px;
+    margin:0;
+}
+.cleg-payroll-leave-balances > div {
+    padding:12px 14px;
+    border:1px solid rgba(6,24,45,.12);
+    border-radius:8px;
+    background:#f7f9fc;
+}
+.cleg-payroll-leave-balances dt {color:#516579;font-size:12px;font-weight:900;text-transform:uppercase}
+.cleg-payroll-leave-balances dd {margin:4px 0 0;color:#06182d;font-size:20px;font-weight:900}
+.cleg-payroll-leave-paid,.cleg-payroll-leave-history {border:1px solid rgba(6,24,45,.12);border-radius:8px}
+.cleg-payroll-leave-paid {background:#f7f9fc}
+.cleg-payroll-leave-paid-form {
+    grid-template-columns:minmax(0,1fr) minmax(125px,.35fr);
+    padding:14px 16px 16px;
+    border-top:1px solid rgba(6,24,45,.12);
+}
+.cleg-payroll-leave-paid-form > p {grid-column:1/-1;margin:0;color:#516579;font-size:14px}
+body .cleg-payroll .cleg-payroll-leave-paid-form textarea {border-radius:10px!important}
+.cleg-payroll-leave-paid-form > :is(button,a) {justify-self:start}
+.cleg-payroll-leave-paid-form > a {align-self:center;color:#06182d;font-weight:800}
+.cleg-payroll-leave-history {padding:14px 16px}
+.cleg-payroll-leave-history h3 {margin:0 0 8px;color:#06182d;font-size:16px;font-weight:900}
+.cleg-payroll-leave-history ul {margin:0;padding:0;list-style:none}
+.cleg-payroll-leave-record {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto auto auto;
+    align-items:center;
+    gap:8px 14px;
+    padding:10px 0;
+    border-top:1px solid rgba(6,24,45,.12);
+    color:#06182d;
+    font-size:14px;
+}
+.cleg-payroll-leave-record small {display:block;color:#516579;font-size:12px}
+.cleg-payroll-leave-hours {font-weight:900;white-space:nowrap}
+.cleg-payroll-leave-status {
+    justify-self:start;
+    padding:4px 8px;
+    border-radius:999px;
+    background:#edf1f6;
+    color:#516579;
+    font-size:12px;
+    font-weight:900;
+}
+.cleg-payroll-leave-status[data-status="Approved"] {background:#e6f4ed;color:#107344}
+.cleg-payroll-leave-status[data-status="Pending"] {background:#fff8ed;color:#7a3a00}
+.cleg-payroll-leave-void[open] {grid-column:1/-1}
+.cleg-payroll-leave-void > summary {min-height:32px;padding:6px 8px;color:#7a3a00;font-weight:800;cursor:pointer}
+.cleg-payroll-leave-void > form {
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:10px;
+    padding:10px 12px;
+    border:1px solid #ffd8a8;
+    border-radius:8px;
+    background:#fff8ed;
+    color:#7a3a00;
+}
+.cleg-payroll-leave-void label {display:flex;align-items:center;gap:8px;margin:0}
+body .cleg-payroll .cleg-payroll-leave-void input[type=checkbox] {
+    width:16px!important;
+    min-height:16px!important;
+    padding:0!important;
+    margin:0!important;
+}
+@media(max-width:720px) {
+    .cleg-payroll-leave-content {gap:12px;padding:12px}
+    .cleg-payroll-leave-picker,.cleg-payroll-leave-entry,.cleg-payroll-leave-paid-form {grid-template-columns:minmax(0,1fr)}
+    .cleg-payroll-leave-record {grid-template-columns:minmax(0,1fr) auto}
+    .cleg-payroll-leave-void {grid-column:1/-1}
+}
 .cleg-payroll-month-report{width:min(1320px,calc(100% - 24px));max-width:min(1320px,calc(100% - 24px));margin:18px auto 0;display:grid;gap:14px}
 .cleg-payroll-month-filter{display:flex;flex-wrap:wrap;gap:10px;align-items:end;border:1px solid rgba(6,24,45,.12);border-radius:14px;background:#fff;padding:14px;box-shadow:0 14px 34px rgba(6,24,45,.06)}
 .cleg-payroll-month-filter label{display:grid;gap:5px;color:#516579;font-size:12px;font-weight:950;text-transform:uppercase}
