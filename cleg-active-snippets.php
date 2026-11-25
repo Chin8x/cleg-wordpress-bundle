@@ -18961,17 +18961,27 @@ add_action('admin_post_cleg_payroll_reports_export', 'cleg_payroll_reports_expor
 
 if (!function_exists('cleg_payroll_report_pdf_document')) {
     function cleg_payroll_report_pdf_document($content, $logo = '') {
-        $objects = array();
-        $objects[] = '<< /Type /Catalog /Pages 2 0 R >>';
-        $objects[] = '<< /Type /Pages /Kids [3 0 R] /Count 1 >>';
-        $xobject = $logo !== '' ? ' /XObject << /Logo 7 0 R >>' : '';
-        $objects[] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R /F2 6 0 R >>' . $xobject . ' >> /Contents 4 0 R >>';
-        $objects[] = '<< /Length ' . strlen($content) . " >>\nstream\n" . $content . "\nendstream";
-        $objects[] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
-        $objects[] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+        $pages = is_array($content) ? $content : array($content);
+        $objects = array(
+            '<< /Type /Catalog /Pages 2 0 R >>',
+            '',
+            '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+            '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
+        );
+        $xobject = $logo !== '' ? ' /XObject << /Logo 5 0 R >>' : '';
         if ($logo !== '') {
             $objects[] = '<< /Type /XObject /Subtype /Image /Width 180 /Height 180 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' . strlen($logo) . " >>\nstream\n" . $logo . "\nendstream";
         }
+        $kids = array();
+        foreach ($pages as $page) {
+            $page_id = count($objects) + 1;
+            $stream_id = $page_id + 1;
+            $kids[] = $page_id . ' 0 R';
+            $objects[] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>'
+                . $xobject . ' >> /Contents ' . $stream_id . ' 0 R >>';
+            $objects[] = '<< /Length ' . strlen($page) . " >>\nstream\n" . $page . "\nendstream";
+        }
+        $objects[1] = '<< /Type /Pages /Kids [' . implode(' ', $kids) . '] /Count ' . count($kids) . ' >>';
         $pdf = "%PDF-1.4\n";
         $offsets = array();
         foreach ($objects as $index => $object) {
@@ -49895,6 +49905,272 @@ if (!function_exists('cleg_admin_receipts_procurement_shell_close')) {
     }
 }
 
+if (!function_exists('cleg_admin_receipts_formula_for_filters')) {
+    function cleg_admin_receipts_formula_for_filters($filters) {
+        return cleg_admin_receipts_filter_formula(
+            $filters['receipt_date'] ?? '',
+            $filters['receipt_job'] ?? '',
+            $filters['receipt_employee'] ?? '',
+            $filters['receipt_status'] ?? '',
+            $filters['receipt_amount'] ?? '',
+            $filters['receipt_from'] ?? '',
+            $filters['receipt_to'] ?? ''
+        );
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_by_category')) {
+    function cleg_admin_receipts_by_category($records, $category) {
+        if ($category === '') {
+            return $records;
+        }
+        return array_values(array_filter($records, function ($record) use ($category) {
+            return cleg_admin_field($record, 'Purchase Category') === $category;
+        }));
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_export_rows')) {
+    function cleg_admin_receipts_export_rows($records) {
+        $rows = array();
+        foreach ($records as $record) {
+            $date = substr(cleg_admin_field($record, 'Purchase Date'), 0, 10);
+            $qty = cleg_admin_field($record, 'Quantity');
+            $total = cleg_admin_field($record, 'Total');
+            $rows[] = array(
+                'code' => cleg_admin_field($record, 'Receipt Code', $record['id'] ?? ''),
+                'date' => cleg_admin_receipts_valid_date($date) ? $date : '',
+                'employee' => cleg_admin_field($record, 'Employee Name', cleg_admin_field($record, 'Portal Username')),
+                'project' => cleg_admin_field($record, 'Job Site Name'),
+                'category' => cleg_admin_field($record, 'Purchase Category'),
+                'description' => cleg_admin_field($record, 'Description'),
+                'quantity' => is_numeric($qty) ? (float) $qty : '',
+                'total' => is_numeric($total) ? round((float) $total, 2) : '',
+                'status' => cleg_admin_field($record, 'Status', 'Archivado'),
+                'card' => cleg_admin_field($record, 'Company Card'),
+                'last4' => cleg_admin_field($record, 'Card Last 4'),
+                'account' => cleg_admin_field($record, 'QuickBooks Suggested Account'),
+            );
+        }
+        return $rows;
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_quickbooks_groups')) {
+    function cleg_admin_receipts_quickbooks_groups($rows) {
+        $groups = array();
+        foreach ($rows as $row) {
+            $card = trim($row['card']);
+            $last4 = preg_match('/^[0-9]{4}$/D', $row['last4']) ? $row['last4'] : '';
+            if ($row['date'] === '' || $row['total'] === '' || $row['total'] == 0 || ($card === '' && $last4 === '')) {
+                continue;
+            }
+            $key = substr(hash('sha256', strtolower($card) . '|' . $last4), 0, 16);
+            $label = $card !== '' ? $card : 'Tarjeta';
+            if ($last4 !== '' && strpos($label, $last4) === false) {
+                $label .= ' · ' . $last4;
+            }
+            $groups[$key]['label'] = $label;
+            $groups[$key]['rows'][] = $row;
+        }
+        return $groups;
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_export_menu')) {
+    function cleg_admin_receipts_export_menu($rows, $filters) {
+        if (empty($rows)) {
+            return '';
+        }
+        $base = add_query_arg(array_merge($filters, array('action' => 'cleg_admin_receipts_export')), admin_url('admin-post.php'));
+        $link = function ($format, $label, $card = '') use ($base) {
+            $params = array('receipt_format' => $format);
+            if ($card !== '') {
+                $params['receipt_card'] = $card;
+            }
+            $url = wp_nonce_url(add_query_arg($params, $base), 'cleg_admin_receipts_export');
+            return '<a href="' . esc_url($url) . '">' . esc_html($label) . '</a>';
+        };
+        $cards = cleg_admin_receipts_quickbooks_groups($rows);
+        $html = '<div class="cleg-receipt-export-bar"><details class="cleg-receipt-export"><summary>Exportar</summary><div class="cleg-receipt-export-options">'
+            . $link('pdf', 'PDF') . $link('excel', 'Excel')
+            . '<details class="cleg-receipt-export-cards"><summary>QuickBooks</summary>';
+        if (empty($cards)) {
+            $html .= '<p>No hay recibos con fecha, tarjeta identificada e importe distinto de cero.</p>';
+        } else {
+            $html .= '<p>Descarga el CSV de la tarjeta que vas a seleccionar en QuickBooks.</p>';
+            foreach ($cards as $key => $card) {
+                $html .= $link('quickbooks', $card['label'] . ' · CSV', $key);
+            }
+            $eligible_count = array_sum(array_map(function ($card) {
+                return count($card['rows']);
+            }, $cards));
+            if ($eligible_count < count($rows)) {
+                $html .= '<p>Recibos fuera del CSV por falta de fecha, tarjeta o importe: ' . esc_html(count($rows) - $eligible_count) . '.</p>';
+            }
+        }
+        return $html . '</details></div></details></div>';
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_export_summary')) {
+    function cleg_admin_receipts_export_summary($rows, $filters) {
+        $legacy = $filters['receipt_date'] ?? '';
+        $from = $filters['receipt_from'] ?? '';
+        $to = $filters['receipt_to'] ?? '';
+        if ($from === '' && $to === '') {
+            $from = $to = $legacy;
+        }
+        return array(
+            'Desde' => $from !== '' ? $from : 'Sin límite',
+            'Hasta' => $to !== '' ? $to : 'Sin límite',
+            'Tipo de compra' => $filters['receipt_category'] ?? 'Todos',
+            'Proyecto' => $filters['receipt_job'] ?? 'Todos',
+            'Persona' => $filters['receipt_employee'] ?? 'Todas',
+            'Estado' => $filters['receipt_status'] ?? 'Todos',
+            'Monto exacto' => $filters['receipt_amount'] ?? 'Sin filtro',
+            'Recibos' => count($rows),
+            'Total' => round(array_sum(array_column($rows, 'total')), 2),
+        );
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_excel')) {
+    function cleg_admin_receipts_excel($rows, $summary) {
+        $overview = array();
+        foreach ($summary as $label => $value) {
+            $overview[] = array($label, $label === 'Total' ? array($value, 'money', 'Number') : $value);
+        }
+        $detail = array(cleg_payroll_xls_row(array('Recibo', 'Fecha de compra', 'Persona', 'Proyecto', 'Tipo de compra', 'Descripción', 'Cantidad', 'Total pagado', 'Estado', 'Tarjeta'), 'header'));
+        foreach ($rows as $row) {
+            $detail[] = array(
+                array($row['code'], '', 'String'), $row['date'], $row['employee'], $row['project'],
+                $row['category'], $row['description'], $row['quantity'], array($row['total'], 'money'),
+                $row['status'], $row['card'] . ($row['last4'] !== '' && strpos($row['card'], $row['last4']) === false ? ' ' . $row['last4'] : ''),
+            );
+        }
+        return '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>'
+            . '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
+            . '<Styles><Style ss:ID="header"><Font ss:Bold="1"/><Interior ss:Color="#DBE5F1" ss:Pattern="Solid"/></Style>'
+            . '<Style ss:ID="money"><NumberFormat ss:Format="$#,##0.00"/></Style></Styles>'
+            . cleg_payroll_xls_sheet('Resumen', $overview) . cleg_payroll_xls_sheet('Recibos', $detail) . '</Workbook>';
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_pdf')) {
+    function cleg_admin_receipts_pdf($rows, $summary) {
+        $chunks = array_chunk($rows, 25);
+        $pages = array();
+        $logo = cleg_emp_payroll_pdf_logo_data();
+        foreach ($chunks as $index => $items) {
+            $page = "0.04 0.09 0.17 rg\n0 695 612 97 re f\n";
+            if ($logo !== '') {
+                $page .= "q\n56 0 0 56 518 714 cm\n/Logo Do\nQ\n";
+            }
+            $page .= cleg_payroll_report_pdf_text(36, 750, 18, 'Recibos de compra', 'F2', '1 1 1');
+            $page .= cleg_payroll_report_pdf_text(36, 729, 10, 'C&L Engineering Group LLC', 'F1', '1 1 1');
+            $page .= cleg_payroll_report_pdf_text(36, 674, 10, 'Desde ' . $summary['Desde'] . '   Hasta ' . $summary['Hasta'] . '   Tipo: ' . cleg_payroll_report_pdf_truncate($summary['Tipo de compra'], 42));
+            $page .= cleg_payroll_report_pdf_text(36, 656, 9, 'Proyecto: ' . cleg_payroll_report_pdf_truncate($summary['Proyecto'], 24) . '   Persona: ' . cleg_payroll_report_pdf_truncate($summary['Persona'], 24) . '   Estado: ' . $summary['Estado'] . '   Monto exacto: ' . $summary['Monto exacto']);
+            $page .= cleg_payroll_report_pdf_text(36, 636, 12, 'Total filtrado: $' . number_format($summary['Total'], 2) . '   |   ' . $summary['Recibos'] . ' recibos', 'F2');
+            $page .= "0.93 0.95 0.97 rg\n32 598 548 22 re f\n";
+            $columns = array(36 => 'Fecha', 96 => 'Recibo', 217 => 'Tipo de compra', 382 => 'Cantidad', 443 => 'Total', 510 => 'Estado');
+            foreach ($columns as $x => $label) {
+                $page .= cleg_payroll_report_pdf_text($x, 606, 9, $label, 'F2');
+            }
+            foreach ($items as $i => $row) {
+                $y = 584 - $i * 22;
+                $page .= cleg_payroll_report_pdf_text(36, $y, 8, $row['date'] ?: '-');
+                $page .= cleg_payroll_report_pdf_text(96, $y, 8, cleg_payroll_report_pdf_truncate($row['code'], 26), 'F2');
+                $page .= cleg_payroll_report_pdf_text(217, $y, 8, cleg_payroll_report_pdf_truncate($row['category'], 35));
+                $page .= cleg_payroll_report_pdf_text(382, $y, 8, $row['quantity'] === '' ? '-' : $row['quantity']);
+                $page .= cleg_payroll_report_pdf_text(443, $y, 8, $row['total'] === '' ? '-' : '$' . number_format($row['total'], 2));
+                $page .= cleg_payroll_report_pdf_text(510, $y, 8, $row['status']);
+                $detail = implode(' | ', array_filter(array($row['employee'], $row['project'], $row['description'])));
+                $page .= cleg_payroll_report_pdf_text(36, $y - 10, 7, cleg_payroll_report_pdf_truncate($detail, 117), 'F1', '0.30 0.38 0.46');
+            }
+            $page .= cleg_payroll_report_pdf_text(36, 28, 8, 'Página ' . ($index + 1) . ' de ' . count($chunks), 'F1', '0.30 0.38 0.46');
+            $pages[] = $page;
+        }
+        return cleg_payroll_report_pdf_document($pages, $logo);
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_quickbooks_csv')) {
+    function cleg_admin_receipts_quickbooks_csv($rows) {
+        $out = fopen('php://temp', 'w+b');
+        fputcsv($out, array('Date', 'Description', 'Amount'), ',', '"', '');
+        foreach ($rows as $row) {
+            $date = implode('/', array_reverse(explode('-', $row['date'])));
+            $account = trim(preg_replace('/[^A-Za-z &\/-]/', '', $row['account']));
+            $description = 'Purchase receipt' . ($account !== '' ? ' - ' . $account : '');
+            fputcsv($out, array($date, $description, number_format(-$row['total'], 2, '.', '')), ',', '"', '');
+        }
+        rewind($out);
+        $csv = stream_get_contents($out);
+        fclose($out);
+        return $csv;
+    }
+}
+
+if (!function_exists('cleg_admin_receipts_export')) {
+    function cleg_admin_receipts_export() {
+        if (!cleg_admin_receipts_module_enabled() || !cleg_admin_receipts_user_can_access()) {
+            wp_die('No tienes permisos para exportar recibos.', '', array('response' => 403));
+        }
+        check_admin_referer('cleg_admin_receipts_export');
+        $format = sanitize_key(wp_unslash($_GET['receipt_format'] ?? ''));
+        if (!in_array($format, array('pdf', 'excel', 'quickbooks'), true)) {
+            wp_die('Selecciona un formato de exportación válido.', '', array('response' => 400));
+        }
+        $filters = cleg_admin_receipts_filter_args();
+        $formula = cleg_admin_receipts_formula_for_filters($filters);
+        if (is_wp_error($formula)) {
+            wp_die(esc_html($formula->get_error_message()), '', array('response' => 400));
+        }
+        $records = cleg_admin_receipt_records($formula);
+        if (is_wp_error($records)) {
+            wp_die(esc_html($records->get_error_message()), '', array('response' => 502));
+        }
+        $rows = cleg_admin_receipts_export_rows(cleg_admin_receipts_by_category($records, $filters['receipt_category'] ?? ''));
+        if (empty($rows)) {
+            wp_die('No hay recibos con esos filtros.', '', array('response' => 404));
+        }
+        $summary = cleg_admin_receipts_export_summary($rows, $filters);
+        $filename = 'cleg-recibos';
+        foreach (array('Desde', 'Hasta') as $bound) {
+            if (cleg_admin_receipts_valid_date($summary[$bound])) {
+                $filename .= '-' . $summary[$bound];
+            }
+        }
+        if ($format === 'pdf') {
+            $content = cleg_admin_receipts_pdf($rows, $summary);
+            $type = 'application/pdf';
+            $filename .= '.pdf';
+        } elseif ($format === 'excel') {
+            $content = cleg_admin_receipts_excel($rows, $summary);
+            $type = 'application/vnd.ms-excel; charset=utf-8';
+            $filename .= '.xls';
+        } else {
+            $card = sanitize_key(wp_unslash($_GET['receipt_card'] ?? ''));
+            $group = cleg_admin_receipts_quickbooks_groups($rows)[$card] ?? null;
+            if ($group === null) {
+                wp_die('Selecciona una tarjeta con recibos aptos para QuickBooks.', '', array('response' => 400));
+            }
+            $content = cleg_admin_receipts_quickbooks_csv($group['rows']);
+            if (count($group['rows']) > 1000 || strlen($content) > 350000) {
+                wp_die('Reduce el rango de fechas para descargar un CSV más pequeño para QuickBooks.', '', array('response' => 400));
+            }
+            $type = 'text/csv; charset=utf-8';
+            $filename .= '-quickbooks-' . $group['label'] . '.csv';
+        }
+        nocache_headers();
+        header('Content-Type: ' . $type);
+        header('Content-Disposition: attachment; filename="' . sanitize_file_name($filename) . '"');
+        echo $content; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+        exit;
+    }
+}
+
 if (!function_exists('cleg_admin_recibos_shortcode')) {
     function cleg_admin_recibos_shortcode() {
         if (!cleg_admin_receipts_module_enabled()) {
@@ -49919,7 +50195,7 @@ if (!function_exists('cleg_admin_recibos_shortcode')) {
         $amount = $filters['receipt_amount'] ?? '';
         $category = $filters['receipt_category'] ?? '';
         $job_sites = cleg_admin_job_sites();
-        $formula = cleg_admin_receipts_filter_formula('', $job_site, $employee, $status, $amount, $from, $to);
+        $formula = cleg_admin_receipts_formula_for_filters($filters);
         $records = is_wp_error($formula) ? array() : cleg_admin_receipt_records($formula);
 
         if (is_wp_error($records) || is_wp_error($job_sites)) {
@@ -49927,11 +50203,7 @@ if (!function_exists('cleg_admin_recibos_shortcode')) {
         }
 
         $categories = cleg_admin_receipts_categories($records, $category);
-        if ($category !== '') {
-            $records = array_values(array_filter($records, function ($record) use ($category) {
-                return cleg_admin_field($record, 'Purchase Category') === $category;
-            }));
-        }
+        $records = cleg_admin_receipts_by_category($records, $category);
         $html = cleg_admin_receipts_procurement_shell_open(cleg_admin_receipts_review_count($records));
         $html .= '<details class="cleg-receipt-filter-drawer"' . ($category !== '' || $from !== '' || $to !== '' ? ' open' : '') . '><summary><span>Filtros</span><small>Fechas, proyecto, persona, tipo de compra, monto o estado</small></summary>'
             . cleg_admin_receipts_filters($from, $to, $job_site, $employee, $status, $amount, $job_sites, $category, $categories)
@@ -49945,6 +50217,7 @@ if (!function_exists('cleg_admin_recibos_shortcode')) {
         $page = min($pages, max(1, absint($_GET['receipt_page'] ?? 1)));
         $display_records = array_slice((array) $records, ($page - 1) * $per_page, $per_page);
         $html .= '<div class="cleg-receipt-workspace">';
+        $html .= cleg_admin_receipts_export_menu(cleg_admin_receipts_export_rows($records), $filters);
         $html .= '<section class="cleg-receipt-table-zone">' . cleg_admin_receipts_table($records, $display_records) . '</section>';
         $html .= '</div>';
 
@@ -49969,6 +50242,16 @@ if (!function_exists('cleg_admin_receipts_styles')) {
             body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary span{font-size:14px!important;line-height:1!important}
             body .cleg-proc-receipts-screen .cleg-receipt-filter-drawer summary small{margin-left:auto!important;color:#65707c!important;-webkit-text-fill-color:#65707c!important;font-size:12px!important;font-weight:850!important;line-height:1.2!important}
             body .cleg-proc-receipts-screen .cleg-receipt-workspace{width:100%!important;max-width:min(1320px,calc(100vw - 24px))!important;margin:0 auto!important;display:block!important}
+            .cleg-receipt-export-bar{display:flex;justify-content:flex-end;margin-bottom:12px}
+            .cleg-receipt-export{max-width:100%}
+            .cleg-receipt-export > summary,.cleg-receipt-export-cards > summary{cursor:pointer;font-weight:850}
+            .cleg-receipt-export > summary{min-height:44px;padding:10px 16px;border-radius:8px;background:#06182d;color:#fff}
+            .cleg-receipt-export-options{display:grid;gap:6px;margin-top:6px;padding:8px;border:1px solid var(--cleg-app-line);border-radius:8px;background:#fff;box-shadow:var(--cleg-app-shadow)}
+            .cleg-receipt-export-options a,.cleg-receipt-export-cards > summary{display:block;min-height:40px;padding:9px 12px;border-radius:6px;color:#06182d;text-decoration:none}
+            .cleg-receipt-export-options a:hover,.cleg-receipt-export-options a:focus-visible,.cleg-receipt-export-cards > summary:hover{background:#eef3f8}
+            .cleg-receipt-export-cards{max-width:320px;border-top:1px solid var(--cleg-app-line)}
+            .cleg-receipt-export-cards p{margin:6px 12px;color:var(--cleg-app-muted);font-size:12px}
+            .cleg-receipt-export-cards a{font-size:13px;overflow-wrap:anywhere}
             body .cleg-proc-receipts-screen .cleg-receipt-table-zone{min-width:0!important;width:100%!important}
             body .cleg-procurement.cleg-proc-receipts-screen .cleg-receipt-filters{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;gap:10px!important;align-items:end!important;margin:0!important;padding:0 16px 16px!important}
             .cleg-receipt-filter-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
@@ -50061,6 +50344,7 @@ if (!function_exists('cleg_receipts_mobile_kpi_grid_styles')) {
 }
 
 add_action('init', 'cleg_admin_handle_receipt_action');
+add_action('admin_post_cleg_admin_receipts_export', 'cleg_admin_receipts_export');
 add_shortcode('cleg_admin_recibos', 'cleg_admin_recibos_shortcode');
 
 if (!function_exists('cleg_receipts_mobile_touch_styles')) {
